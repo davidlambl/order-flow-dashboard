@@ -1,7 +1,8 @@
 // src/components/ChatBot.jsx
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings } from 'lucide-react';
-import { askLLM, fetchModels } from '../lib/api';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Check, Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import { askLLMStream, fetchModels } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 
 const DEFAULT_MODELS = [
@@ -51,6 +52,25 @@ RECENT NET PREMIUM FLOW (last 5 sessions):
 ${recentFlow || '  No flow history'}`;
 }
 
+const markdownComponents = {
+  strong: ({ children }) => (
+    <strong className="text-[var(--color-accent)] font-semibold">{children}</strong>
+  ),
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  code: ({ children }) => (
+    <code className="bg-[var(--color-surface-2)] px-1 py-0.5 rounded text-[12px] font-mono">{children}</code>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-xs font-semibold text-[var(--color-text-primary)] mt-3 mb-1">{children}</h3>
+  ),
+  h4: ({ children }) => (
+    <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mt-2 mb-1">{children}</h4>
+  ),
+};
+
 function MessageBubble({ msg }) {
   const isUser = msg.role === 'user';
   const isError = msg.role === 'error';
@@ -77,7 +97,11 @@ function MessageBubble({ msg }) {
             : 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)]'
         }`}
       >
-        <div className="whitespace-pre-wrap">{msg.content}</div>
+        {isUser || isError ? (
+          <div className="whitespace-pre-wrap">{msg.content}</div>
+        ) : (
+          <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
+        )}
       </div>
     </div>
   );
@@ -116,8 +140,16 @@ export default function ChatBot({ data, isOpen, onClose }) {
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-20250514');
   const [availableModels, setAvailableModels] = useState(DEFAULT_MODELS);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [hasSavedKey, setHasSavedKey] = useState(() => Boolean(sessionStorage.getItem('anthropic_api_key')));
+  const [keyTestStatus, setKeyTestStatus] = useState(null);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+
+  const modelDisplayName = useMemo(() => {
+    const found = availableModels.find((m) => m.id === selectedModel)
+      || DEFAULT_MODELS.find((m) => m.id === selectedModel);
+    return found?.name || selectedModel;
+  }, [availableModels, selectedModel]);
 
   useEffect(() => {
     const savedKey = sessionStorage.getItem('anthropic_api_key');
@@ -154,8 +186,10 @@ export default function ChatBot({ data, isOpen, onClose }) {
   const saveSettings = useCallback(() => {
     if (apiKey.trim()) {
       sessionStorage.setItem('anthropic_api_key', apiKey.trim());
+      setHasSavedKey(true);
     } else {
       sessionStorage.removeItem('anthropic_api_key');
+      setHasSavedKey(false);
     }
     sessionStorage.setItem('anthropic_model', selectedModel);
     setShowSettings(false);
@@ -166,8 +200,26 @@ export default function ChatBot({ data, isOpen, onClose }) {
     sessionStorage.removeItem('anthropic_model');
     setApiKey('');
     setSelectedModel('claude-sonnet-4-20250514');
+    setHasSavedKey(false);
+    setKeyTestStatus(null);
     setShowSettings(false);
   }, []);
+
+  const testApiKey = useCallback(async () => {
+    if (!apiKey.trim()) return;
+    setKeyTestStatus('testing');
+    try {
+      const result = await fetchModels(apiKey.trim());
+      if (result.models && result.models.length > 0) {
+        setKeyTestStatus('success');
+        setAvailableModels(result.models);
+      } else {
+        setKeyTestStatus('error');
+      }
+    } catch {
+      setKeyTestStatus('error');
+    }
+  }, [apiKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -197,14 +249,24 @@ export default function ChatBot({ data, isOpen, onClose }) {
       const userApiKey = sessionStorage.getItem('anthropic_api_key');
       const userModel = sessionStorage.getItem('anthropic_model') || selectedModel;
 
-      const result = await askLLM(
+      await askLLMStream(
         apiMessages,
         financialContext,
         data?.ticker || 'UNKNOWN',
         userApiKey,
-        userModel
+        userModel,
+        (chunk) => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant') {
+              const updated = [...prev];
+              updated[updated.length - 1] = { ...last, content: last.content + chunk };
+              return updated;
+            }
+            return [...prev, { role: 'assistant', content: chunk }];
+          });
+        }
       );
-      setMessages((prev) => [...prev, { role: 'assistant', content: result.message }]);
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -248,13 +310,30 @@ export default function ChatBot({ data, isOpen, onClose }) {
             <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
               Anthropic API Key (optional)
             </label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-..."
-              className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
-            />
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => { setApiKey(e.target.value); setKeyTestStatus(null); }}
+                placeholder="sk-ant-..."
+                className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              />
+              <button
+                onClick={testApiKey}
+                disabled={!apiKey.trim() || keyTestStatus === 'testing'}
+                className="px-3 py-2 text-xs font-medium rounded-lg border transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--color-surface-2)] border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]"
+              >
+                {keyTestStatus === 'testing' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : keyTestStatus === 'success' ? (
+                  <Check size={12} className="text-[var(--color-bull)]" />
+                ) : keyTestStatus === 'error' ? (
+                  <AlertCircle size={12} className="text-[var(--color-bear)]" />
+                ) : (
+                  'Test'
+                )}
+              </button>
+            </div>
             <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
               Stored in session storage (cleared when browser closes). If not provided, uses server default.
             </p>
@@ -323,17 +402,20 @@ export default function ChatBot({ data, isOpen, onClose }) {
               AI Co-Pilot
             </h3>
             <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-              Claude · {data?.ticker || '—'} context
+              {modelDisplayName} · {data?.ticker || '—'} context
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={openSettings}
-            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+            className="relative p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
             aria-label="Settings"
           >
             <Settings size={14} />
+            {hasSavedKey && (
+              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--color-bull)]" />
+            )}
           </button>
           <button
             onClick={onClose}
@@ -377,7 +459,7 @@ export default function ChatBot({ data, isOpen, onClose }) {
           <MessageBubble key={i} msg={msg} />
         ))}
 
-        {sending && <TypingIndicator />}
+        {sending && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
       </div>
 
       {/* Input */}

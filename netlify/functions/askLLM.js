@@ -1,58 +1,49 @@
 // netlify/functions/askLLM.js
-// Proxies chat requests to Anthropic Claude, injecting financial context
-// into the system prompt so the LLM can reason about live market data.
+// Proxies chat requests to Anthropic Claude with optional SSE streaming.
 
-export async function handler(event) {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
-    'Content-Type': 'application/json',
-  };
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
+};
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
+export default async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'POST only' }),
-    };
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'POST only' }, 405);
   }
 
   const API_KEY = process.env.ANTHROPIC_API_KEY;
 
   let payload;
   try {
-    payload = JSON.parse(event.body);
+    payload = await req.json();
   } catch {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: 'Invalid JSON body' }),
-    };
+    return jsonResponse({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { messages, financialContext, ticker, userApiKey, model } = payload;
+  const { messages, financialContext, ticker, userApiKey, model, stream: useStream } = payload;
 
   const effectiveApiKey = userApiKey || API_KEY;
   if (!effectiveApiKey) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: 'No API key available. Please configure ANTHROPIC_API_KEY or provide your own.' }),
-    };
+    return jsonResponse({
+      error: 'No API key available. Please configure ANTHROPIC_API_KEY or provide your own.',
+    }, 500);
   }
 
   const selectedModel = model || 'claude-sonnet-4-20250514';
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: 'messages array is required' }),
-    };
+    return jsonResponse({ error: 'messages array is required' }, 400);
   }
 
   const systemPrompt = `You are a senior institutional equity & options analyst embedded in a trading dashboard. Your role is to provide concise, actionable analysis based on the live market data provided below.
@@ -75,6 +66,14 @@ ANALYSIS GUIDELINES:
 - If the data is unavailable or stale, say so rather than speculating.
 - Sign off observations with a confidence level: HIGH / MEDIUM / LOW.`;
 
+  const anthropicBody = {
+    model: selectedModel,
+    max_tokens: 1024,
+    system: systemPrompt,
+    stream: Boolean(useStream),
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+  };
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -83,46 +82,36 @@ ANALYSIS GUIDELINES:
         'x-api-key': effectiveApiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: selectedModel,
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      }),
+      body: JSON.stringify(anthropicBody),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      return {
-        statusCode: response.status,
-        headers,
-        body: JSON.stringify({
-          error: `Anthropic API error: ${response.status}`,
-          detail: data,
-        }),
-      };
+      const errText = await response.text();
+      let detail;
+      try { detail = JSON.parse(errText); } catch { detail = errText; }
+      return jsonResponse({
+        error: `Anthropic API error: ${response.status}`,
+        detail,
+      }, response.status);
     }
 
-    const assistantMessage =
-      data.content?.[0]?.text || 'No response generated.';
+    if (useStream) {
+      return new Response(response.body, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
 
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({ message: assistantMessage }),
-    };
+    const data = await response.json();
+    const assistantMessage = data.content?.[0]?.text || 'No response generated.';
+    return jsonResponse({ message: assistantMessage });
   } catch (err) {
-    return {
-      statusCode: 502,
-      headers,
-      body: JSON.stringify({
-        error: 'Failed to reach Anthropic API',
-        detail: err.message,
-      }),
-    };
+    return jsonResponse({
+      error: 'Failed to reach Anthropic API',
+      detail: err.message,
+    }, 502);
   }
-}
+};

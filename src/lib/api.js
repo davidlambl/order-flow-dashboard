@@ -26,23 +26,21 @@ export async function fetchMarketData(ticker) {
 }
 
 /**
- * Send a message to the AI co-pilot with financial context.
+ * Stream a message to the AI co-pilot with financial context.
+ * Calls onChunk(text) for each text delta received via SSE.
  * @param {Array<{role: string, content: string}>} messages
  * @param {string} financialContext - Serialized dashboard state
  * @param {string} ticker
  * @param {string} userApiKey - Optional user-provided API key
  * @param {string} model - Model selection
+ * @param {(text: string) => void} onChunk - Called with each text delta
  */
-export async function askLLM(messages, financialContext, ticker, userApiKey = null, model = null) {
+export async function askLLMStream(messages, financialContext, ticker, userApiKey, model, onChunk) {
   const res = await fetch(`${FUNCTION_BASE}/askLLM`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      messages, 
-      financialContext, 
-      ticker,
-      userApiKey,
-      model
+    body: JSON.stringify({
+      messages, financialContext, ticker, userApiKey, model, stream: true,
     }),
   });
 
@@ -50,7 +48,32 @@ export async function askLLM(messages, financialContext, ticker, userApiKey = nu
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || `LLM error: ${res.status}`);
   }
-  return res.json();
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const event = JSON.parse(jsonStr);
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          onChunk(event.delta.text);
+        }
+      } catch { /* skip non-JSON SSE lines like event: types */ }
+    }
+  }
 }
 
 /**
