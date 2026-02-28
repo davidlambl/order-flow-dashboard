@@ -1,9 +1,11 @@
 // netlify/functions/askLLM.js
 // Proxies chat requests to Anthropic Claude with optional SSE streaming.
 
+import jwt from 'jsonwebtoken';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
+  'Access-Control-Allow-Headers': 'Content-Type, x-api-key, Authorization',
 };
 
 function jsonResponse(body, status = 200) {
@@ -20,6 +22,21 @@ export default async (req) => {
 
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'POST only' }, 405);
+  }
+
+  const tokenSecret = process.env.TOKEN_SECRET;
+  if (tokenSecret) {
+    const auth = req.headers.get('authorization') || '';
+    const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!bearer) {
+      return jsonResponse({ error: 'Access token required', code: 'TOKEN_REQUIRED' }, 401);
+    }
+    try {
+      jwt.verify(bearer, tokenSecret);
+    } catch (err) {
+      const code = err.name === 'TokenExpiredError' ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID';
+      return jsonResponse({ error: 'Invalid or expired access token', code }, 401);
+    }
   }
 
   const API_KEY = process.env.ANTHROPIC_API_KEY;

@@ -1,10 +1,12 @@
 // netlify/functions/getModels.js
 // Fetches available Anthropic models dynamically
 
+import jwt from 'jsonwebtoken';
+
 export async function handler(event) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
+    'Access-Control-Allow-Headers': 'Content-Type, x-api-key, Authorization',
     'Content-Type': 'application/json',
   };
 
@@ -18,6 +20,29 @@ export async function handler(event) {
       headers,
       body: JSON.stringify({ error: 'GET only' }),
     };
+  }
+
+  const tokenSecret = process.env.TOKEN_SECRET;
+  if (tokenSecret) {
+    const auth = event.headers['authorization'] || '';
+    const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!bearer) {
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Access token required', code: 'TOKEN_REQUIRED', models: [] }),
+      };
+    }
+    try {
+      jwt.verify(bearer, tokenSecret);
+    } catch (err) {
+      const code = err.name === 'TokenExpiredError' ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID';
+      return {
+        statusCode: 401,
+        headers,
+        body: JSON.stringify({ error: 'Invalid or expired access token', code, models: [] }),
+      };
+    }
   }
 
   const API_KEY = process.env.ANTHROPIC_API_KEY;

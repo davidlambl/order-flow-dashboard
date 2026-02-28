@@ -1,9 +1,10 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Check, Loader2 } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Check, Loader2, Lock, KeyRound, ShieldCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { askLLMStream, fetchModels } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
+import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 
 const DEFAULT_MODELS = [
   { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Latest)' },
@@ -142,7 +143,105 @@ const SUGGESTIONS = [
   'Summarize the dark pool activity.',
 ];
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares }) {
+function ChatLockScreen({ onClose, onUnlock }) {
+  const [tokenInput, setTokenInput] = useState('');
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState('');
+
+  const handleActivate = async (e) => {
+    e.preventDefault();
+    const raw = tokenInput.trim();
+    if (!raw) return;
+    setStatus('validating');
+    setError('');
+    try {
+      const result = await validateTokenApi(raw);
+      if (result.valid) {
+        setToken(raw);
+        setStatus('success');
+        setTimeout(() => onUnlock?.(), 400);
+      } else {
+        setStatus('error');
+        setError(result.error || 'Invalid token');
+      }
+    } catch {
+      setStatus('error');
+      setError('Could not validate token.');
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)] w-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[var(--color-purple-bg)]">
+            <Sparkles size={12} className="text-[var(--color-purple)]" />
+          </div>
+          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">AI Co-Pilot</h3>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+          aria-label="Close chat"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
+        <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--color-accent)]/10 border border-[var(--color-accent)]/20">
+          <Lock size={24} className="text-[var(--color-accent)]" />
+        </div>
+
+        <div className="text-center">
+          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+            Premium Feature
+          </h3>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed max-w-[220px]">
+            The AI Co-Pilot provides institutional-grade analysis of options flow and gamma exposure.
+          </p>
+        </div>
+
+        <form onSubmit={handleActivate} className="w-full max-w-xs space-y-2">
+          <div className="flex gap-2">
+            <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] focus-within:border-[var(--color-accent)] transition-colors">
+              <KeyRound size={12} className="text-[var(--color-text-muted)] shrink-0" />
+              <input
+                type="text"
+                value={tokenInput}
+                onChange={(e) => { setTokenInput(e.target.value); setStatus(null); setError(''); }}
+                placeholder="Paste access token..."
+                spellCheck={false}
+                className="flex-1 bg-transparent text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none font-mono"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!tokenInput.trim() || status === 'validating'}
+              className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            >
+              {status === 'validating' ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : status === 'success' ? (
+                <ShieldCheck size={14} />
+              ) : (
+                'Activate'
+              )}
+            </button>
+          </div>
+          {error && (
+            <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
+              <AlertCircle size={10} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -294,6 +393,10 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares }) {
   };
 
   if (!isOpen) return null;
+
+  if (!isPremium) {
+    return <ChatLockScreen onClose={onClose} onUnlock={onUnlock} />;
+  }
 
   if (showSettings) {
     return (

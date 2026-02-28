@@ -1,8 +1,8 @@
 // src/components/Header.jsx
 import { useState, useRef, useEffect } from 'react';
-import { Search, RefreshCw, Activity, Wifi, WifiOff } from 'lucide-react';
+import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut } from 'lucide-react';
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data }) {
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -102,6 +102,28 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
 
       {/* Status */}
       <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
+        {isPremium && (
+          <div className="flex items-center gap-1.5">
+            <span
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+              style={{
+                color: tokenTier === 'pro' ? 'var(--color-accent)' : 'var(--color-purple)',
+                backgroundColor: tokenTier === 'pro' ? 'rgba(59,130,246,0.1)' : 'var(--color-purple-bg)',
+                borderColor: tokenTier === 'pro' ? 'rgba(59,130,246,0.2)' : 'rgba(168,85,247,0.2)',
+              }}
+            >
+              <ShieldCheck size={10} />
+              {tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` · ${daysLeft}d` : ''}`}
+            </span>
+            <button
+              onClick={onLogout}
+              className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+              title="Sign out"
+            >
+              <LogOut size={10} />
+            </button>
+          </div>
+        )}
         <span className="hidden md:inline tabular-nums">{timeStr}</span>
         <div className="flex items-center gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} — ${data?.delay || 'delayed'}`}>
           {usingMock ? (

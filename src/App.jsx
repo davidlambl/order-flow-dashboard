@@ -7,7 +7,9 @@ import PositionAnalysis from './components/PositionAnalysis';
 import GexChart from './components/GexChart';
 import FlowChart from './components/FlowChart';
 import ChatBot from './components/ChatBot';
+import PremiumGate from './components/PremiumGate';
 import { useMarketData } from './hooks/useMarketData';
+import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
 
 function loadPosition(ticker) {
   try {
@@ -22,7 +24,17 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [costBasis, setCostBasis] = useState(null);
   const [shares, setShares] = useState(null);
+  const [isPremium, setIsPremium] = useState(() => hasValidToken());
   const { data, loading, error, usingMock, refresh } = useMarketData(ticker);
+
+  const refreshAuth = useCallback(() => {
+    setIsPremium(hasValidToken());
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    clearToken();
+    setIsPremium(false);
+  }, []);
 
   useEffect(() => {
     const saved = loadPosition(ticker);
@@ -53,6 +65,10 @@ export default function App() {
         loading={loading}
         usingMock={usingMock}
         data={data}
+        isPremium={isPremium}
+        tokenTier={getTokenTier()}
+        daysLeft={daysRemaining()}
+        onLogout={handleLogout}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -94,15 +110,17 @@ export default function App() {
           <KPICards kpis={data?.kpis} loading={loading} />
 
           {/* Position Analysis */}
-          <PositionAnalysis
-            costBasis={costBasis}
-            shares={shares}
-            onUpdate={updatePosition}
-            spotPrice={data?.spotPrice}
-            kpis={data?.kpis}
-            gexByStrike={data?.gexByStrike}
-            loading={loading}
-          />
+          <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Position Analysis">
+            <PositionAnalysis
+              costBasis={costBasis}
+              shares={shares}
+              onUpdate={updatePosition}
+              spotPrice={data?.spotPrice}
+              kpis={data?.kpis}
+              gexByStrike={data?.gexByStrike}
+              loading={loading}
+            />
+          </PremiumGate>
 
           {/* Charts */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -141,7 +159,7 @@ export default function App() {
             chatOpen ? 'w-80 md:w-96' : 'w-0'
           } overflow-hidden shrink-0`}
         >
-          <ChatBot data={data} isOpen={chatOpen} onClose={() => setChatOpen(false)} costBasis={costBasis} shares={shares} />
+          <ChatBot data={data} isOpen={chatOpen} onClose={() => setChatOpen(false)} costBasis={costBasis} shares={shares} isPremium={isPremium} onUnlock={refreshAuth} />
         </aside>
       </div>
 

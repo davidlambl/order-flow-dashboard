@@ -1,6 +1,8 @@
 // src/lib/api.js
 // Centralized API helpers — all calls route through Netlify Functions.
 
+import { getAuthHeaders, clearToken } from './auth';
+
 const FUNCTION_BASE = '/.netlify/functions';
 
 /**
@@ -38,7 +40,7 @@ export async function fetchMarketData(ticker) {
 export async function askLLMStream(messages, financialContext, ticker, userApiKey, model, onChunk) {
   const res = await fetch(`${FUNCTION_BASE}/askLLM`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       messages, financialContext, ticker, userApiKey, model, stream: true,
     }),
@@ -46,6 +48,10 @@ export async function askLLMStream(messages, financialContext, ticker, userApiKe
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
+    if (res.status === 401) {
+      clearToken();
+      throw new Error(err.code === 'TOKEN_EXPIRED' ? 'Access token expired' : 'Access token required');
+    }
     throw new Error(err.error || `LLM error: ${res.status}`);
   }
 
@@ -81,7 +87,7 @@ export async function askLLMStream(messages, financialContext, ticker, userApiKe
  * @param {string} userApiKey - Optional user-provided API key
  */
 export async function fetchModels(userApiKey = null) {
-  const headers = {};
+  const headers = { ...getAuthHeaders() };
   if (userApiKey) {
     headers['x-api-key'] = userApiKey;
   }
@@ -90,6 +96,10 @@ export async function fetchModels(userApiKey = null) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
+    if (res.status === 401) {
+      clearToken();
+      throw new Error(err.code === 'TOKEN_EXPIRED' ? 'Access token expired' : 'Access token required');
+    }
     throw new Error(err.error || `Models API error: ${res.status}`);
   }
   return res.json();
