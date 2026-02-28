@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
+import RequestAccessForm from './RequestAccessForm';
 
 const PROVIDERS = [
   { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', needsKey: false, recommended: true },
@@ -54,6 +55,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [tokenInput, setTokenInput] = useState('');
   const [tokenStatus, setTokenStatus] = useState(null);
   const [tokenError, setTokenError] = useState('');
+  const [showRequest, setShowRequest] = useState(false);
   const isPremium = hasValidToken();
   const tier = getTokenTier();
   const days = daysRemaining();
@@ -427,6 +429,26 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   Unlocks premium features: AI Co-Pilot and Position Analysis.
                 </p>
               </form>
+            )}
+
+            {!isPremium && (
+              showRequest ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <hr className="flex-1 border-[var(--color-border-subtle)]" />
+                    <span className="text-[10px] text-[var(--color-text-muted)]">or request access</span>
+                    <hr className="flex-1 border-[var(--color-border-subtle)]" />
+                  </div>
+                  <RequestAccessForm />
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowRequest(true)}
+                  className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
+                >
+                  Don't have a token? <span className="underline">Request access</span>
+                </button>
+              )
             )}
           </section>
 

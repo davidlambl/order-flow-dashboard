@@ -42,7 +42,13 @@ Filtered to strikes within ±20% of spot price.
 
 The sidebar chat uses Anthropic Claude with **streaming responses** and **markdown rendering**. Every user message is invisibly appended with the current dashboard data (KPIs, GEX strikes, flow history), so the LLM can answer contextually about Net Premium, Max Pain, GEX levels, and flow data.
 
-**Bring your own key:** Click the gear icon in the chat header to enter your own Anthropic API key. Keys are stored in session storage (cleared when the browser closes) and never touch the codebase. You can also dynamically select from all available Claude models and validate your key with the built-in Test button.
+**Multi-provider support:** Click the settings gear in the header to choose Anthropic, OpenAI, or Google Gemini as your AI provider. Enter your API key — models are fetched dynamically from each provider's API. Keys are stored in session storage (cleared when the browser closes) and never touch the codebase.
+
+## Access Tokens
+
+Premium features (AI Co-Pilot, Position Analysis) are gated behind JWT access tokens. Generate tokens with `node scripts/generate-token.js`. Users without a token see a "Request Access" form that submits to Netlify Forms, which emails the admin.
+
+**Setup notifications:** After deploying, go to Netlify UI > Site > Forms > Notifications > Email notification, select `access-request`, and enter your email. Your address is never in the codebase.
 
 ## Quick Start
 
@@ -76,6 +82,7 @@ npm run dev
 |----------|----------|-------------|
 | `TRADIER_API_KEY` | No | Tradier API token (sandbox or production) |
 | `ANTHROPIC_API_KEY` | No | Anthropic Claude API key for AI Co-Pilot |
+| `TOKEN_SECRET` | No | JWT secret for premium access tokens |
 
 ## Project Structure
 

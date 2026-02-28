@@ -2,11 +2,13 @@
 import { useState } from 'react';
 import { Lock, KeyRound, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
+import RequestAccessForm from './RequestAccessForm';
 
 export default function PremiumGate({ isPremium, onUnlock, featureName, children }) {
   const [tokenInput, setTokenInput] = useState('');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
+  const [showRequest, setShowRequest] = useState(false);
 
   if (isPremium) return children;
 
@@ -85,6 +87,26 @@ export default function PremiumGate({ isPremium, onUnlock, featureName, children
             </div>
           )}
         </form>
+
+        <div className="w-full max-w-sm">
+          {showRequest ? (
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center gap-2">
+                <hr className="flex-1 border-[var(--color-border-subtle)]" />
+                <span className="text-[10px] text-[var(--color-text-muted)]">or</span>
+                <hr className="flex-1 border-[var(--color-border-subtle)]" />
+              </div>
+              <RequestAccessForm compact />
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowRequest(true)}
+              className="w-full text-center text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors pt-1"
+            >
+              Don't have a token? <span className="underline">Request access</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
