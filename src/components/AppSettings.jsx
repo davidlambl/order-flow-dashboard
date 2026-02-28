@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
-  RefreshCw, Database, Cpu, Star,
+  RefreshCw, Database, Cpu, Star, Eye, EyeOff,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
@@ -50,6 +50,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [keyTestError, setKeyTestError] = useState('');
   const fetchIdRef = useRef(0);
 
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showTradierKey, setShowTradierKey] = useState(false);
   const [tradierKey, setTradierKey] = useState('');
 
   const [tokenInput, setTokenInput] = useState('');
@@ -109,6 +111,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setSelectedModel(sessionStorage.getItem('ai_model') || '');
     setKeyTestStatus(null);
     setKeyTestError('');
+    setShowApiKey(false);
+    setShowTradierKey(false);
     setTradierKey(sessionStorage.getItem('data_tradier_key') || '');
     setTokenInput('');
     setTokenStatus(null);
@@ -260,7 +264,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               {PROVIDERS.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => { setProvider(p.id); setKeyTestStatus(null); setKeyTestError(''); }}
+                  onClick={() => { setProvider(p.id); setKeyTestStatus(null); setKeyTestError(''); setShowApiKey(false); }}
                   className={`flex-1 text-xs font-medium py-2 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 ${
                     provider === p.id
                       ? 'bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm border border-[var(--color-border-subtle)]'
@@ -282,13 +286,25 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                 {providerMeta?.label} API Key
               </label>
               <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={currentKey}
-                  onChange={(e) => { setKeys({ ...keys, [provider]: e.target.value }); setKeyTestStatus(null); setKeyTestError(''); }}
-                  placeholder={providerMeta?.hint || 'API key...'}
-                  className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
-                />
+                <div className="flex-1 relative">
+                  <input
+                    type={showApiKey ? 'text' : 'password'}
+                    value={currentKey}
+                    onChange={(e) => { setKeys({ ...keys, [provider]: e.target.value }); setKeyTestStatus(null); setKeyTestError(''); }}
+                    placeholder={providerMeta?.hint || 'API key...'}
+                    className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                  />
+                  {currentKey && (
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+                      aria-label={showApiKey ? 'Hide key' : 'Reveal key'}
+                    >
+                      {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={testKey}
                   disabled={!currentKey.trim() || keyTestStatus === 'testing'}
@@ -481,13 +497,25 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
                 Tradier API Key
               </label>
-              <input
-                type="password"
-                value={tradierKey}
-                onChange={(e) => setTradierKey(e.target.value)}
-                placeholder="Paste for real-time data..."
-                className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
-              />
+              <div className="relative">
+                <input
+                  type={showTradierKey ? 'text' : 'password'}
+                  value={tradierKey}
+                  onChange={(e) => setTradierKey(e.target.value)}
+                  placeholder="Paste for real-time data..."
+                  className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                />
+                {tradierKey && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTradierKey((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+                    aria-label={showTradierKey ? 'Hide key' : 'Reveal key'}
+                  >
+                    {showTradierKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                )}
+              </div>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
                 {tradierKey.trim()
                   ? 'Tradier key will be used on next data refresh for real-time options data.'

@@ -85,8 +85,12 @@ export async function handler(event) {
     return { statusCode: 405, headers, body: JSON.stringify({ error: 'GET only' }) };
   }
 
+  const params = event.queryStringParameters || {};
+  const userApiKey = event.headers['x-api-key'];
+  const provider = params.provider || detectProvider(userApiKey);
+
   const tokenSecret = process.env.TOKEN_SECRET;
-  if (tokenSecret) {
+  if (tokenSecret && !userApiKey) {
     const auth = event.headers['authorization'] || '';
     const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!bearer) {
@@ -107,10 +111,6 @@ export async function handler(event) {
       };
     }
   }
-
-  const params = event.queryStringParameters || {};
-  const userApiKey = event.headers['x-api-key'];
-  const provider = params.provider || detectProvider(userApiKey);
 
   const effectiveKey = userApiKey
     || (provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : null);

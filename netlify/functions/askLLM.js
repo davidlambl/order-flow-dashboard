@@ -130,8 +130,20 @@ export default async (req) => {
     return jsonResponse({ error: 'POST only' }, 405);
   }
 
+  let payload;
+  try {
+    payload = await req.json();
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const {
+    messages, financialContext, ticker, userApiKey, model,
+    provider: requestedProvider, stream: useStream,
+  } = payload;
+
   const tokenSecret = process.env.TOKEN_SECRET;
-  if (tokenSecret) {
+  if (tokenSecret && !userApiKey) {
     const auth = req.headers.get('authorization') || '';
     const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!bearer) {
@@ -144,18 +156,6 @@ export default async (req) => {
       return jsonResponse({ error: 'Invalid or expired access token', code }, 401);
     }
   }
-
-  let payload;
-  try {
-    payload = await req.json();
-  } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, 400);
-  }
-
-  const {
-    messages, financialContext, ticker, userApiKey, model,
-    provider: requestedProvider, stream: useStream,
-  } = payload;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return jsonResponse({ error: 'messages array is required' }, 400);
