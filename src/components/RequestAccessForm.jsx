@@ -34,13 +34,22 @@ export default function RequestAccessForm({ compact }) {
         body: body.toString(),
       });
 
-      if (!res.ok) throw new Error(`${res.status}`);
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(
+          `Server returned ${res.status}${text ? `: ${text.slice(0, 120)}` : ''}`
+        );
+      }
 
       setStatus('sent');
       cooldownRef.current = Date.now();
-    } catch {
+    } catch (err) {
       setStatus('error');
-      setError('Could not send request. Try again later.');
+      setError(
+        err?.message?.startsWith('Server returned')
+          ? err.message
+          : 'Network error — are you running locally? Netlify Forms only works on the deployed site.'
+      );
     }
   }, [name, email, message]);
 
