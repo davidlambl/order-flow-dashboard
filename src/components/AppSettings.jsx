@@ -1,5 +1,5 @@
 // src/components/AppSettings.jsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
   RefreshCw, Database, Cpu,
@@ -8,29 +8,10 @@ import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
 
 const PROVIDERS = [
-  { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', color: 'var(--color-accent)' },
-  { id: 'openai', label: 'OpenAI', hint: 'sk-...', color: '#10a37f' },
-  { id: 'gemini', label: 'Gemini', hint: 'AIza...', color: '#4285f4' },
+  { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', needsKey: false },
+  { id: 'openai', label: 'OpenAI', hint: 'sk-...', needsKey: true },
+  { id: 'gemini', label: 'Gemini', hint: 'AIza...', needsKey: true },
 ];
-
-const DEFAULT_MODELS = {
-  anthropic: [
-    { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Latest)', provider: 'anthropic' },
-    { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', provider: 'anthropic' },
-    { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet', provider: 'anthropic' },
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', provider: 'anthropic' },
-  ],
-  openai: [
-    { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai' },
-    { id: 'o3-mini', name: 'o3 Mini', provider: 'openai' },
-  ],
-  gemini: [
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'gemini' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'gemini' },
-  ],
-};
 
 function migrateOldKeys() {
   const oldKey = sessionStorage.getItem('anthropic_api_key');
@@ -48,21 +29,24 @@ function migrateOldKeys() {
 
 export function getAISettings() {
   migrateOldKeys();
+  const provider = sessionStorage.getItem('ai_provider') || 'anthropic';
   return {
-    provider: sessionStorage.getItem('ai_provider') || 'anthropic',
-    model: sessionStorage.getItem('ai_model') || 'claude-sonnet-4-20250514',
-    modelName: sessionStorage.getItem('ai_model_name') || 'Claude Sonnet 4 (Latest)',
-    apiKey: sessionStorage.getItem(`ai_key_${sessionStorage.getItem('ai_provider') || 'anthropic'}`) || '',
+    provider,
+    model: sessionStorage.getItem('ai_model') || '',
+    modelName: sessionStorage.getItem('ai_model_name') || 'Default',
+    apiKey: sessionStorage.getItem(`ai_key_${provider}`) || '',
   };
 }
 
 export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource }) {
   const [provider, setProvider] = useState('anthropic');
   const [keys, setKeys] = useState({ anthropic: '', openai: '', gemini: '' });
-  const [models, setModels] = useState(DEFAULT_MODELS.anthropic);
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-20250514');
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState(null);
   const [keyTestStatus, setKeyTestStatus] = useState(null);
+  const fetchIdRef = useRef(0);
 
   const [tokenInput, setTokenInput] = useState('');
   const [tokenStatus, setTokenStatus] = useState(null);
@@ -71,60 +55,65 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const tier = getTokenTier();
   const days = daysRemaining();
 
+  const loadModelsForProvider = useCallback(async (prov, key) => {
+    const provMeta = PROVIDERS.find((p) => p.id === prov);
+    if (provMeta?.needsKey && !key) {
+      setModels([]);
+      setModelError(`Enter your ${provMeta.label} API key to load models.`);
+      return;
+    }
+
+    const id = ++fetchIdRef.current;
+    setLoadingModels(true);
+    setModelError(null);
+
+    try {
+      const result = await fetchModels(key || null, prov);
+      if (id !== fetchIdRef.current) return;
+
+      if (result.models?.length > 0) {
+        setModels(result.models);
+        const savedModel = sessionStorage.getItem('ai_model');
+        const match = result.models.find((m) => m.id === savedModel);
+        if (!match) setSelectedModel(result.models[0].id);
+        setModelError(null);
+      } else {
+        setModels([]);
+        setModelError(result.error || 'No models returned.');
+      }
+    } catch (err) {
+      if (id !== fetchIdRef.current) return;
+      setModels([]);
+      setModelError(err.message || 'Failed to fetch models.');
+    } finally {
+      if (id === fetchIdRef.current) setLoadingModels(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen) return;
     migrateOldKeys();
     const savedProvider = sessionStorage.getItem('ai_provider') || 'anthropic';
     setProvider(savedProvider);
-    setKeys({
+    const loadedKeys = {
       anthropic: sessionStorage.getItem('ai_key_anthropic') || '',
       openai: sessionStorage.getItem('ai_key_openai') || '',
       gemini: sessionStorage.getItem('ai_key_gemini') || '',
-    });
-    const savedModel = sessionStorage.getItem('ai_model') || 'claude-sonnet-4-20250514';
-    setSelectedModel(savedModel);
+    };
+    setKeys(loadedKeys);
+    setSelectedModel(sessionStorage.getItem('ai_model') || '');
     setKeyTestStatus(null);
     setTokenInput('');
     setTokenStatus(null);
     setTokenError('');
-  }, [isOpen]);
+
+    loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
+  }, [isOpen, loadModelsForProvider]);
 
   useEffect(() => {
     if (!isOpen) return;
-    const key = keys[provider];
-    if (key) {
-      loadModelsForProvider(provider, key);
-    } else {
-      setModels(DEFAULT_MODELS[provider] || []);
-      const defaults = DEFAULT_MODELS[provider];
-      if (defaults?.length && !defaults.find((m) => m.id === selectedModel)) {
-        setSelectedModel(defaults[0].id);
-      }
-    }
-  }, [provider, isOpen]);
-
-  const loadModelsForProvider = useCallback(async (prov, key) => {
-    if (!key) {
-      setModels(DEFAULT_MODELS[prov] || []);
-      return;
-    }
-    setLoadingModels(true);
-    try {
-      const result = await fetchModels(key, prov);
-      if (result.models?.length > 0) {
-        setModels(result.models);
-        if (!result.models.find((m) => m.id === selectedModel)) {
-          setSelectedModel(result.models[0].id);
-        }
-      } else {
-        setModels(DEFAULT_MODELS[prov] || []);
-      }
-    } catch {
-      setModels(DEFAULT_MODELS[prov] || []);
-    } finally {
-      setLoadingModels(false);
-    }
-  }, [selectedModel]);
+    loadModelsForProvider(provider, keys[provider]);
+  }, [provider]);
 
   const testKey = useCallback(async () => {
     const key = keys[provider]?.trim();
@@ -135,9 +124,9 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
       if (result.models?.length > 0) {
         setKeyTestStatus('success');
         setModels(result.models);
-        if (!result.models.find((m) => m.id === selectedModel)) {
-          setSelectedModel(result.models[0].id);
-        }
+        setModelError(null);
+        const match = result.models.find((m) => m.id === selectedModel);
+        if (!match) setSelectedModel(result.models[0].id);
       } else {
         setKeyTestStatus('error');
       }
@@ -155,9 +144,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
         sessionStorage.removeItem(`ai_key_${prov}`);
       }
     }
-    sessionStorage.setItem('ai_model', selectedModel);
-    const modelObj = models.find((m) => m.id === selectedModel);
-    sessionStorage.setItem('ai_model_name', modelObj?.name || selectedModel);
+    if (selectedModel) {
+      sessionStorage.setItem('ai_model', selectedModel);
+      const modelObj = models.find((m) => m.id === selectedModel);
+      sessionStorage.setItem('ai_model_name', modelObj?.name || selectedModel);
+    }
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
     onClose();
   }, [provider, keys, selectedModel, models, onClose]);
@@ -171,11 +162,12 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     sessionStorage.removeItem('ai_model_name');
     setProvider('anthropic');
     setKeys({ anthropic: '', openai: '', gemini: '' });
-    setSelectedModel('claude-sonnet-4-20250514');
-    setModels(DEFAULT_MODELS.anthropic);
+    setSelectedModel('');
+    setModels([]);
     setKeyTestStatus(null);
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
-  }, []);
+    loadModelsForProvider('anthropic', '');
+  }, [loadModelsForProvider]);
 
   const handleActivateToken = useCallback(async (e) => {
     e.preventDefault();
@@ -209,6 +201,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
 
   const currentKey = keys[provider] || '';
   const providerMeta = PROVIDERS.find((p) => p.id === provider);
+  const hasModels = models.length > 0;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -286,8 +279,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               </div>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
                 Session only — cleared when browser closes.
-                {provider !== 'anthropic' && ' Required for this provider (no server default).'}
-                {provider === 'anthropic' && ' Optional — server key used if empty.'}
+                {providerMeta?.needsKey ? ' Required for this provider (no server default).' : ' Optional — server key used if empty.'}
               </p>
             </div>
 
@@ -296,31 +288,42 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
                 Model
               </label>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingModels}
-                className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-2 mt-1.5">
-                {loadingModels && (
-                  <span className="text-[10px] text-[var(--color-text-muted)] flex items-center gap-1">
-                    <Loader2 size={10} className="animate-spin" /> Fetching models...
-                  </span>
-                )}
-                {!loadingModels && currentKey && (
+              {loadingModels ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)]">
+                  <Loader2 size={12} className="animate-spin" /> Fetching available models...
+                </div>
+              ) : hasModels ? (
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors cursor-pointer"
+                >
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)]">
+                  <AlertCircle size={12} className="shrink-0" />
+                  {modelError || 'No models loaded.'}
+                </div>
+              )}
+              {!loadingModels && (
+                <div className="flex items-center gap-2 mt-1.5">
                   <button
                     onClick={() => loadModelsForProvider(provider, currentKey.trim())}
-                    className="text-[10px] text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors flex items-center gap-1"
+                    disabled={providerMeta?.needsKey && !currentKey.trim()}
+                    className="text-[10px] text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                   >
                     <RefreshCw size={10} /> Refresh models
                   </button>
-                )}
-              </div>
+                  {hasModels && (
+                    <span className="text-[10px] text-[var(--color-text-muted)]">
+                      {models.length} model{models.length !== 1 ? 's' : ''} available
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </section>
 
