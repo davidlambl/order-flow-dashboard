@@ -71,8 +71,8 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     if (res.status === 401) {
-      clearToken();
-      throw new Error(err.code === 'TOKEN_EXPIRED' ? 'Access token expired' : 'Access token required');
+      if (err.code === 'TOKEN_EXPIRED') clearToken();
+      throw new Error(err.error || 'Access token required');
     }
     throw new Error(err.error || `LLM error: ${res.status}`);
   }
@@ -116,8 +116,8 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     if (res.status === 401) {
-      clearToken();
-      throw new Error(err.code === 'TOKEN_EXPIRED' ? 'Access token expired' : 'Access token required');
+      if (err.code === 'TOKEN_EXPIRED') clearToken();
+      throw new Error(err.error || 'Access token required');
     }
     throw new Error(err.error || `Models API error: ${res.status}`);
   }
