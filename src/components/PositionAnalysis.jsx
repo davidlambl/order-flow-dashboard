@@ -111,7 +111,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
   };
 
   const handleSharesChange = (e) => {
-    const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+    const val = e.target.value === '' ? null : parseFloat(e.target.value);
     if (val !== null && isNaN(val)) return;
     onUpdate(costBasis, val);
   };
@@ -152,7 +152,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                 value={shares ?? ''}
                 onChange={handleSharesChange}
                 placeholder="Shares"
-                step="1"
+                step="any"
                 min="0"
                 className="w-20 bg-transparent text-sm font-mono tabular-nums text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
               />
