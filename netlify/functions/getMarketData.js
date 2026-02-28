@@ -314,7 +314,7 @@ function estimateDarkPoolPct(stockVolume, iv30) {
 export async function handler(event) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, x-tradier-key',
     'Content-Type': 'application/json',
   };
 
@@ -325,7 +325,7 @@ export async function handler(event) {
   const params = event.queryStringParameters || {};
   const ticker = (params.ticker || 'AVGO').toUpperCase();
 
-  const tradierKey = process.env.TRADIER_API_KEY;
+  const tradierKey = event.headers['x-tradier-key'] || process.env.TRADIER_API_KEY;
 
   try {
     // ── Tier Selection ──

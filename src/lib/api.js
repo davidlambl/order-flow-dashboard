@@ -6,17 +6,21 @@ import { getAuthHeaders, clearToken } from './auth';
 const FUNCTION_BASE = '/.netlify/functions';
 
 /**
- * Fetch computed market data from our CBOE-backed serverless function.
- * No API key required — uses free public CBOE delayed quotes.
+ * Fetch computed market data from our serverless function.
+ * Supports BYOK Tradier for real-time data; falls back to free CBOE delayed quotes.
  * @param {string} ticker - Stock symbol
  */
 export async function fetchMarketData(ticker) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getMarketData?${params}`;
 
+  const headers = {};
+  const tradierKey = sessionStorage.getItem('data_tradier_key');
+  if (tradierKey) headers['x-tradier-key'] = tradierKey;
+
   let res;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { headers });
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }

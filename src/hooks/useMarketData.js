@@ -61,6 +61,12 @@ export function useMarketData(ticker) {
     };
   }, [ticker, fetchAll]);
 
+  useEffect(() => {
+    const handler = () => { if (ticker) fetchAll(ticker); };
+    window.addEventListener('data-source-changed', handler);
+    return () => window.removeEventListener('data-source-changed', handler);
+  }, [ticker, fetchAll]);
+
   const refresh = useCallback(() => {
     if (ticker) fetchAll(ticker);
   }, [ticker, fetchAll]);

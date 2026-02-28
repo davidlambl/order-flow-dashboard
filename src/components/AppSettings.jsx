@@ -49,6 +49,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [keyTestError, setKeyTestError] = useState('');
   const fetchIdRef = useRef(0);
 
+  const [tradierKey, setTradierKey] = useState('');
+
   const [tokenInput, setTokenInput] = useState('');
   const [tokenStatus, setTokenStatus] = useState(null);
   const [tokenError, setTokenError] = useState('');
@@ -105,6 +107,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setSelectedModel(sessionStorage.getItem('ai_model') || '');
     setKeyTestStatus(null);
     setKeyTestError('');
+    setTradierKey(sessionStorage.getItem('data_tradier_key') || '');
     setTokenInput('');
     setTokenStatus(null);
     setTokenError('');
@@ -155,9 +158,18 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
       const modelObj = models.find((m) => m.id === selectedModel);
       sessionStorage.setItem('ai_model_name', modelObj?.name || selectedModel);
     }
+    const oldTradier = sessionStorage.getItem('data_tradier_key') || '';
+    if (tradierKey.trim()) {
+      sessionStorage.setItem('data_tradier_key', tradierKey.trim());
+    } else {
+      sessionStorage.removeItem('data_tradier_key');
+    }
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
+    if (tradierKey.trim() !== oldTradier) {
+      window.dispatchEvent(new CustomEvent('data-source-changed'));
+    }
     onClose();
-  }, [provider, keys, selectedModel, models, onClose]);
+  }, [provider, keys, selectedModel, models, tradierKey, onClose]);
 
   const handleReset = useCallback(() => {
     for (const prov of ['anthropic', 'openai', 'gemini']) {
@@ -166,12 +178,16 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     sessionStorage.removeItem('ai_provider');
     sessionStorage.removeItem('ai_model');
     sessionStorage.removeItem('ai_model_name');
+    const hadTradier = Boolean(sessionStorage.getItem('data_tradier_key'));
+    sessionStorage.removeItem('data_tradier_key');
     setProvider('anthropic');
     setKeys({ anthropic: '', openai: '', gemini: '' });
     setSelectedModel('');
     setModels([]);
+    setTradierKey('');
     setKeyTestStatus(null);
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
+    if (hadTradier) window.dispatchEvent(new CustomEvent('data-source-changed'));
     loadModelsForProvider('anthropic', '');
   }, [loadModelsForProvider]);
 
@@ -423,30 +439,40 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               Data Source
             </div>
 
-            <div className="p-3 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] space-y-2">
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-2 h-2 rounded-full shrink-0"
-                  style={{
-                    backgroundColor: dataSource === 'tradier' ? 'var(--color-bull)'
-                      : dataSource === 'mock' ? 'var(--color-warn)' : 'var(--color-accent)',
-                  }}
-                />
-                <span className="text-xs font-medium text-[var(--color-text-primary)]">
-                  {dataSource === 'tradier' ? 'Tradier (real-time)'
-                    : dataSource === 'tradier-sandbox' ? 'Tradier Sandbox (delayed)'
-                    : dataSource === 'mock' ? 'Demo Data (simulated)'
-                    : 'CBOE Delayed Quotes'}
-                </span>
-              </div>
-              {dataSource !== 'tradier' && dataSource !== 'mock' && (
-                <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
-                  Prices are from CBOE's delayed quotes feed (roughly 15 minutes behind).
-                  The spot price may differ from Yahoo Finance or your broker, which use
-                  real-time or official closing prices.
-                  Add a <span className="font-mono">TRADIER_API_KEY</span> env var for real-time data.
-                </p>
-              )}
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{
+                  backgroundColor: dataSource === 'tradier' ? 'var(--color-bull)'
+                    : dataSource === 'mock' ? 'var(--color-warn)' : 'var(--color-accent)',
+                }}
+              />
+              <span className="text-xs font-medium text-[var(--color-text-primary)]">
+                {dataSource === 'tradier' ? 'Tradier (real-time)'
+                  : dataSource === 'tradier-sandbox' ? 'Tradier Sandbox (delayed)'
+                  : dataSource === 'mock' ? 'Demo Data (simulated)'
+                  : 'CBOE Delayed Quotes (~15 min delay)'}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
+                Tradier API Key
+              </label>
+              <input
+                type="password"
+                value={tradierKey}
+                onChange={(e) => setTradierKey(e.target.value)}
+                placeholder="Paste for real-time data..."
+                className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              />
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+                {tradierKey.trim()
+                  ? 'Tradier key will be used on next data refresh for real-time options data.'
+                  : dataSource === 'tradier'
+                    ? 'Currently using server-configured Tradier key.'
+                    : 'Without a Tradier key, prices come from CBOE delayed quotes (~15 min behind). A free sandbox key works for testing — get one at tradier.com.'}
+              </p>
             </div>
           </section>
         </div>
