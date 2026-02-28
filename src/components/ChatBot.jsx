@@ -1,6 +1,6 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
@@ -150,6 +150,24 @@ function TypingIndicator() {
   );
 }
 
+const CHAT_KEY = 'chat_history_';
+
+function loadChat(ticker) {
+  if (!ticker) return [];
+  try {
+    const raw = sessionStorage.getItem(CHAT_KEY + ticker);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveChat(ticker, msgs) {
+  if (!ticker) return;
+  try {
+    if (msgs.length) sessionStorage.setItem(CHAT_KEY + ticker, JSON.stringify(msgs));
+    else sessionStorage.removeItem(CHAT_KEY + ticker);
+  } catch { /* quota */ }
+}
+
 const SUGGESTIONS = [
   'What does the GEX profile suggest?',
   'Is the flow bullish or bearish?',
@@ -256,7 +274,9 @@ function ChatLockScreen({ onClose, onUnlock }) {
 }
 
 export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings }) {
-  const [messages, setMessages] = useState([]);
+  const currentTicker = data?.ticker;
+  const prevTickerRef = useRef(currentTicker);
+  const [messages, setMessages] = useState(() => loadChat(currentTicker));
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [aiLabel, setAiLabel] = useState(() => {
@@ -267,6 +287,18 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const inputRef = useRef(null);
   const chunkBuf = useRef('');
   const rafId = useRef(null);
+
+  useEffect(() => {
+    if (currentTicker && currentTicker !== prevTickerRef.current) {
+      saveChat(prevTickerRef.current, messages);
+      prevTickerRef.current = currentTicker;
+      setMessages(loadChat(currentTicker));
+    }
+  }, [currentTicker, messages]);
+
+  useEffect(() => {
+    saveChat(currentTicker, messages);
+  }, [messages, currentTicker]);
 
   useEffect(() => {
     const handler = () => {
@@ -373,6 +405,11 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
 
+  const clearHistory = useCallback(() => {
+    setMessages([]);
+    saveChat(currentTicker, []);
+  }, [currentTicker]);
+
   if (!isOpen) return null;
 
   if (!isPremium) {
@@ -397,6 +434,16 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {messages.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-bear)] hover:bg-[var(--color-bear-bg)] transition-colors"
+              aria-label="Clear chat history"
+              title="Clear chat history"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
           <button
             onClick={onOpenSettings}
             className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
@@ -439,6 +486,9 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
                 </button>
               ))}
             </div>
+            <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-2">
+              Chat history is kept for this browser session only.
+            </p>
           </div>
         )}
 
