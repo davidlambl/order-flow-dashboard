@@ -30,12 +30,20 @@ export async function fetchMarketData(ticker) {
  * @param {Array<{role: string, content: string}>} messages
  * @param {string} financialContext - Serialized dashboard state
  * @param {string} ticker
+ * @param {string} userApiKey - Optional user-provided API key
+ * @param {string} model - Model selection
  */
-export async function askLLM(messages, financialContext, ticker) {
+export async function askLLM(messages, financialContext, ticker, userApiKey = null, model = null) {
   const res = await fetch(`${FUNCTION_BASE}/askLLM`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, financialContext, ticker }),
+    body: JSON.stringify({ 
+      messages, 
+      financialContext, 
+      ticker,
+      userApiKey,
+      model
+    }),
   });
 
   if (!res.ok) {
@@ -44,3 +52,23 @@ export async function askLLM(messages, financialContext, ticker) {
   }
   return res.json();
 }
+
+/**
+ * Fetch available Anthropic models.
+ * @param {string} userApiKey - Optional user-provided API key
+ */
+export async function fetchModels(userApiKey = null) {
+  const headers = {};
+  if (userApiKey) {
+    headers['x-api-key'] = userApiKey;
+  }
+
+  const res = await fetch(`${FUNCTION_BASE}/getModels`, { headers });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Models API error: ${res.status}`);
+  }
+  return res.json();
+}
+

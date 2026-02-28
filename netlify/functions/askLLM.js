@@ -5,7 +5,7 @@
 export async function handler(event) {
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, x-api-key',
     'Content-Type': 'application/json',
   };
 
@@ -22,13 +22,6 @@ export async function handler(event) {
   }
 
   const API_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!API_KEY) {
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' }),
-    };
-  }
 
   let payload;
   try {
@@ -41,7 +34,18 @@ export async function handler(event) {
     };
   }
 
-  const { messages, financialContext, ticker } = payload;
+  const { messages, financialContext, ticker, userApiKey, model } = payload;
+
+  const effectiveApiKey = userApiKey || API_KEY;
+  if (!effectiveApiKey) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'No API key available. Please configure ANTHROPIC_API_KEY or provide your own.' }),
+    };
+  }
+
+  const selectedModel = model || 'claude-sonnet-4-20250514';
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return {
@@ -76,11 +80,11 @@ ANALYSIS GUIDELINES:
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
+        'x-api-key': effectiveApiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: selectedModel,
         max_tokens: 1024,
         system: systemPrompt,
         messages: messages.map((m) => ({
