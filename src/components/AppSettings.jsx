@@ -2,15 +2,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
-  RefreshCw, Database, Cpu,
+  RefreshCw, Database, Cpu, Star,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
 
 const PROVIDERS = [
-  { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', needsKey: false },
-  { id: 'openai', label: 'OpenAI', hint: 'sk-...', needsKey: true },
+  { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', needsKey: false, recommended: true },
   { id: 'gemini', label: 'Gemini', hint: 'AIza...', needsKey: true },
+  { id: 'openai', label: 'OpenAI', hint: 'sk-...', needsKey: true },
 ];
 
 function migrateOldKeys() {
@@ -46,6 +46,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [loadingModels, setLoadingModels] = useState(false);
   const [modelError, setModelError] = useState(null);
   const [keyTestStatus, setKeyTestStatus] = useState(null);
+  const [keyTestError, setKeyTestError] = useState('');
   const fetchIdRef = useRef(0);
 
   const [tokenInput, setTokenInput] = useState('');
@@ -103,6 +104,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setKeys(loadedKeys);
     setSelectedModel(sessionStorage.getItem('ai_model') || '');
     setKeyTestStatus(null);
+    setKeyTestError('');
     setTokenInput('');
     setTokenStatus(null);
     setTokenError('');
@@ -119,19 +121,23 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     const key = keys[provider]?.trim();
     if (!key) return;
     setKeyTestStatus('testing');
+    setKeyTestError('');
     try {
       const result = await fetchModels(key, provider);
       if (result.models?.length > 0) {
         setKeyTestStatus('success');
+        setKeyTestError('');
         setModels(result.models);
         setModelError(null);
         const match = result.models.find((m) => m.id === selectedModel);
         if (!match) setSelectedModel(result.models[0].id);
       } else {
         setKeyTestStatus('error');
+        setKeyTestError(result.error || 'Key returned no models — check that it is valid.');
       }
-    } catch {
+    } catch (err) {
       setKeyTestStatus('error');
+      setKeyTestError(err.message || 'Could not validate key. Check the format and try again.');
     }
   }, [keys, provider, selectedModel]);
 
@@ -236,13 +242,17 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               {PROVIDERS.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => { setProvider(p.id); setKeyTestStatus(null); }}
-                  className={`flex-1 text-xs font-medium py-2 rounded-lg transition-all duration-150 ${
+                  onClick={() => { setProvider(p.id); setKeyTestStatus(null); setKeyTestError(''); }}
+                  className={`flex-1 text-xs font-medium py-2 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 ${
                     provider === p.id
                       ? 'bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm border border-[var(--color-border-subtle)]'
-                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+                      : p.id === 'openai'
+                        ? 'text-[var(--color-text-muted)]/60 hover:text-[var(--color-text-muted)]'
+                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
                   }`}
+                  style={p.id === 'openai' && provider !== 'openai' ? { fontSize: '11px' } : undefined}
                 >
+                  {p.recommended && <Star size={10} className="text-[var(--color-accent)] shrink-0" />}
                   {p.label}
                 </button>
               ))}
@@ -257,7 +267,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                 <input
                   type="password"
                   value={currentKey}
-                  onChange={(e) => { setKeys({ ...keys, [provider]: e.target.value }); setKeyTestStatus(null); }}
+                  onChange={(e) => { setKeys({ ...keys, [provider]: e.target.value }); setKeyTestStatus(null); setKeyTestError(''); }}
                   placeholder={providerMeta?.hint || 'API key...'}
                   className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
                 />
@@ -277,6 +287,18 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   )}
                 </button>
               </div>
+              {keyTestStatus === 'error' && keyTestError && (
+                <div className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
+                  <AlertCircle size={11} className="shrink-0 mt-px" />
+                  <span>{keyTestError}</span>
+                </div>
+              )}
+              {keyTestStatus === 'success' && (
+                <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--color-bull)]">
+                  <Check size={11} className="shrink-0" />
+                  <span>Key valid — models loaded.</span>
+                </div>
+              )}
               <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
                 Session only — cleared when browser closes.
                 {providerMeta?.needsKey ? ' Required for this provider (no server default).' : ' Optional — server key used if empty.'}
