@@ -1,5 +1,5 @@
 // src/App.jsx
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
 import Header from './components/Header';
 import KPICards from './components/KPICards';
@@ -20,6 +20,10 @@ function loadPosition(ticker) {
   return { costBasis: null, shares: null };
 }
 
+const SIDEBAR_DEFAULT = 384;
+const SIDEBAR_MIN = 280;
+const SIDEBAR_MAX = 640;
+
 export default function App() {
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
@@ -28,6 +32,39 @@ export default function App() {
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
   const { data, loading, error, usingMock, refresh } = useMarketData(ticker);
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const n = parseInt(localStorage.getItem('chat_sidebar_w'), 10);
+    return n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
+  });
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarWRef = useRef(sidebarWidth);
+  useEffect(() => { sidebarWRef.current = sidebarWidth; }, [sidebarWidth]);
+
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startW = sidebarWRef.current;
+
+    const onMove = (ev) => {
+      const delta = startX - ev.clientX;
+      setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + delta)));
+    };
+    const onUp = () => {
+      setIsResizing(false);
+      localStorage.setItem('chat_sidebar_w', String(sidebarWRef.current));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   const refreshAuth = useCallback(() => {
     setIsPremium(hasValidToken());
@@ -161,11 +198,25 @@ export default function App() {
           </div>
         </main>
 
+        {/* Resize handle */}
+        {chatOpen && (
+          <div
+            onMouseDown={handleResizeStart}
+            className="relative shrink-0 cursor-col-resize group"
+            style={{ width: 5 }}
+          >
+            <div className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
+              isResizing ? 'bg-[var(--color-accent)]' : 'group-hover:bg-[var(--color-text-muted)]'
+            }`} />
+          </div>
+        )}
+
         {/* Chat Sidebar */}
         <aside
-          className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            chatOpen ? 'w-80 md:w-96' : 'w-0'
-          } overflow-hidden shrink-0`}
+          className={`overflow-hidden shrink-0 ${
+            isResizing ? '' : 'transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
+          }`}
+          style={{ width: chatOpen ? sidebarWidth : 0 }}
         >
           <ChatBot
             data={data}

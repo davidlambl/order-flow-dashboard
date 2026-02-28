@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
@@ -58,6 +59,8 @@ RECENT NET PREMIUM FLOW (last 5 sessions):
 ${recentFlow || '  No flow history'}`;
 }
 
+const remarkPlugins = [remarkGfm];
+
 const markdownComponents = {
   strong: ({ children }) => (
     <strong className="text-[var(--color-accent)] font-semibold">{children}</strong>
@@ -74,6 +77,23 @@ const markdownComponents = {
   ),
   h4: ({ children }) => (
     <h4 className="text-xs font-medium text-[var(--color-text-secondary)] mt-2 mb-1">{children}</h4>
+  ),
+  table: ({ children }) => (
+    <div className="overflow-x-auto mb-2 -mx-1">
+      <table className="min-w-full text-[11px] border-collapse">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => (
+    <thead className="border-b border-[var(--color-border-subtle)]">{children}</thead>
+  ),
+  th: ({ children }) => (
+    <th className="px-2 py-1 text-left font-semibold text-[var(--color-text-secondary)] whitespace-nowrap">{children}</th>
+  ),
+  td: ({ children }) => (
+    <td className="px-2 py-1 text-[var(--color-text-primary)] whitespace-nowrap">{children}</td>
+  ),
+  tr: ({ children }) => (
+    <tr className="border-b border-[var(--color-border-subtle)]/50 last:border-0">{children}</tr>
   ),
 };
 
@@ -106,7 +126,7 @@ function MessageBubble({ msg }) {
         {isUser || isError ? (
           <div className="whitespace-pre-wrap">{msg.content}</div>
         ) : (
-          <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>{msg.content}</ReactMarkdown>
         )}
       </div>
     </div>
@@ -245,6 +265,8 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   });
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const chunkBuf = useRef('');
+  const rafId = useRef(null);
 
   useEffect(() => {
     const handler = () => {
@@ -264,6 +286,33 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
+
+  useEffect(() => () => {
+    if (rafId.current) cancelAnimationFrame(rafId.current);
+  }, []);
+
+  const flushChunks = useCallback(() => {
+    rafId.current = null;
+    const text = chunkBuf.current;
+    if (!text) return;
+    chunkBuf.current = '';
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === 'assistant') {
+        const updated = [...prev];
+        updated[updated.length - 1] = { ...last, content: last.content + text };
+        return updated;
+      }
+      return [...prev, { role: 'assistant', content: text }];
+    });
+  }, []);
+
+  const onStreamChunk = useCallback((chunk) => {
+    chunkBuf.current += chunk;
+    if (!rafId.current) {
+      rafId.current = requestAnimationFrame(flushChunks);
+    }
+  }, [flushChunks]);
 
   const sendMessage = useCallback(async (text) => {
     if (!text.trim() || sending) return;
@@ -292,19 +341,11 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           model: settings.model,
           provider: settings.provider,
         },
-        (chunk) => {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              const updated = [...prev];
-              updated[updated.length - 1] = { ...last, content: last.content + chunk };
-              return updated;
-            }
-            return [...prev, { role: 'assistant', content: chunk }];
-          });
-        }
+        onStreamChunk,
       );
+      flushChunks();
     } catch (err) {
+      flushChunks();
       setMessages((prev) => [
         ...prev,
         { role: 'error', content: `Failed to get analysis: ${err.message}` },
@@ -312,7 +353,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, costBasis, shares]);
+  }, [messages, sending, data, costBasis, shares, onStreamChunk, flushChunks]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
