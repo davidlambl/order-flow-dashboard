@@ -348,6 +348,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
+    if (inputRef.current) inputRef.current.style.height = 'auto';
     setSending(true);
 
     try {
@@ -391,6 +392,19 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     e.preventDefault();
     sendMessage(input);
   };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(input);
+    }
+  };
+
+  const autoResize = useCallback((el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, []);
 
   if (!isOpen) return null;
 
@@ -579,21 +593,22 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
       {/* Input */}
       <form
         onSubmit={handleSubmit}
-        className="flex items-center gap-2 px-3 py-2.5 border-t border-[var(--color-border-subtle)]"
+        className="flex items-end gap-2 px-3 py-2.5 border-t border-[var(--color-border-subtle)]"
       >
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
+          onKeyDown={handleKeyDown}
           placeholder="Ask about the flow..."
-          className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+          rows={1}
+          className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none leading-relaxed"
           disabled={sending}
         />
         <button
           type="submit"
           disabled={!input.trim() || sending}
-          className="p-2 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-2 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           aria-label="Send message"
         >
           <Send size={14} />
