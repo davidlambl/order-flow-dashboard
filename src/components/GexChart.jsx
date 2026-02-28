@@ -24,7 +24,7 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-export default function GexChart({ data, loading, spotPrice }) {
+export default function GexChart({ data, loading, spotPrice, costBasis }) {
   if (loading) {
     return (
       <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
@@ -42,10 +42,15 @@ export default function GexChart({ data, loading, spotPrice }) {
     );
   }
 
-  // Find the strike closest to spot for a visual marker
   const spotStrike = spotPrice
     ? data.reduce((closest, s) =>
         Math.abs(s.strike - spotPrice) < Math.abs(closest.strike - spotPrice) ? s : closest
+      ).strike
+    : null;
+
+  const basisStrike = costBasis
+    ? data.reduce((closest, s) =>
+        Math.abs(s.strike - costBasis) < Math.abs(closest.strike - costBasis) ? s : closest
       ).strike
     : null;
 
@@ -70,6 +75,11 @@ export default function GexChart({ data, loading, spotPrice }) {
           {spotPrice && (
             <span className="flex items-center gap-1">
               <span className="w-2 h-0.5 bg-[var(--color-warn)]" /> Spot
+            </span>
+          )}
+          {costBasis && (
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-0.5 bg-[var(--color-cyan)]" /> Basis
             </span>
           )}
         </div>
@@ -108,6 +118,21 @@ export default function GexChart({ data, loading, spotPrice }) {
                 value: 'SPOT',
                 position: 'top',
                 fill: 'var(--color-warn)',
+                fontSize: 10,
+                fontWeight: 600,
+              }}
+            />
+          )}
+          {basisStrike && basisStrike !== spotStrike && (
+            <ReferenceLine
+              x={basisStrike}
+              stroke="var(--color-cyan)"
+              strokeDasharray="4 3"
+              strokeWidth={1.5}
+              label={{
+                value: 'BASIS',
+                position: 'top',
+                fill: 'var(--color-cyan)',
                 fontSize: 10,
                 fontWeight: 600,
               }}

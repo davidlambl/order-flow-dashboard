@@ -16,27 +16,38 @@ const DEFAULT_MODELS = [
  * Serializes the current dashboard state into a plain-text context block
  * that gets injected into the LLM system prompt.
  */
-function buildFinancialContext(data) {
+function buildFinancialContext(data, costBasis, shares) {
   if (!data) return 'Dashboard data not yet loaded.';
 
-  const { ticker, kpis, gexByStrike, flowHistory, lastUpdated } = data;
+  const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice } = data;
   const k = kpis || {};
 
-  // Top GEX strikes
   const topGex = [...(gexByStrike || [])]
     .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
     .slice(0, 5)
     .map((s) => `  Strike $${s.strike}: Net GEX ${s.gex > 0 ? '+' : ''}${(s.gex / 1e6).toFixed(1)}M (Call: ${(s.callGex / 1e6).toFixed(1)}M, Put: ${(s.putGex / 1e6).toFixed(1)}M)`)
     .join('\n');
 
-  // Recent flow
   const recentFlow = (flowHistory || []).slice(-5)
     .map((f) => `  ${f.date}: Net ${formatDollar(f.netPremium)}, Cum ${formatDollar(f.cumPremium)}, Calls ${f.callVolume}, Puts ${f.putVolume}`)
     .join('\n');
 
+  let positionBlock = '';
+  if (costBasis && spotPrice) {
+    const pnlPct = ((spotPrice - costBasis) / costBasis * 100).toFixed(2);
+    const pnlDollars = shares ? (spotPrice - costBasis) * shares : null;
+    positionBlock = `
+USER POSITION:
+  Cost Basis: ${formatPrice(costBasis)}
+  Shares: ${shares || 'not specified'}
+  Unrealized P&L: ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
+  Current Spot: ${formatPrice(spotPrice)}
+`;
+  }
+
   return `TICKER: ${ticker}
 LAST UPDATED: ${lastUpdated}
-
+${positionBlock}
 KPI SUMMARY:
   Net Premium: ${formatDollar(k.netPremium)} (${k.netPremium >= 0 ? 'BULLISH' : 'BEARISH'})
     Call Premium: ${formatDollar(k.callPremium)}
@@ -131,7 +142,7 @@ const SUGGESTIONS = [
   'Summarize the dark pool activity.',
 ];
 
-export default function ChatBot({ data, isOpen, onClose }) {
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -241,7 +252,7 @@ export default function ChatBot({ data, isOpen, onClose }) {
     setSending(true);
 
     try {
-      const financialContext = buildFinancialContext(data);
+      const financialContext = buildFinancialContext(data, costBasis, shares);
       const apiMessages = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
@@ -275,7 +286,7 @@ export default function ChatBot({ data, isOpen, onClose }) {
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, selectedModel]);
+  }, [messages, sending, data, selectedModel, costBasis, shares]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

@@ -1,17 +1,44 @@
 // src/App.jsx
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Sparkles } from 'lucide-react';
 import Header from './components/Header';
 import KPICards from './components/KPICards';
+import PositionAnalysis from './components/PositionAnalysis';
 import GexChart from './components/GexChart';
 import FlowChart from './components/FlowChart';
 import ChatBot from './components/ChatBot';
 import { useMarketData } from './hooks/useMarketData';
 
+function loadPosition(ticker) {
+  try {
+    const raw = localStorage.getItem(`position_${ticker}`);
+    if (raw) return JSON.parse(raw);
+  } catch { /* corrupted data */ }
+  return { costBasis: null, shares: null };
+}
+
 export default function App() {
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
+  const [costBasis, setCostBasis] = useState(null);
+  const [shares, setShares] = useState(null);
   const { data, loading, error, usingMock, refresh } = useMarketData(ticker);
+
+  useEffect(() => {
+    const saved = loadPosition(ticker);
+    setCostBasis(saved.costBasis);
+    setShares(saved.shares);
+  }, [ticker]);
+
+  const updatePosition = useCallback((newCost, newShares) => {
+    setCostBasis(newCost);
+    setShares(newShares);
+    if (newCost != null || newShares != null) {
+      localStorage.setItem(`position_${ticker}`, JSON.stringify({ costBasis: newCost, shares: newShares }));
+    } else {
+      localStorage.removeItem(`position_${ticker}`);
+    }
+  }, [ticker]);
 
   const handleTickerChange = useCallback((newTicker) => {
     setTicker(newTicker);
@@ -66,9 +93,20 @@ export default function App() {
           {/* KPI Cards */}
           <KPICards kpis={data?.kpis} loading={loading} />
 
+          {/* Position Analysis */}
+          <PositionAnalysis
+            costBasis={costBasis}
+            shares={shares}
+            onUpdate={updatePosition}
+            spotPrice={data?.spotPrice}
+            kpis={data?.kpis}
+            gexByStrike={data?.gexByStrike}
+            loading={loading}
+          />
+
           {/* Charts */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} />
+            <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} />
             <FlowChart data={data?.flowHistory} loading={loading} />
           </div>
 
@@ -103,7 +141,7 @@ export default function App() {
             chatOpen ? 'w-80 md:w-96' : 'w-0'
           } overflow-hidden shrink-0`}
         >
-          <ChatBot data={data} isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+          <ChatBot data={data} isOpen={chatOpen} onClose={() => setChatOpen(false)} costBasis={costBasis} shares={shares} />
         </aside>
       </div>
 
