@@ -1,18 +1,11 @@
 // src/components/ChatBot.jsx
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Check, Loader2, Lock, KeyRound, ShieldCheck } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { askLLMStream, fetchModels } from '../lib/api';
+import { askLLMStream } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
-
-const DEFAULT_MODELS = [
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4 (Latest)' },
-  { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-  { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet' },
-  { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet' },
-  { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-];
+import { getAISettings } from './AppSettings';
 
 /**
  * Serializes the current dashboard state into a plain-text context block
@@ -242,95 +235,25 @@ function ChatLockScreen({ onClose, onUnlock }) {
   );
 }
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock }) {
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-20250514');
-  const [availableModels, setAvailableModels] = useState(DEFAULT_MODELS);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [hasSavedKey, setHasSavedKey] = useState(() => Boolean(sessionStorage.getItem('anthropic_api_key')));
-  const [keyTestStatus, setKeyTestStatus] = useState(null);
+  const [aiLabel, setAiLabel] = useState(() => {
+    const s = getAISettings();
+    return { modelName: s.modelName, provider: s.provider };
+  });
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
 
-  const modelDisplayName = useMemo(() => {
-    const found = availableModels.find((m) => m.id === selectedModel)
-      || DEFAULT_MODELS.find((m) => m.id === selectedModel);
-    return found?.name || selectedModel;
-  }, [availableModels, selectedModel]);
-
   useEffect(() => {
-    const savedKey = sessionStorage.getItem('anthropic_api_key');
-    const savedModel = sessionStorage.getItem('anthropic_model');
-    if (savedKey) setApiKey(savedKey);
-    if (savedModel) setSelectedModel(savedModel);
+    const handler = () => {
+      const s = getAISettings();
+      setAiLabel({ modelName: s.modelName, provider: s.provider });
+    };
+    window.addEventListener('ai-settings-changed', handler);
+    return () => window.removeEventListener('ai-settings-changed', handler);
   }, []);
-
-  const loadModels = useCallback(async (keyOverride) => {
-    const key = keyOverride ?? sessionStorage.getItem('anthropic_api_key');
-    if (!key) return;
-    setLoadingModels(true);
-    try {
-      const result = await fetchModels(key);
-      if (result.models && result.models.length > 0) {
-        setAvailableModels(result.models);
-      } else {
-        setAvailableModels(DEFAULT_MODELS);
-      }
-    } catch (err) {
-      console.error('Failed to load models:', err);
-      setAvailableModels(DEFAULT_MODELS);
-    } finally {
-      setLoadingModels(false);
-    }
-  }, []);
-
-  const openSettings = useCallback(() => {
-    setShowSettings(true);
-    const savedKey = sessionStorage.getItem('anthropic_api_key');
-    if (savedKey) loadModels(savedKey);
-  }, [loadModels]);
-
-  const saveSettings = useCallback(() => {
-    if (apiKey.trim()) {
-      sessionStorage.setItem('anthropic_api_key', apiKey.trim());
-      setHasSavedKey(true);
-    } else {
-      sessionStorage.removeItem('anthropic_api_key');
-      setHasSavedKey(false);
-    }
-    sessionStorage.setItem('anthropic_model', selectedModel);
-    setShowSettings(false);
-  }, [apiKey, selectedModel]);
-
-  const clearSettings = useCallback(() => {
-    sessionStorage.removeItem('anthropic_api_key');
-    sessionStorage.removeItem('anthropic_model');
-    setApiKey('');
-    setSelectedModel('claude-sonnet-4-20250514');
-    setHasSavedKey(false);
-    setKeyTestStatus(null);
-    setShowSettings(false);
-  }, []);
-
-  const testApiKey = useCallback(async () => {
-    if (!apiKey.trim()) return;
-    setKeyTestStatus('testing');
-    try {
-      const result = await fetchModels(apiKey.trim());
-      if (result.models && result.models.length > 0) {
-        setKeyTestStatus('success');
-        setAvailableModels(result.models);
-      } else {
-        setKeyTestStatus('error');
-      }
-    } catch {
-      setKeyTestStatus('error');
-    }
-  }, [apiKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -358,15 +281,17 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
 
-      const userApiKey = sessionStorage.getItem('anthropic_api_key');
-      const userModel = sessionStorage.getItem('anthropic_model') || selectedModel;
+      const settings = getAISettings();
 
       await askLLMStream(
-        apiMessages,
-        financialContext,
-        data?.ticker || 'UNKNOWN',
-        userApiKey,
-        userModel,
+        {
+          messages: apiMessages,
+          financialContext,
+          ticker: data?.ticker || 'UNKNOWN',
+          userApiKey: settings.apiKey || null,
+          model: settings.model,
+          provider: settings.provider,
+        },
         (chunk) => {
           setMessages((prev) => {
             const last = prev[prev.length - 1];
@@ -387,7 +312,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, selectedModel, costBasis, shares]);
+  }, [messages, sending, data, costBasis, shares]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -413,111 +338,6 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     return <ChatLockScreen onClose={onClose} onUnlock={onUnlock} />;
   }
 
-  if (showSettings) {
-    return (
-      <div className="flex flex-col h-full border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)] w-full">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-subtle)]">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[var(--color-purple-bg)]">
-              <Settings size={12} className="text-[var(--color-purple)]" />
-            </div>
-            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-              AI Settings
-            </h3>
-          </div>
-          <button
-            onClick={() => setShowSettings(false)}
-            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
-            aria-label="Close settings"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
-              Anthropic API Key (optional)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => { setApiKey(e.target.value); setKeyTestStatus(null); }}
-                placeholder="sk-ant-..."
-                className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
-              />
-              <button
-                onClick={testApiKey}
-                disabled={!apiKey.trim() || keyTestStatus === 'testing'}
-                className="px-3 py-2 text-xs font-medium rounded-lg border transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--color-surface-2)] border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]"
-              >
-                {keyTestStatus === 'testing' ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : keyTestStatus === 'success' ? (
-                  <Check size={12} className="text-[var(--color-bull)]" />
-                ) : keyTestStatus === 'error' ? (
-                  <AlertCircle size={12} className="text-[var(--color-bear)]" />
-                ) : (
-                  'Test'
-                )}
-              </button>
-            </div>
-            <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
-              Stored in session storage (cleared when browser closes). If not provided, uses server default.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
-              Model
-            </label>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              disabled={loadingModels}
-              className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {availableModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
-            {loadingModels && (
-              <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">
-                Loading models...
-              </p>
-            )}
-            {!loadingModels && apiKey && (
-              <button
-                onClick={() => loadModels(apiKey.trim())}
-                className="text-[10px] text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] mt-1.5 transition-colors"
-              >
-                Refresh models
-              </button>
-            )}
-          </div>
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={saveSettings}
-              className="flex-1 px-4 py-2 text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] rounded-lg transition-colors"
-            >
-              Save Settings
-            </button>
-            <button
-              onClick={clearSettings}
-              className="px-4 py-2 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] bg-[var(--color-surface-2)] hover:bg-[var(--color-surface-3)] rounded-lg border border-[var(--color-border-subtle)] transition-colors"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-full border-l border-[var(--color-border-subtle)] bg-[var(--color-surface)] w-full">
       {/* Header */}
@@ -531,20 +351,17 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
               AI Co-Pilot
             </h3>
             <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-              {modelDisplayName} · {data?.ticker || '—'} context
+              {aiLabel.modelName} · {data?.ticker || '—'} context
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={openSettings}
-            className="relative p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+            onClick={onOpenSettings}
+            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
             aria-label="Settings"
           >
             <Settings size={14} />
-            {hasSavedKey && (
-              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--color-bull)]" />
-            )}
           </button>
           <button
             onClick={onClose}
@@ -612,7 +429,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           className="p-2 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           aria-label="Send message"
         >
-          <Send size={14} />
+          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
       </form>
     </div>

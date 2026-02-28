@@ -8,6 +8,7 @@ import GexChart from './components/GexChart';
 import FlowChart from './components/FlowChart';
 import ChatBot from './components/ChatBot';
 import PremiumGate from './components/PremiumGate';
+import AppSettings from './components/AppSettings';
 import { useMarketData } from './hooks/useMarketData';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
 
@@ -22,6 +23,7 @@ function loadPosition(ticker) {
 export default function App() {
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [costBasis, setCostBasis] = useState(null);
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
@@ -56,6 +58,11 @@ export default function App() {
     setTicker(newTicker);
   }, []);
 
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
+  const dataSource = usingMock ? 'mock' : (data?.provider || 'cboe');
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <Header
@@ -69,6 +76,7 @@ export default function App() {
         tokenTier={getTokenTier()}
         daysLeft={daysRemaining()}
         onLogout={handleLogout}
+        onOpenSettings={openSettings}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -146,8 +154,8 @@ export default function App() {
               </span>
             ) : (
               <span>
-                Data from CBOE delayed quotes (free, 15-min delay). Add a TRADIER_API_KEY for real-time data ($10/mo).
-                GEX, Max Pain, and P/C Ratio computed from live options chain. Dark Pool % is a statistical estimate.
+                Data from CBOE delayed quotes (~15-min delay). Spot price may differ from Yahoo or broker real-time/closing prices.
+                Add a TRADIER_API_KEY for real-time data ($10/mo). Dark Pool % is a statistical estimate.
               </span>
             )}
           </div>
@@ -159,7 +167,16 @@ export default function App() {
             chatOpen ? 'w-80 md:w-96' : 'w-0'
           } overflow-hidden shrink-0`}
         >
-          <ChatBot data={data} isOpen={chatOpen} onClose={() => setChatOpen(false)} costBasis={costBasis} shares={shares} isPremium={isPremium} onUnlock={refreshAuth} />
+          <ChatBot
+            data={data}
+            isOpen={chatOpen}
+            onClose={() => setChatOpen(false)}
+            costBasis={costBasis}
+            shares={shares}
+            isPremium={isPremium}
+            onUnlock={refreshAuth}
+            onOpenSettings={openSettings}
+          />
         </aside>
       </div>
 
@@ -174,6 +191,14 @@ export default function App() {
           <span className="hidden sm:inline">AI Co-Pilot</span>
         </button>
       )}
+
+      {/* Global Settings Modal */}
+      <AppSettings
+        isOpen={settingsOpen}
+        onClose={closeSettings}
+        onAuthChange={refreshAuth}
+        dataSource={dataSource}
+      />
     </div>
   );
 }

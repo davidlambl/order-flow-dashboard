@@ -28,21 +28,39 @@ export async function fetchMarketData(ticker) {
 }
 
 /**
- * Stream a message to the AI co-pilot with financial context.
- * Calls onChunk(text) for each text delta received via SSE.
- * @param {Array<{role: string, content: string}>} messages
- * @param {string} financialContext - Serialized dashboard state
- * @param {string} ticker
- * @param {string} userApiKey - Optional user-provided API key
- * @param {string} model - Model selection
- * @param {(text: string) => void} onChunk - Called with each text delta
+ * Extract text from an SSE data line based on the provider's format.
  */
-export async function askLLMStream(messages, financialContext, ticker, userApiKey, model, onChunk) {
+function parseSSELine(jsonStr, provider) {
+  try {
+    const event = JSON.parse(jsonStr);
+    switch (provider) {
+      case 'openai':
+        return event.choices?.[0]?.delta?.content || null;
+      case 'gemini': {
+        const parts = event.candidates?.[0]?.content?.parts || [];
+        return parts.map((p) => p.text || '').join('') || null;
+      }
+      default:
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          return event.delta.text;
+        }
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stream a message to the AI co-pilot with financial context.
+ * Supports Anthropic, OpenAI, and Gemini streaming formats.
+ */
+export async function askLLMStream({ messages, financialContext, ticker, userApiKey, model, provider }, onChunk) {
   const res = await fetch(`${FUNCTION_BASE}/askLLM`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
-      messages, financialContext, ticker, userApiKey, model, stream: true,
+      messages, financialContext, ticker, userApiKey, model, provider, stream: true,
     }),
   });
 
@@ -55,6 +73,7 @@ export async function askLLMStream(messages, financialContext, ticker, userApiKe
     throw new Error(err.error || `LLM error: ${res.status}`);
   }
 
+  const effectiveProvider = res.headers.get('X-Provider') || provider || 'anthropic';
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -70,29 +89,25 @@ export async function askLLMStream(messages, financialContext, ticker, userApiKe
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
       const jsonStr = line.slice(6).trim();
-      if (!jsonStr) continue;
+      if (!jsonStr || jsonStr === '[DONE]') continue;
 
-      try {
-        const event = JSON.parse(jsonStr);
-        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-          onChunk(event.delta.text);
-        }
-      } catch { /* skip non-JSON SSE lines like event: types */ }
+      const text = parseSSELine(jsonStr, effectiveProvider);
+      if (text) onChunk(text);
     }
   }
 }
 
 /**
- * Fetch available Anthropic models.
- * @param {string} userApiKey - Optional user-provided API key
+ * Fetch available models from any supported provider.
+ * @param {string} userApiKey - User-provided API key
+ * @param {string} provider - 'anthropic' | 'openai' | 'gemini'
  */
-export async function fetchModels(userApiKey = null) {
+export async function fetchModels(userApiKey = null, provider = 'anthropic') {
   const headers = { ...getAuthHeaders() };
-  if (userApiKey) {
-    headers['x-api-key'] = userApiKey;
-  }
+  if (userApiKey) headers['x-api-key'] = userApiKey;
 
-  const res = await fetch(`${FUNCTION_BASE}/getModels`, { headers });
+  const params = new URLSearchParams({ provider });
+  const res = await fetch(`${FUNCTION_BASE}/getModels?${params}`, { headers });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -104,4 +119,3 @@ export async function fetchModels(userApiKey = null) {
   }
   return res.json();
 }
-

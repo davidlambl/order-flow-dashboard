@@ -1,8 +1,8 @@
 // src/components/Header.jsx
 import { useState, useRef, useEffect } from 'react';
-import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut } from 'lucide-react';
+import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings } from 'lucide-react';
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout }) {
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -32,6 +32,13 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
   const priceChange = data?.priceChange;
   const priceChangePct = data?.priceChangePct;
   const priceUp = (priceChange || 0) >= 0;
+
+  const priceSource = data?.provider === 'tradier'
+    ? 'Tradier real-time'
+    : data?.provider === 'tradier-sandbox'
+    ? 'Tradier sandbox (delayed)'
+    : usingMock ? 'Simulated demo data'
+    : 'CBOE ~15-min delayed';
 
   return (
     <header className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
@@ -85,9 +92,9 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </button>
         </form>
 
-        {/* Spot price */}
+        {/* Spot price with source tooltip */}
         {spotPrice != null && !loading && (
-          <div className="hidden md:flex items-baseline gap-2 tabular-nums">
+          <div className="hidden md:flex items-baseline gap-2 tabular-nums" title={priceSource}>
             <span className="text-base font-bold font-mono text-[var(--color-text-primary)]">
               ${spotPrice.toFixed(2)}
             </span>
@@ -148,6 +155,13 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             </>
           )}
         </div>
+        <button
+          onClick={onOpenSettings}
+          className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+          aria-label="Open settings"
+        >
+          <Settings size={14} />
+        </button>
       </div>
     </header>
   );

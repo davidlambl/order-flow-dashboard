@@ -1,7 +1,74 @@
 // netlify/functions/getModels.js
-// Fetches available Anthropic models dynamically
+// Multi-provider model fetching: Anthropic, OpenAI, Google Gemini.
 
 import jwt from 'jsonwebtoken';
+
+function detectProvider(apiKey) {
+  if (!apiKey) return 'anthropic';
+  if (apiKey.startsWith('sk-ant-')) return 'anthropic';
+  if (apiKey.startsWith('sk-')) return 'openai';
+  return 'gemini';
+}
+
+async function fetchAnthropicModels(apiKey) {
+  const res = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Anthropic API error: ${res.status}`);
+  }
+  const data = await res.json();
+  return (data.data || [])
+    .filter((m) => m.type === 'model')
+    .map((m) => ({ id: m.id, name: m.display_name || m.id, provider: 'anthropic' }));
+}
+
+async function fetchOpenAIModels(apiKey) {
+  const res = await fetch('https://api.openai.com/v1/models', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `OpenAI API error: ${res.status}`);
+  }
+  const data = await res.json();
+  const chatPrefixes = ['gpt-4', 'gpt-3.5', 'o1', 'o3', 'o4', 'chatgpt'];
+  const DISPLAY = {
+    'gpt-4o': 'GPT-4o',
+    'gpt-4o-mini': 'GPT-4o Mini',
+    'gpt-4-turbo': 'GPT-4 Turbo',
+    'gpt-4': 'GPT-4',
+    'gpt-3.5-turbo': 'GPT-3.5 Turbo',
+    'o1': 'o1',
+    'o1-mini': 'o1 Mini',
+    'o1-preview': 'o1 Preview',
+    'o3-mini': 'o3 Mini',
+    'chatgpt-4o-latest': 'ChatGPT-4o Latest',
+  };
+  return (data.data || [])
+    .filter((m) => chatPrefixes.some((p) => m.id.startsWith(p)))
+    .map((m) => ({ id: m.id, name: DISPLAY[m.id] || m.id, provider: 'openai' }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function fetchGeminiModels(apiKey) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}&pageSize=100`
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Gemini API error: ${res.status}`);
+  }
+  const data = await res.json();
+  return (data.models || [])
+    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+    .map((m) => ({
+      id: m.name.replace('models/', ''),
+      name: m.displayName || m.name,
+      provider: 'gemini',
+    }));
+}
 
 export async function handler(event) {
   const headers = {
@@ -15,11 +82,7 @@ export async function handler(event) {
   }
 
   if (event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'GET only' }),
-    };
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'GET only' }) };
   }
 
   const tokenSecret = process.env.TOKEN_SECRET;
@@ -45,65 +108,48 @@ export async function handler(event) {
     }
   }
 
-  const API_KEY = process.env.ANTHROPIC_API_KEY;
+  const params = event.queryStringParameters || {};
   const userApiKey = event.headers['x-api-key'];
-  const effectiveApiKey = userApiKey || API_KEY;
+  const provider = params.provider || detectProvider(userApiKey);
 
-  if (!effectiveApiKey) {
+  const effectiveKey = userApiKey
+    || (provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : null);
+
+  if (!effectiveKey) {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         models: [],
-        error: 'No API key available to fetch models'
+        provider,
+        error: `No API key provided for ${provider}. Add your key in Settings.`,
       }),
     };
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/models?limit=100', {
-      method: 'GET',
-      headers: {
-        'x-api-key': effectiveApiKey,
-        'anthropic-version': '2023-06-01',
-      },
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return {
-        statusCode: response.status,
-        headers,
-        body: JSON.stringify({
-          error: `Anthropic API error: ${response.status}`,
-          detail: data,
-          models: [],
-        }),
-      };
+    let models;
+    switch (provider) {
+      case 'openai':
+        models = await fetchOpenAIModels(effectiveKey);
+        break;
+      case 'gemini':
+        models = await fetchGeminiModels(effectiveKey);
+        break;
+      default:
+        models = await fetchAnthropicModels(effectiveKey);
+        break;
     }
-
-    const models = (data.data || [])
-      .filter((m) => m.type === 'model')
-      .map((m) => ({
-        id: m.id,
-        name: m.display_name || m.id,
-      }));
-
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ models }),
+      body: JSON.stringify({ models, provider }),
     };
   } catch (err) {
     return {
       statusCode: 502,
       headers,
-      body: JSON.stringify({
-        error: 'Failed to fetch models',
-        detail: err.message,
-        models: [],
-      }),
+      body: JSON.stringify({ error: err.message, models: [], provider }),
     };
   }
 }
