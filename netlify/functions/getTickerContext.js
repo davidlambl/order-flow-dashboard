@@ -82,9 +82,14 @@ export default async (req) => {
   const oneYearAgo = Math.floor(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime() / 1000);
   const nowUnix = Math.floor(now.getTime() / 1000);
 
+  const earningsFrom = new Date(now);
+  earningsFrom.setDate(earningsFrom.getDate() - 90);
+  const earningsTo = new Date(now);
+  earningsTo.setDate(earningsTo.getDate() + 60);
+
   const [newsRes, earningsRes, recRes, ptRes, metricsRes, candleRes] = await Promise.allSettled([
     finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
-    finnhubGet(`/calendar/earnings?symbol=${ticker}`, finnhubKey),
+    finnhubGet(`/calendar/earnings?symbol=${ticker}&from=${earningsFrom.toISOString().slice(0, 10)}&to=${earningsTo.toISOString().slice(0, 10)}`, finnhubKey),
     finnhubGet(`/stock/recommendation?symbol=${ticker}`, finnhubKey),
     finnhubGet(`/stock/price-target?symbol=${ticker}`, finnhubKey),
     finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
