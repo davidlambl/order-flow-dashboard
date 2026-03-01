@@ -226,23 +226,34 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
   }
 
   const pt = analysts.priceTarget || {};
-  const upside = pt.mean && spotPrice
-    ? ((pt.mean - spotPrice) / spotPrice * 100).toFixed(1)
+  const displayPrice = pt.median ?? pt.mean;
+  const upside = displayPrice && spotPrice
+    ? ((displayPrice - spotPrice) / spotPrice * 100).toFixed(1)
     : null;
 
   return (
     <div className="space-y-3">
-      <RatingBar consensus={analysts.consensus} />
+      <div>
+        <div className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
+          Ratings
+        </div>
+        <RatingBar consensus={analysts.consensus} />
+      </div>
 
-      {pt.mean != null && (
+      {(pt.mean != null || pt.median != null) && (
         <div className="space-y-1.5">
+          <div className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+            Price targets
+          </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-[10px] text-[var(--color-text-muted)]">Mean Target</span>
+            <span className="text-[10px] text-[var(--color-text-muted)]">
+              {pt.median != null ? 'Median' : 'Mean'}
+            </span>
             <div className="flex items-baseline gap-1.5">
               <span className="text-sm font-bold text-[var(--color-text-primary)] tabular-nums">
-                ${pt.mean.toFixed(2)}
+                ${(pt.median ?? pt.mean).toFixed(2)}
               </span>
-              {upside && (
+              {upside != null && spotPrice && (
                 <span className={`text-[10px] font-semibold tabular-nums ${
                   Number(upside) >= 0 ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'
                 }`}>
@@ -251,6 +262,11 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
               )}
             </div>
           </div>
+          {pt.mean != null && pt.median != null && (
+            <div className="text-[10px] text-[var(--color-text-muted)]">
+              Mean: ${pt.mean.toFixed(2)}
+            </div>
+          )}
 
           {pt.low != null && pt.high != null && (
             <div className="relative h-2 rounded-full bg-[var(--color-surface-2)]">
@@ -266,9 +282,9 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
               <div
                 className="absolute top-0 h-full w-1 bg-[var(--color-accent)] rounded"
                 style={{
-                  left: `${Math.max(0, Math.min(100, ((pt.mean - pt.low) / (pt.high - pt.low)) * 100))}%`,
+                  left: `${Math.max(0, Math.min(100, (((pt.mean ?? pt.median) - pt.low) / (pt.high - pt.low)) * 100))}%`,
                 }}
-                title={`Mean: $${pt.mean.toFixed(2)}`}
+                title={`${pt.mean != null ? `Mean: $${pt.mean.toFixed(2)}` : ''}${pt.mean != null && pt.median != null ? ' ' : ''}${pt.median != null ? `Median: $${pt.median.toFixed(2)}` : ''}`}
               />
             </div>
           )}

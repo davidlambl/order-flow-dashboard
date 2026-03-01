@@ -148,9 +148,13 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       const total = (c.strongBuy || 0) + (c.buy || 0) + (c.hold || 0) + (c.sell || 0) + (c.strongSell || 0);
       let aLine = `  Ratings: ${c.strongBuy || 0} Strong Buy, ${c.buy || 0} Buy, ${c.hold || 0} Hold, ${c.sell || 0} Sell, ${c.strongSell || 0} Strong Sell (${total} total)`;
       const pt = analysts.priceTarget || {};
-      if (pt.mean != null) {
-        const upside = spotPrice ? ((pt.mean - spotPrice) / spotPrice * 100).toFixed(1) : null;
-        aLine += `\n  Price Target: Mean $${pt.mean.toFixed(2)}${upside ? ` (${upside > 0 ? '+' : ''}${upside}% from spot)` : ''}`;
+      if (pt.mean != null || pt.median != null) {
+        const price = pt.median ?? pt.mean;
+        const upside = spotPrice && price ? ((price - spotPrice) / spotPrice * 100).toFixed(1) : null;
+        const parts = [];
+        if (pt.median != null) parts.push(`Median $${pt.median.toFixed(2)}`);
+        if (pt.mean != null) parts.push(`Mean $${pt.mean.toFixed(2)}`);
+        aLine += `\n  Price targets: ${parts.join(', ')}${upside ? ` (${Number(upside) >= 0 ? '+' : ''}${upside}% from spot)` : ''}`;
         if (pt.high != null) aLine += ` | High $${pt.high.toFixed(2)}`;
         if (pt.low != null) aLine += ` | Low $${pt.low.toFixed(2)}`;
       }
@@ -611,6 +615,10 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   }, []);
 
   const clearHistory = useCallback(() => {
+    const tickerLabel = currentTicker || 'this ticker';
+    if (!window.confirm(`Clear all chat history for ${tickerLabel}? This cannot be undone.`)) {
+      return;
+    }
     setMessages([]);
     setChatHistory(currentTicker, []);
   }, [currentTicker]);
