@@ -12,51 +12,104 @@ import { getAISettings } from './AppSettings';
  * Serializes the current dashboard state into a plain-text context block
  * that gets injected into the LLM system prompt.
  */
+function gexCharacter(gex, strike, spotPrice) {
+  const near = spotPrice && Math.abs(strike - spotPrice) / spotPrice < 0.02;
+  if (gex > 0) return near ? 'Positive gamma — dealer dampener near spot' : 'Positive gamma — magnet/pin';
+  return near ? 'Negative gamma — volatility amplifier near spot' : 'Negative gamma — accelerates moves';
+}
+
+function buildFlowTrend(flowHistory) {
+  const recent = (flowHistory || []).slice(-5);
+  if (recent.length === 0) return '';
+  let consec = 0;
+  let dir = null;
+  for (const f of recent) {
+    const d = f.netPremium >= 0 ? 'positive' : 'negative';
+    if (d === dir) { consec++; } else { dir = d; consec = 1; }
+  }
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  const delta = last.cumPremium - first.cumPremium + first.netPremium;
+  return `\n5-SESSION TREND: ${consec} consecutive ${dir} session${consec > 1 ? 's' : ''}. Cumulative delta over window: ${formatDollar(delta)}.`;
+}
+
 function buildFinancialContext(data, costBasis, shares) {
   if (!data) return 'Dashboard data not yet loaded.';
 
-  const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice } = data;
+  const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
+    iv30, totalOptionsCount } = data;
   const k = kpis || {};
+  const now = new Date().toISOString();
 
-  const topGex = [...(gexByStrike || [])]
-    .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
-    .slice(0, 5)
-    .map((s) => `  Strike $${s.strike}: Net GEX ${s.gex > 0 ? '+' : ''}${(s.gex / 1e6).toFixed(1)}M (Call: ${(s.callGex / 1e6).toFixed(1)}M, Put: ${(s.putGex / 1e6).toFixed(1)}M)`)
-    .join('\n');
-
-  const recentFlow = (flowHistory || []).slice(-5)
-    .map((f) => `  ${f.date}: Net ${formatDollar(f.netPremium)}, Cum ${formatDollar(f.cumPremium)}, Calls ${f.callVolume}, Puts ${f.putVolume}`)
-    .join('\n');
+  let staleness = '';
+  if (lastUpdated) {
+    const diffMs = Date.now() - new Date(lastUpdated).getTime();
+    const mins = Math.round(diffMs / 60_000);
+    staleness = mins > 0 ? ` (data is ~${mins} min old)` : '';
+  }
 
   let positionBlock = '';
   if (costBasis && spotPrice) {
     const pnlPct = ((spotPrice - costBasis) / costBasis * 100).toFixed(2);
     const pnlDollars = shares ? (spotPrice - costBasis) * shares : null;
+    const notional = shares ? spotPrice * shares : null;
     positionBlock = `
 USER POSITION:
   Cost Basis: ${formatPrice(costBasis)}
-  Shares: ${shares || 'not specified'}
-  Unrealized P&L: ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
+  Shares: ${shares ? shares.toLocaleString() : 'not specified'}
   Current Spot: ${formatPrice(spotPrice)}
+  Unrealized P&L: ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure: ~${formatDollar(notional)}` : ''}
 `;
   }
 
+  const dpLevel = k.darkPoolPct > 0.4 ? 'Elevated (>40%)' : k.darkPoolPct < 0.3 ? 'Low (<30%)' : 'Normal range';
+  const maxPainDist = k.maxPain && spotPrice
+    ? ` — Spot is $${Math.abs(spotPrice - k.maxPain).toFixed(2)} ${spotPrice < k.maxPain ? 'below' : 'above'}`
+    : '';
+
+  const topGexArr = [...(gexByStrike || [])]
+    .sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex))
+    .slice(0, 5);
+  const topGex = topGexArr
+    .map((s) => `  Strike $${s.strike}: Net GEX ${s.gex > 0 ? '+' : ''}${(s.gex / 1e6).toFixed(1)}M (Call: ${(s.callGex / 1e6).toFixed(1)}M, Put: ${(s.putGex / 1e6).toFixed(1)}M) — ${gexCharacter(s.gex, s.strike, spotPrice)}`)
+    .join('\n');
+
+  let gexStructure = '';
+  if (topGexArr.length > 0 && spotPrice) {
+    const negNear = topGexArr.filter((s) => s.gex < 0 && s.strike <= spotPrice * 1.02);
+    const posAbove = topGexArr.filter((s) => s.gex > 0 && s.strike > spotPrice);
+    if (negNear.length > 0 || posAbove.length > 0) {
+      const parts = [];
+      if (negNear.length > 0)
+        parts.push(`Negative GEX dominates near/below spot (${negNear.map((s) => '$' + s.strike).join(', ')}) — dealers amplify downside moves`);
+      if (posAbove.length > 0)
+        parts.push(`Positive GEX above spot (${posAbove.map((s) => '$' + s.strike).join(', ')}) — dampens upside, acts as ceiling`);
+      gexStructure = `\nGEX STRUCTURE: ${parts.join('. ')}.`;
+    }
+  }
+
+  const recentFlow = (flowHistory || []).slice(-5)
+    .map((f) => `  ${f.date}: Net ${formatDollar(f.netPremium)}, Cum ${formatDollar(f.cumPremium)}, Calls ${f.callVolume.toLocaleString()}, Puts ${f.putVolume.toLocaleString()}`)
+    .join('\n');
+  const flowTrend = buildFlowTrend(flowHistory);
+
   return `TICKER: ${ticker}
-LAST UPDATED: ${lastUpdated}
+TIMESTAMP: ${now}
+DATA LAST UPDATED: ${lastUpdated}${staleness}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
 ${positionBlock}
 KPI SUMMARY:
   Net Premium: ${formatDollar(k.netPremium)} (${k.netPremium >= 0 ? 'BULLISH' : 'BEARISH'})
     Call Premium: ${formatDollar(k.callPremium)}
     Put Premium: ${formatDollar(k.putPremium)}
-  Dark Pool Volume: ${formatPct(k.darkPoolPct)}
-  Max Pain (Weekly): ${formatPrice(k.maxPain)}
+  Dark Pool Volume: ${formatPct(k.darkPoolPct)} — ${dpLevel}
+  Max Pain (Weekly): ${formatPrice(k.maxPain)}${maxPainDist}
   Put/Call Ratio: ${formatRatio(k.putCallRatio)} (${k.putCallRatio > 1 ? 'Bearish' : k.putCallRatio < 0.7 ? 'Bullish' : 'Neutral'})
 
 TOP 5 GEX STRIKES (by magnitude):
-${topGex || '  No GEX data'}
+${topGex || '  No GEX data'}${gexStructure}
 
 RECENT NET PREMIUM FLOW (last 5 sessions):
-${recentFlow || '  No flow history'}`;
+${recentFlow || '  No flow history'}${flowTrend}`;
 }
 
 const remarkPlugins = [remarkGfm];
@@ -155,7 +208,7 @@ const CHAT_KEY = 'chat_history_';
 function loadChat(ticker) {
   if (!ticker) return [];
   try {
-    const raw = sessionStorage.getItem(CHAT_KEY + ticker);
+    const raw = localStorage.getItem(CHAT_KEY + ticker);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
@@ -163,8 +216,8 @@ function loadChat(ticker) {
 function saveChat(ticker, msgs) {
   if (!ticker) return;
   try {
-    if (msgs.length) sessionStorage.setItem(CHAT_KEY + ticker, JSON.stringify(msgs));
-    else sessionStorage.removeItem(CHAT_KEY + ticker);
+    if (msgs.length) localStorage.setItem(CHAT_KEY + ticker, JSON.stringify(msgs));
+    else localStorage.removeItem(CHAT_KEY + ticker);
   } catch { /* quota */ }
 }
 
@@ -276,6 +329,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
 export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
+  const skipSaveRef = useRef(false);
   const [messages, setMessages] = useState(() => loadChat(currentTicker));
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -292,11 +346,13 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     if (currentTicker && currentTicker !== prevTickerRef.current) {
       saveChat(prevTickerRef.current, messages);
       prevTickerRef.current = currentTicker;
+      skipSaveRef.current = true;
       setMessages(loadChat(currentTicker));
     }
   }, [currentTicker, messages]);
 
   useEffect(() => {
+    if (skipSaveRef.current) { skipSaveRef.current = false; return; }
     saveChat(currentTicker, messages);
   }, [messages, currentTicker]);
 
@@ -310,9 +366,10 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   }, []);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
   }, [messages, sending]);
 
   useEffect(() => {
@@ -487,7 +544,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
               ))}
             </div>
             <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-2">
-              Chat history is kept for this browser session only.
+              Chat history is saved locally and persists until cleared.
             </p>
           </div>
         )}
