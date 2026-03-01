@@ -197,6 +197,23 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       if (f.roeTTM != null) fLines.push(`  ROE (TTM): ${f.roeTTM.toFixed(1)}%`);
       if (fLines.length > 0) enriched += `\n\nFUNDAMENTALS:\n${fLines.join('\n')}`;
     }
+
+    if (tickerCtx.marketQuotes) {
+      const mq = tickerCtx.marketQuotes;
+      const lines = Object.entries(mq).map(([sym, q]) => {
+        const sign = (q.change || 0) >= 0 ? '+' : '';
+        return `  ${q.label || sym}: $${q.price.toFixed(2)}  ${sign}${(q.change || 0).toFixed(2)} (${sign}${(q.changePct || 0).toFixed(2)}%)`;
+      });
+      if (lines.length > 0) enriched += `\n\nMARKET INDICES (ETF proxies, last close when market closed):\n${lines.join('\n')}`;
+    }
+
+    if (tickerCtx.marketNews?.length > 0) {
+      const lines = tickerCtx.marketNews.map((n) => {
+        const d = n.datetime ? new Date(n.datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        return `  ${d} (${n.source}): ${n.headline}`;
+      }).join('\n');
+      enriched += `\n\nBROAD MARKET NEWS:\n${lines}`;
+    }
   }
 
   return `TICKER: ${ticker}
