@@ -2,10 +2,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
-  RefreshCw, Database, Cpu, Star, Eye, EyeOff,
+  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, HardDrive,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
+import { exportAll, importAll } from '../lib/store';
 import RequestAccessForm from './RequestAccessForm';
 
 const PROVIDERS = [
@@ -58,6 +59,10 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [tokenStatus, setTokenStatus] = useState(null);
   const [tokenError, setTokenError] = useState('');
   const [showRequest, setShowRequest] = useState(false);
+
+  const fileInputRef = useRef(null);
+  const [importStatus, setImportStatus] = useState(null);
+  const [importError, setImportError] = useState('');
   const isPremium = hasValidToken();
   const tier = getTokenTier();
   const days = daysRemaining();
@@ -117,6 +122,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setTokenInput('');
     setTokenStatus(null);
     setTokenError('');
+    setImportStatus(null);
+    setImportError('');
 
     loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
   }, [isOpen, loadModelsForProvider]);
@@ -224,6 +231,41 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setTokenStatus(null);
     onAuthChange?.();
   }, [onAuthChange]);
+
+  const handleExport = useCallback(() => {
+    const blob = exportAll();
+    const json = JSON.stringify(blob, null, 2);
+    const file = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ofd-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const handleImport = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        importAll(data);
+        setImportStatus('success');
+        setImportError('');
+      } catch (err) {
+        setImportStatus('error');
+        setImportError(err.message || 'Invalid file format.');
+      }
+    };
+    reader.onerror = () => {
+      setImportStatus('error');
+      setImportError('Failed to read file.');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, []);
 
   if (!isOpen) return null;
 
@@ -524,6 +566,58 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                     : 'Without a Tradier key, prices come from CBOE delayed quotes (~15 min behind). A free sandbox key works for testing — get one at tradier.com.'}
               </p>
             </div>
+          </section>
+
+          <hr className="border-[var(--color-border-subtle)]" />
+
+          {/* ── Data Management ── */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+              <HardDrive size={12} />
+              Data Management
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleExport}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-medium rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+              >
+                <Download size={12} /> Export Data
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-medium rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+              >
+                <Upload size={12} /> Import Data
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleImport}
+                className="hidden"
+              />
+            </div>
+
+            {importStatus === 'success' && (
+              <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bull)]">
+                <Check size={11} className="shrink-0" />
+                <span>Data imported successfully.</span>
+              </div>
+            )}
+            {importStatus === 'error' && (
+              <div className="flex items-start gap-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
+                <AlertCircle size={11} className="shrink-0 mt-px" />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+              Exports positions, chat histories, and preferences as JSON.
+              API keys, access tokens, and session settings are{' '}
+              <strong className="font-medium text-[var(--color-text-secondary)]">not</strong>{' '}
+              included for security. Import overwrites existing data.
+            </p>
           </section>
         </div>
 

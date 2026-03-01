@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
+import { getChatHistory, setChatHistory } from '../lib/store';
 import { getAISettings } from './AppSettings';
 
 /**
@@ -203,24 +204,6 @@ function TypingIndicator() {
   );
 }
 
-const CHAT_KEY = 'chat_history_';
-
-function loadChat(ticker) {
-  if (!ticker) return [];
-  try {
-    const raw = localStorage.getItem(CHAT_KEY + ticker);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveChat(ticker, msgs) {
-  if (!ticker) return;
-  try {
-    if (msgs.length) localStorage.setItem(CHAT_KEY + ticker, JSON.stringify(msgs));
-    else localStorage.removeItem(CHAT_KEY + ticker);
-  } catch { /* quota */ }
-}
-
 const SUGGESTIONS = [
   'What does the GEX profile suggest?',
   'Is the flow bullish or bearish?',
@@ -330,7 +313,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
   const skipSaveRef = useRef(false);
-  const [messages, setMessages] = useState(() => loadChat(currentTicker));
+  const [messages, setMessages] = useState(() => getChatHistory(currentTicker));
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [aiLabel, setAiLabel] = useState(() => {
@@ -344,17 +327,26 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   useEffect(() => {
     if (currentTicker && currentTicker !== prevTickerRef.current) {
-      saveChat(prevTickerRef.current, messages);
+      setChatHistory(prevTickerRef.current, messages);
       prevTickerRef.current = currentTicker;
       skipSaveRef.current = true;
-      setMessages(loadChat(currentTicker));
+      setMessages(getChatHistory(currentTicker));
     }
   }, [currentTicker, messages]);
 
   useEffect(() => {
     if (skipSaveRef.current) { skipSaveRef.current = false; return; }
-    saveChat(currentTicker, messages);
+    setChatHistory(currentTicker, messages);
   }, [messages, currentTicker]);
+
+  useEffect(() => {
+    const handler = () => {
+      skipSaveRef.current = true;
+      setMessages(getChatHistory(currentTicker));
+    };
+    window.addEventListener('store-changed', handler);
+    return () => window.removeEventListener('store-changed', handler);
+  }, [currentTicker]);
 
   useEffect(() => {
     const handler = () => {
@@ -464,7 +456,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   const clearHistory = useCallback(() => {
     setMessages([]);
-    saveChat(currentTicker, []);
+    setChatHistory(currentTicker, []);
   }, [currentTicker]);
 
   if (!isOpen) return null;

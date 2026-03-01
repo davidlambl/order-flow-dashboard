@@ -11,14 +11,7 @@ import PremiumGate from './components/PremiumGate';
 import AppSettings from './components/AppSettings';
 import { useMarketData } from './hooks/useMarketData';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
-
-function loadPosition(ticker) {
-  try {
-    const raw = localStorage.getItem(`position_${ticker}`);
-    if (raw) return JSON.parse(raw);
-  } catch { /* corrupted data */ }
-  return { costBasis: null, shares: null };
-}
+import { getPosition, setPosition as storeSetPosition, getPreference, setPreference } from './lib/store';
 
 const SIDEBAR_DEFAULT = 384;
 const SIDEBAR_MIN = 280;
@@ -34,8 +27,8 @@ export default function App() {
   const { data, loading, error, usingMock, refresh } = useMarketData(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const n = parseInt(localStorage.getItem('chat_sidebar_w'), 10);
-    return n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
+    const n = getPreference('sidebarWidth');
+    return typeof n === 'number' && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
   });
   const [isResizing, setIsResizing] = useState(false);
   const sidebarWRef = useRef(sidebarWidth);
@@ -53,7 +46,7 @@ export default function App() {
     };
     const onUp = () => {
       setIsResizing(false);
-      localStorage.setItem('chat_sidebar_w', String(sidebarWRef.current));
+      setPreference('sidebarWidth', sidebarWRef.current);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       document.body.style.cursor = '';
@@ -76,19 +69,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const saved = loadPosition(ticker);
+    const saved = getPosition(ticker);
     setCostBasis(saved.costBasis);
     setShares(saved.shares);
+  }, [ticker]);
+
+  useEffect(() => {
+    const handler = () => {
+      const saved = getPosition(ticker);
+      setCostBasis(saved.costBasis);
+      setShares(saved.shares);
+      const w = getPreference('sidebarWidth');
+      if (typeof w === 'number' && w >= SIDEBAR_MIN && w <= SIDEBAR_MAX) setSidebarWidth(w);
+    };
+    window.addEventListener('store-changed', handler);
+    return () => window.removeEventListener('store-changed', handler);
   }, [ticker]);
 
   const updatePosition = useCallback((newCost, newShares) => {
     setCostBasis(newCost);
     setShares(newShares);
-    if (newCost != null || newShares != null) {
-      localStorage.setItem(`position_${ticker}`, JSON.stringify({ costBasis: newCost, shares: newShares }));
-    } else {
-      localStorage.removeItem(`position_${ticker}`);
-    }
+    storeSetPosition(ticker, { costBasis: newCost, shares: newShares });
   }, [ticker]);
 
   const handleTickerChange = useCallback((newTicker) => {
