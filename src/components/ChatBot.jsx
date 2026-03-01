@@ -1,6 +1,6 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
@@ -38,7 +38,7 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx) {
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
-    iv30, totalOptionsCount } = data;
+    iv30, totalOptionsCount, priceChange, priceChangePct, provider, delay } = data;
   const k = kpis || {};
   const now = new Date().toISOString();
 
@@ -48,6 +48,14 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx) {
     const mins = Math.round(diffMs / 60_000);
     staleness = mins > 0 ? ` (data is ~${mins} min old)` : '';
   }
+
+  const sourceNote = provider
+    ? `DATA SOURCE: ${provider}${delay ? ` (${delay})` : ''}`
+    : '';
+
+  const priceChangeNote = priceChange != null && priceChangePct != null
+    ? `\nDAILY CHANGE: ${priceChange >= 0 ? '+' : ''}$${priceChange.toFixed(2)} (${priceChangePct >= 0 ? '+' : ''}${priceChangePct.toFixed(2)}%)`
+    : '';
 
   let positionBlock = '';
   if (costBasis && spotPrice) {
@@ -96,7 +104,9 @@ USER POSITION:
 
   let enriched = '';
 
-  if (tickerCtx) {
+  if (!tickerCtx) {
+    enriched = '\n\nRESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals.';
+  } else if (tickerCtx) {
     const { news, earnings, analysts, technicals, fundamentals } = tickerCtx;
 
     if (news?.length > 0) {
@@ -182,7 +192,8 @@ USER POSITION:
 
   return `TICKER: ${ticker}
 TIMESTAMP: ${now}
-DATA LAST UPDATED: ${lastUpdated}${staleness}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
+DATA LAST UPDATED: ${lastUpdated}${staleness}${sourceNote ? `\n${sourceNote}` : ''}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
+SPOT PRICE: ${formatPrice(spotPrice)}${priceChangeNote}
 ${positionBlock}
 KPI SUMMARY:
   Net Premium: ${formatDollar(k.netPremium)} (${k.netPremium >= 0 ? 'BULLISH' : 'BEARISH'})
@@ -429,6 +440,8 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const [messages, setMessages] = useState(() => getChatHistory(currentTicker));
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [showContext, setShowContext] = useState(false);
+  const [contextCopied, setContextCopied] = useState(false);
   const [aiLabel, setAiLabel] = useState(() => {
     const s = getAISettings();
     return { modelName: s.modelName, provider: s.provider };
@@ -600,6 +613,18 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => { setShowContext((v) => !v); setContextCopied(false); }}
+            className={`p-1.5 rounded-lg transition-colors ${
+              showContext
+                ? 'text-[var(--color-accent)] bg-[var(--color-accent)]/10'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]'
+            }`}
+            aria-label="Inspect model context"
+            title="View data sent to model"
+          >
+            <FileText size={14} />
+          </button>
           {messages.length > 0 && (
             <button
               onClick={clearHistory}
@@ -627,8 +652,35 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         </div>
       </div>
 
+      {/* Context Inspector */}
+      {showContext && (() => {
+        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext);
+        return (
+          <div className="flex-1 overflow-y-auto border-b border-[var(--color-border-subtle)]">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">
+              <span className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                Model Context ({ctx.length.toLocaleString()} chars)
+              </span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(ctx).catch(() => {});
+                  setContextCopied(true);
+                  setTimeout(() => setContextCopied(false), 1500);
+                }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+              >
+                {contextCopied ? <><Check size={10} className="text-[var(--color-bull)]" /> Copied</> : <><Copy size={10} /> Copy</>}
+              </button>
+            </div>
+            <pre className="p-3 text-[11px] leading-relaxed text-[var(--color-text-secondary)] font-mono whitespace-pre-wrap break-words">
+              {ctx}
+            </pre>
+          </div>
+        );
+      })()}
+
       {/* Messages */}
-      <div
+      {!showContext && <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-3 space-y-3"
         style={{ overscrollBehavior: 'contain' }}
@@ -663,7 +715,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         ))}
 
         {sending && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
-      </div>
+      </div>}
 
       {/* Input */}
       <form
