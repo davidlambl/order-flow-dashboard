@@ -47,6 +47,8 @@ ANALYSIS GUIDELINES:
 
 // ─── Provider-specific request builders ──────────────────────────────────────
 
+const MAX_OUTPUT_TOKENS = 16384;
+
 async function callAnthropic(apiKey, model, messages, systemPrompt, stream) {
   return fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -57,7 +59,7 @@ async function callAnthropic(apiKey, model, messages, systemPrompt, stream) {
     },
     body: JSON.stringify({
       model: model || 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS,
       system: systemPrompt,
       stream: Boolean(stream),
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -80,7 +82,7 @@ async function callOpenAI(apiKey, model, messages, systemPrompt, stream) {
     body: JSON.stringify({
       model: model || 'gpt-4o',
       stream: Boolean(stream),
-      ...(isReasoning ? { max_completion_tokens: 4096 } : { max_tokens: 4096 }),
+      ...(isReasoning ? { max_completion_tokens: MAX_OUTPUT_TOKENS } : { max_tokens: MAX_OUTPUT_TOKENS }),
       messages: allMessages,
     }),
   });
@@ -100,7 +102,7 @@ async function callGemini(apiKey, model, messages, systemPrompt, stream) {
     body: JSON.stringify({
       contents,
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: { maxOutputTokens: 4096 },
+      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
     }),
   });
 }
