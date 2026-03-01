@@ -1,8 +1,8 @@
 // src/components/Header.jsx
 import { useState, useRef, useEffect } from 'react';
-import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings } from 'lucide-react';
+import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings }) {
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -105,6 +105,21 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             </span>
           </div>
         )}
+
+        {/* Earnings badge */}
+        {earnings?.date && (() => {
+          const daysTo = Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000);
+          if (daysTo < 0 || daysTo > 7) return null;
+          return (
+            <span
+              className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-[var(--color-warn)]/10 text-[var(--color-warn)] border-[var(--color-warn)]/30"
+              title={`Earnings: ${earnings.date}`}
+            >
+              <Calendar size={10} />
+              {daysTo === 0 ? 'Earnings TODAY' : daysTo === 1 ? 'Earnings TOMORROW' : `Earnings in ${daysTo}d`}
+            </span>
+          );
+        })()}
       </div>
 
       {/* Status */}

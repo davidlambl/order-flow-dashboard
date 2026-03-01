@@ -4,12 +4,14 @@ import { Sparkles } from 'lucide-react';
 import Header from './components/Header';
 import KPICards from './components/KPICards';
 import PositionAnalysis from './components/PositionAnalysis';
+import TickerResearch from './components/TickerResearch';
 import GexChart from './components/GexChart';
 import FlowChart from './components/FlowChart';
 import ChatBot from './components/ChatBot';
 import PremiumGate from './components/PremiumGate';
 import AppSettings from './components/AppSettings';
 import { useMarketData } from './hooks/useMarketData';
+import { useTickerContext } from './hooks/useTickerContext';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
 import { getPosition, setPosition as storeSetPosition, getPreference, setPreference } from './lib/store';
 
@@ -25,6 +27,7 @@ export default function App() {
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
   const { data, loading, error, usingMock, refresh } = useMarketData(ticker);
+  const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const n = getPreference('sidebarWidth');
@@ -115,6 +118,7 @@ export default function App() {
         daysLeft={daysRemaining()}
         onLogout={handleLogout}
         onOpenSettings={openSettings}
+        earnings={tickerContext?.earnings}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -168,9 +172,14 @@ export default function App() {
             />
           </PremiumGate>
 
+          {/* Research */}
+          <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Ticker Research">
+            <TickerResearch context={tickerContext} loading={contextLoading} spotPrice={data?.spotPrice} />
+          </PremiumGate>
+
           {/* Charts */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} />
+            <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} technicals={tickerContext?.technicals} />
             <FlowChart data={data?.flowHistory} loading={loading} />
           </div>
 
@@ -228,6 +237,7 @@ export default function App() {
             isPremium={isPremium}
             onUnlock={refreshAuth}
             onOpenSettings={openSettings}
+            tickerContext={tickerContext}
           />
         </aside>
       </div>

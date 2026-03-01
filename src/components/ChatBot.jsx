@@ -34,7 +34,7 @@ function buildFlowTrend(flowHistory) {
   return `\n5-SESSION TREND: ${consec} consecutive ${dir} session${consec > 1 ? 's' : ''}. Cumulative delta over window: ${formatDollar(delta)}.`;
 }
 
-function buildFinancialContext(data, costBasis, shares) {
+function buildFinancialContext(data, costBasis, shares, tickerCtx) {
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
@@ -94,6 +94,92 @@ USER POSITION:
     .join('\n');
   const flowTrend = buildFlowTrend(flowHistory);
 
+  let enriched = '';
+
+  if (tickerCtx) {
+    const { news, earnings, analysts, technicals, fundamentals } = tickerCtx;
+
+    if (news?.length > 0) {
+      const lines = news.map((n) => {
+        const d = n.datetime ? new Date(n.datetime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        const sent = n.sentiment != null ? ` [sentiment: ${n.sentiment > 0 ? 'positive' : n.sentiment < 0 ? 'negative' : 'neutral'}]` : '';
+        return `  ${d} (${n.source}): ${n.headline}${sent}`;
+      }).join('\n');
+      enriched += `\n\nRECENT NEWS (last 7 days):\n${lines}`;
+    }
+
+    if (earnings) {
+      const daysTo = earnings.date
+        ? Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000)
+        : null;
+      const timing = daysTo != null
+        ? (daysTo > 0 ? `${daysTo} day${daysTo !== 1 ? 's' : ''} away` : daysTo === 0 ? 'TODAY' : `${Math.abs(daysTo)} day${Math.abs(daysTo) !== 1 ? 's' : ''} ago`)
+        : '';
+      let eLine = `  Date: ${earnings.date || 'unknown'}${timing ? ` (${timing})` : ''}`;
+      if (earnings.epsEstimate != null) eLine += `\n  EPS Estimate: $${earnings.epsEstimate}`;
+      if (earnings.epsActual != null) eLine += ` | Actual: $${earnings.epsActual}`;
+      if (earnings.revenueEstimate != null) eLine += `\n  Revenue Estimate: $${(earnings.revenueEstimate / 1e9).toFixed(2)}B`;
+      if (earnings.revenueActual != null) eLine += ` | Actual: $${(earnings.revenueActual / 1e9).toFixed(2)}B`;
+      if (earnings.surprisePercent != null) eLine += `\n  Surprise: ${earnings.surprisePercent > 0 ? '+' : ''}${earnings.surprisePercent.toFixed(1)}%`;
+      enriched += `\n\nEARNINGS:\n${eLine}`;
+    }
+
+    if (analysts) {
+      const c = analysts.consensus || {};
+      const total = (c.strongBuy || 0) + (c.buy || 0) + (c.hold || 0) + (c.sell || 0) + (c.strongSell || 0);
+      let aLine = `  Ratings: ${c.strongBuy || 0} Strong Buy, ${c.buy || 0} Buy, ${c.hold || 0} Hold, ${c.sell || 0} Sell, ${c.strongSell || 0} Strong Sell (${total} total)`;
+      const pt = analysts.priceTarget || {};
+      if (pt.mean != null) {
+        const upside = spotPrice ? ((pt.mean - spotPrice) / spotPrice * 100).toFixed(1) : null;
+        aLine += `\n  Price Target: Mean $${pt.mean.toFixed(2)}${upside ? ` (${upside > 0 ? '+' : ''}${upside}% from spot)` : ''}`;
+        if (pt.high != null) aLine += ` | High $${pt.high.toFixed(2)}`;
+        if (pt.low != null) aLine += ` | Low $${pt.low.toFixed(2)}`;
+      }
+      enriched += `\n\nANALYST CONSENSUS:\n${aLine}`;
+    }
+
+    if (technicals) {
+      const t = technicals;
+      let tLine = '';
+      if (t.sma50 != null) {
+        const dist50 = spotPrice ? ((spotPrice - t.sma50) / t.sma50 * 100).toFixed(1) : null;
+        tLine += `  50-day MA: $${t.sma50.toFixed(2)}${dist50 ? ` (spot ${dist50 > 0 ? '+' : ''}${dist50}% from 50-MA)` : ''}\n`;
+      }
+      if (t.sma200 != null) {
+        const dist200 = spotPrice ? ((spotPrice - t.sma200) / t.sma200 * 100).toFixed(1) : null;
+        tLine += `  200-day MA: $${t.sma200.toFixed(2)}${dist200 ? ` (spot ${dist200 > 0 ? '+' : ''}${dist200}% from 200-MA)` : ''}\n`;
+      }
+      if (t.rsi14 != null) {
+        const rsiLabel = t.rsi14 > 70 ? 'OVERBOUGHT' : t.rsi14 < 30 ? 'OVERSOLD' : 'neutral';
+        tLine += `  RSI-14: ${t.rsi14.toFixed(1)} (${rsiLabel})\n`;
+      }
+      if (t.fiftyTwoWeekHigh != null && t.fiftyTwoWeekLow != null) {
+        tLine += `  52-Week Range: $${t.fiftyTwoWeekLow.toFixed(2)} — $${t.fiftyTwoWeekHigh.toFixed(2)}`;
+        if (spotPrice) {
+          const range = t.fiftyTwoWeekHigh - t.fiftyTwoWeekLow;
+          const pctInRange = range > 0 ? ((spotPrice - t.fiftyTwoWeekLow) / range * 100).toFixed(0) : 0;
+          tLine += ` (spot at ${pctInRange}% of range)`;
+        }
+      }
+      if (tLine) enriched += `\n\nTECHNICAL LEVELS:\n${tLine}`;
+    }
+
+    if (fundamentals) {
+      const f = fundamentals;
+      const fLines = [];
+      if (f.marketCap != null) fLines.push(`  Market Cap: $${(f.marketCap / 1e3).toFixed(1)}B`);
+      if (f.peRatio != null) fLines.push(`  P/E (TTM): ${f.peRatio.toFixed(1)}`);
+      if (f.forwardPE != null) fLines.push(`  Forward P/E: ${f.forwardPE.toFixed(1)}`);
+      if (f.dividendYield != null) fLines.push(`  Dividend Yield: ${f.dividendYield.toFixed(2)}%`);
+      if (f.beta != null) fLines.push(`  Beta: ${f.beta.toFixed(2)}`);
+      if (f.revenueGrowthQuarterly != null) fLines.push(`  Revenue Growth (QoQ YoY): ${f.revenueGrowthQuarterly.toFixed(1)}%`);
+      if (f.grossMargin != null) fLines.push(`  Gross Margin: ${f.grossMargin.toFixed(1)}%`);
+      if (f.operatingMargin != null) fLines.push(`  Operating Margin: ${f.operatingMargin.toFixed(1)}%`);
+      if (f.roeTTM != null) fLines.push(`  ROE (TTM): ${f.roeTTM.toFixed(1)}%`);
+      if (fLines.length > 0) enriched += `\n\nFUNDAMENTALS:\n${fLines.join('\n')}`;
+    }
+  }
+
   return `TICKER: ${ticker}
 TIMESTAMP: ${now}
 DATA LAST UPDATED: ${lastUpdated}${staleness}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
@@ -110,7 +196,7 @@ TOP 5 GEX STRIKES (by magnitude):
 ${topGex || '  No GEX data'}${gexStructure}
 
 RECENT NET PREMIUM FLOW (last 5 sessions):
-${recentFlow || '  No flow history'}${flowTrend}`;
+${recentFlow || '  No flow history'}${flowTrend}${enriched}`;
 }
 
 const remarkPlugins = [remarkGfm];
@@ -336,7 +422,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
   );
 }
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings }) {
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
   const skipSaveRef = useRef(false);
@@ -433,7 +519,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setSending(true);
 
     try {
-      const financialContext = buildFinancialContext(data, costBasis, shares);
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext);
       const apiMessages = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
@@ -461,7 +547,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, costBasis, shares, onStreamChunk, flushChunks]);
+  }, [messages, sending, data, costBasis, shares, tickerContext, onStreamChunk, flushChunks]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

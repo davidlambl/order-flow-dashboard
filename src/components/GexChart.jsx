@@ -1,4 +1,5 @@
 // src/components/GexChart.jsx
+import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Cell,
@@ -24,7 +25,8 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-export default function GexChart({ data, loading, spotPrice, costBasis }) {
+export default function GexChart({ data, loading, spotPrice, costBasis, technicals }) {
+  const [showMAs, setShowMAs] = useState(true);
   if (loading) {
     return (
       <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
@@ -54,6 +56,20 @@ export default function GexChart({ data, loading, spotPrice, costBasis }) {
       ).strike
     : null;
 
+  const sma50Strike = showMAs && technicals?.sma50
+    ? data.reduce((closest, s) =>
+        Math.abs(s.strike - technicals.sma50) < Math.abs(closest.strike - technicals.sma50) ? s : closest
+      ).strike
+    : null;
+
+  const sma200Strike = showMAs && technicals?.sma200
+    ? data.reduce((closest, s) =>
+        Math.abs(s.strike - technicals.sma200) < Math.abs(closest.strike - technicals.sma200) ? s : closest
+      ).strike
+    : null;
+
+  const hasMAs = technicals?.sma50 != null || technicals?.sma200 != null;
+
   return (
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 fade-in">
       <div className="flex items-center justify-between mb-3">
@@ -81,6 +97,17 @@ export default function GexChart({ data, loading, spotPrice, costBasis }) {
             <span className="flex items-center gap-1">
               <span className="w-2 h-0.5 bg-[var(--color-cyan)]" /> Basis
             </span>
+          )}
+          {hasMAs && (
+            <button
+              onClick={() => setShowMAs((v) => !v)}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+                showMAs ? 'bg-[var(--color-purple-bg)] text-[var(--color-purple)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+              }`}
+              title={showMAs ? 'Hide moving averages' : 'Show moving averages'}
+            >
+              <span className="w-2 h-0.5 bg-[var(--color-purple)]" /> MA
+            </button>
           )}
         </div>
       </div>
@@ -135,6 +162,36 @@ export default function GexChart({ data, loading, spotPrice, costBasis }) {
                 fill: 'var(--color-cyan)',
                 fontSize: 10,
                 fontWeight: 600,
+              }}
+            />
+          )}
+          {sma50Strike && sma50Strike !== spotStrike && sma50Strike !== basisStrike && (
+            <ReferenceLine
+              x={sma50Strike}
+              stroke="var(--color-purple)"
+              strokeDasharray="6 3"
+              strokeWidth={1}
+              label={{
+                value: '50MA',
+                position: 'insideTopRight',
+                fill: 'var(--color-purple)',
+                fontSize: 9,
+                fontWeight: 500,
+              }}
+            />
+          )}
+          {sma200Strike && sma200Strike !== spotStrike && sma200Strike !== basisStrike && sma200Strike !== sma50Strike && (
+            <ReferenceLine
+              x={sma200Strike}
+              stroke="var(--color-purple)"
+              strokeDasharray="2 3"
+              strokeWidth={1}
+              label={{
+                value: '200MA',
+                position: 'insideTopRight',
+                fill: 'var(--color-purple)',
+                fontSize: 9,
+                fontWeight: 500,
               }}
             />
           )}

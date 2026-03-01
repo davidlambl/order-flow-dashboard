@@ -102,6 +102,31 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
 }
 
 /**
+ * Fetch enriched ticker context from Finnhub (news, earnings, analyst, technicals, fundamentals).
+ * @param {string} ticker - Stock symbol
+ */
+export async function fetchTickerContext(ticker) {
+  const params = new URLSearchParams({ ticker });
+  const url = `${FUNCTION_BASE}/getTickerContext?${params}`;
+
+  const headers = {};
+  const finnhubKey = sessionStorage.getItem('data_finnhub_key');
+  if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
+
+  let res;
+  try {
+    res = await fetch(url, { headers });
+  } catch (networkErr) {
+    throw new Error(`Network error: ${networkErr.message}`);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Ticker context error: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
  * Fetch available models from any supported provider.
  * @param {string} userApiKey - User-provided API key
  * @param {string} provider - 'anthropic' | 'openai' | 'gemini'

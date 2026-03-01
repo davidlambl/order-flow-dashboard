@@ -54,6 +54,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [showApiKey, setShowApiKey] = useState(false);
   const [showTradierKey, setShowTradierKey] = useState(false);
   const [tradierKey, setTradierKey] = useState('');
+  const [showFinnhubKey, setShowFinnhubKey] = useState(false);
+  const [finnhubKey, setFinnhubKey] = useState('');
 
   const [tokenInput, setTokenInput] = useState('');
   const [tokenStatus, setTokenStatus] = useState(null);
@@ -119,6 +121,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setShowApiKey(false);
     setShowTradierKey(false);
     setTradierKey(sessionStorage.getItem('data_tradier_key') || '');
+    setShowFinnhubKey(false);
+    setFinnhubKey(sessionStorage.getItem('data_finnhub_key') || '');
     setTokenInput('');
     setTokenStatus(null);
     setTokenError('');
@@ -177,12 +181,18 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     } else {
       sessionStorage.removeItem('data_tradier_key');
     }
+    const oldFinnhub = sessionStorage.getItem('data_finnhub_key') || '';
+    if (finnhubKey.trim()) {
+      sessionStorage.setItem('data_finnhub_key', finnhubKey.trim());
+    } else {
+      sessionStorage.removeItem('data_finnhub_key');
+    }
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
-    if (tradierKey.trim() !== oldTradier) {
+    if (tradierKey.trim() !== oldTradier || finnhubKey.trim() !== oldFinnhub) {
       window.dispatchEvent(new CustomEvent('data-source-changed'));
     }
     onClose();
-  }, [provider, keys, selectedModel, models, tradierKey, onClose]);
+  }, [provider, keys, selectedModel, models, tradierKey, finnhubKey, onClose]);
 
   const handleReset = useCallback(() => {
     if (!window.confirm('Reset all settings? This will clear your API keys, model selection, and Tradier key. This cannot be undone.')) return;
@@ -193,15 +203,18 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     sessionStorage.removeItem('ai_model');
     sessionStorage.removeItem('ai_model_name');
     const hadTradier = Boolean(sessionStorage.getItem('data_tradier_key'));
+    const hadFinnhub = Boolean(sessionStorage.getItem('data_finnhub_key'));
     sessionStorage.removeItem('data_tradier_key');
+    sessionStorage.removeItem('data_finnhub_key');
     setProvider('anthropic');
     setKeys({ anthropic: '', openai: '', gemini: '' });
     setSelectedModel('');
     setModels([]);
     setTradierKey('');
+    setFinnhubKey('');
     setKeyTestStatus(null);
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
-    if (hadTradier) window.dispatchEvent(new CustomEvent('data-source-changed'));
+    if (hadTradier || hadFinnhub) window.dispatchEvent(new CustomEvent('data-source-changed'));
     loadModelsForProvider('anthropic', '');
   }, [loadModelsForProvider]);
 
@@ -565,6 +578,36 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   : dataSource === 'tradier'
                     ? 'Currently using server-configured Tradier key.'
                     : 'Without a Tradier key, prices come from CBOE delayed quotes (~15 min behind). A free sandbox key works for testing — get one at tradier.com.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
+                Finnhub API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showFinnhubKey ? 'text' : 'password'}
+                  value={finnhubKey}
+                  onChange={(e) => setFinnhubKey(e.target.value)}
+                  placeholder="Paste for news, earnings, analyst data..."
+                  className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+                />
+                {finnhubKey && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFinnhubKey((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+                    aria-label={showFinnhubKey ? 'Hide key' : 'Reveal key'}
+                  >
+                    {showFinnhubKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+                {finnhubKey.trim()
+                  ? 'Finnhub key will enable news, earnings, analyst ratings, and technical indicators.'
+                  : 'Free API key from finnhub.io. Enables news, earnings, analyst data, and technical indicators for the AI Co-Pilot and Research panel.'}
               </p>
             </div>
           </section>
