@@ -185,6 +185,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   }, [provider, keys, selectedModel, models, tradierKey, onClose]);
 
   const handleReset = useCallback(() => {
+    if (!window.confirm('Reset all settings? This will clear your API keys, model selection, and Tradier key. This cannot be undone.')) return;
     for (const prov of ['anthropic', 'openai', 'gemini']) {
       sessionStorage.removeItem(`ai_key_${prov}`);
     }

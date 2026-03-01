@@ -1,6 +1,6 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2 } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
@@ -151,12 +151,19 @@ const markdownComponents = {
   ),
 };
 
-function MessageBubble({ msg }) {
+function MessageBubble({ msg, onCopy, onDelete }) {
+  const [copied, setCopied] = useState(false);
   const isUser = msg.role === 'user';
   const isError = msg.role === 'error';
 
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
-    <div className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''} fade-in`}>
+    <div className={`group/msg flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''} fade-in`}>
       <div
         className={`flex items-center justify-center w-6 h-6 rounded-lg shrink-0 mt-0.5 ${
           isUser
@@ -168,20 +175,40 @@ function MessageBubble({ msg }) {
       >
         {isUser ? <User size={12} /> : isError ? <AlertCircle size={12} /> : <Bot size={12} />}
       </div>
-      <div
-        className={`max-w-[85%] text-[13px] leading-relaxed rounded-xl px-3 py-2 ${
-          isUser
-            ? 'bg-[var(--color-accent)]/10 text-[var(--color-text-primary)] border border-[var(--color-accent)]/20'
-            : isError
-            ? 'bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20'
-            : 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)]'
-        }`}
-      >
-        {isUser || isError ? (
-          <div className="whitespace-pre-wrap">{msg.content}</div>
-        ) : (
-          <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>{msg.content}</ReactMarkdown>
-        )}
+      <div className="flex flex-col max-w-[85%]">
+        <div
+          className={`text-[13px] leading-relaxed rounded-xl px-3 py-2 ${
+            isUser
+              ? 'bg-[var(--color-accent)]/10 text-[var(--color-text-primary)] border border-[var(--color-accent)]/20'
+              : isError
+              ? 'bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20'
+              : 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)]'
+          }`}
+        >
+          {isUser || isError ? (
+            <div className="whitespace-pre-wrap">{msg.content}</div>
+          ) : (
+            <ReactMarkdown remarkPlugins={remarkPlugins} components={markdownComponents}>{msg.content}</ReactMarkdown>
+          )}
+        </div>
+        <div className={`flex gap-0.5 mt-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
+          <button
+            onClick={handleCopy}
+            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+            aria-label="Copy message"
+            title={copied ? 'Copied!' : 'Copy markdown'}
+          >
+            {copied ? <Check size={11} className="text-[var(--color-bull)]" /> : <Copy size={11} />}
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+            aria-label="Delete message"
+            title="Delete message"
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -454,6 +481,10 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, []);
 
+  const deleteMessage = useCallback((index) => {
+    setMessages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   const clearHistory = useCallback(() => {
     setMessages([]);
     setChatHistory(currentTicker, []);
@@ -542,7 +573,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         )}
 
         {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} />
+          <MessageBubble key={i} msg={msg} onDelete={() => deleteMessage(i)} />
         ))}
 
         {sending && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
