@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   Newspaper, Calendar, TrendingUp, ChevronDown, ChevronUp,
-  ExternalLink, Clock,
+  ExternalLink, Clock, Globe,
 } from 'lucide-react';
 import { getPreference, setPreference } from '../lib/store';
 
@@ -283,6 +283,60 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
   );
 }
 
+function MarketIndicesStrip({ quotes }) {
+  if (!quotes || Object.keys(quotes).length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {Object.entries(quotes).map(([sym, q]) => {
+        const positive = (q.change || 0) >= 0;
+        return (
+          <div
+            key={sym}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]"
+          >
+            <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">{sym}</span>
+            <span className="text-[10px] font-medium tabular-nums text-[var(--color-text-primary)]">
+              {sym === 'VIX' ? q.price.toFixed(2) : `$${q.price.toFixed(2)}`}
+            </span>
+            <span className={`text-[9px] font-medium tabular-nums ${positive ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'}`}>
+              {positive ? '+' : ''}{(q.changePct || 0).toFixed(2)}%
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MarketHeadlines({ news }) {
+  if (!news || news.length === 0) return (
+    <p className="text-[11px] text-[var(--color-text-muted)] italic">No market news available</p>
+  );
+  return (
+    <div className="space-y-1.5">
+      {news.map((n, i) => (
+        <a
+          key={i}
+          href={n.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-start gap-2 group py-1 first:pt-0"
+        >
+          <span className="flex-1 text-[11px] text-[var(--color-text-secondary)] leading-snug group-hover:text-[var(--color-text-primary)] transition-colors line-clamp-2">
+            {n.headline}
+          </span>
+          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+            {n.datetime && (
+              <span className="text-[9px] text-[var(--color-text-muted)]">{timeAgo(n.datetime)}</span>
+            )}
+            <ExternalLink size={8} className="text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export default function TickerResearch({ context, loading, spotPrice }) {
   const [open, setOpen] = useState(() => {
     const saved = getPreference('section_research');
@@ -304,9 +358,13 @@ export default function TickerResearch({ context, loading, spotPrice }) {
     return next;
   });
 
-  const hasData = context && (
+  const hasTickerData = context && (
     (context.news?.length > 0) || context.earnings || context.analysts
   );
+  const hasMarketData = context && (
+    context.marketQuotes || (context.marketNews?.length > 0)
+  );
+  const hasData = hasTickerData || hasMarketData;
   const showEmpty = !loading && !hasData;
 
   return (
@@ -338,31 +396,56 @@ export default function TickerResearch({ context, loading, spotPrice }) {
             <p className="text-xs text-[var(--color-text-muted)] text-center py-4">
               Add a Finnhub API key in Settings to see news, earnings, and analyst data.
             </p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-                  <Newspaper size={10} />
-                  News
+          ) : (<>
+            {hasTickerData && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                    <Newspaper size={10} />
+                    News
+                  </div>
+                  <NewsPanel news={context?.news} loading={loading} />
                 </div>
-                <NewsPanel news={context?.news} loading={loading} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-                  <Calendar size={10} />
-                  Earnings
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                    <Calendar size={10} />
+                    Earnings
+                  </div>
+                  <EarningsCard earnings={context?.earnings} loading={loading} />
                 </div>
-                <EarningsCard earnings={context?.earnings} loading={loading} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-                  <TrendingUp size={10} />
-                  Analyst Consensus
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                    <TrendingUp size={10} />
+                    Analyst Consensus
+                  </div>
+                  <AnalystPanel analysts={context?.analysts} spotPrice={spotPrice} loading={loading} />
                 </div>
-                <AnalystPanel analysts={context?.analysts} spotPrice={spotPrice} loading={loading} />
               </div>
-            </div>
-          )}
+            )}
+
+            {hasMarketData && (
+              <>
+                {hasTickerData && (
+                  <div className="border-t border-[var(--color-border-subtle)] my-3" />
+                )}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                    <Globe size={10} />
+                    Market Overview
+                  </div>
+                  <MarketIndicesStrip quotes={context?.marketQuotes} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                        Market Headlines
+                      </div>
+                      <MarketHeadlines news={context?.marketNews} />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </>)}
         </div>
       )}
     </div>
