@@ -12,6 +12,7 @@ const PREF_MAP = {
   section_position: 'section_position',
   section_research: 'section_research',
   section_charts: 'section_charts',
+  strategic_context: 'strategic_context',
 };
 
 class LocalStorageBackend {

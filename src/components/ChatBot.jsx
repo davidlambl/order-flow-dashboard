@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
-import { getChatHistory, setChatHistory } from '../lib/store';
+import { getChatHistory, setChatHistory, getPreference } from '../lib/store';
 import { getAISettings } from './AppSettings';
 import { computeRecommendation } from '../lib/recommend';
 
@@ -35,7 +35,7 @@ function buildFlowTrend(flowHistory) {
   return `\n5-SESSION TREND: ${consec} consecutive ${dir} session${consec > 1 ? 's' : ''}. Cumulative delta over window: ${formatDollar(delta)}.`;
 }
 
-function buildFinancialContext(data, costBasis, shares, tickerCtx) {
+function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext) {
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
@@ -102,6 +102,7 @@ USER POSITION:
     .map((f) => `  ${f.date}: Net ${formatDollar(f.netPremium)}, Cum ${formatDollar(f.cumPremium)}, Calls ${f.callVolume.toLocaleString()}, Puts ${f.putVolume.toLocaleString()}`)
     .join('\n');
   const flowTrend = buildFlowTrend(flowHistory);
+  const flowNote = '\nNote: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting institutional flow.';
 
   let signalBlock = '';
   const rec = computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
@@ -109,6 +110,19 @@ USER POSITION:
     signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
 ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
+  }
+
+  let painBlock = '';
+  if (costBasis != null && shares != null && spotPrice != null && iv30 != null) {
+    const dailyPct = (iv30 / Math.sqrt(252)).toFixed(1);
+    const threeDayPct = (iv30 * Math.sqrt(3 / 252)).toFixed(1);
+    const expectedMove3d = (spotPrice * (iv30 / 100) * Math.sqrt(3 / 252)).toFixed(2);
+    const pnl310 = (310 - costBasis) * shares;
+    const pnl300 = (300 - costBasis) * shares;
+    const pnl280 = (280 - costBasis) * shares;
+    painBlock = `\n\nPAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±${dailyPct}% | Through 3 days: ±${threeDayPct}% (≈ ±$${expectedMove3d}/share)
+  Unrealized P&L at key levels: $310 = ${formatDollar(pnl310)}, $300 = ${formatDollar(pnl300)}, $280 = ${formatDollar(pnl280)}`;
   }
 
   let enriched = '';
@@ -202,6 +216,11 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       if (fLines.length > 0) enriched += `\n\nFUNDAMENTALS:\n${fLines.join('\n')}`;
     }
 
+    if (fundamentals?.dividendYield != null && shares != null && spotPrice != null) {
+      const annDiv = shares * spotPrice * (fundamentals.dividendYield / 100);
+      enriched += '\n\nPosition annual dividend income (est.): ~' + formatDollar(annDiv);
+    }
+
     if (tickerCtx.marketQuotes) {
       const mq = tickerCtx.marketQuotes;
       const lines = Object.entries(mq).map(([sym, q]) => {
@@ -218,6 +237,10 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       }).join('\n');
       enriched += `\n\nBROAD MARKET NEWS:\n${lines}`;
     }
+  }
+
+  if (strategicContext && typeof strategicContext === 'string' && strategicContext.trim()) {
+    enriched += '\n\nSTRATEGIC CONTEXT (user-provided):\n' + strategicContext.trim();
   }
 
   return `TICKER: ${ticker}
@@ -237,7 +260,7 @@ TOP 5 GEX STRIKES (by magnitude):
 ${topGex || '  No GEX data'}${gexStructure}
 
 RECENT NET PREMIUM FLOW (last 5 sessions):
-${recentFlow || '  No flow history'}${flowTrend}${signalBlock}${enriched}`;
+${recentFlow || '  No flow history'}${flowTrend}${flowNote}${signalBlock}${painBlock}${enriched}`;
 }
 
 const remarkPlugins = [remarkGfm];
@@ -562,7 +585,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setSending(true);
 
     try {
-      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext);
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'));
       const apiMessages = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
@@ -688,7 +711,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
       {/* Context Inspector */}
       {showContext && (() => {
-        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext);
+        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'));
         return (
           <div className="flex-1 overflow-y-auto border-b border-[var(--color-border-subtle)]">
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">

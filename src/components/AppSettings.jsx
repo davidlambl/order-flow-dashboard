@@ -2,11 +2,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
-  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, HardDrive,
+  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
-import { exportAll, importAll } from '../lib/store';
+import { exportAll, importAll, getPreference, setPreference } from '../lib/store';
 import RequestAccessForm from './RequestAccessForm';
 
 const PROVIDERS = [
@@ -65,6 +65,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
   const [importError, setImportError] = useState('');
+  const [strategicContext, setStrategicContext] = useState('');
   const isPremium = hasValidToken();
   const tier = getTokenTier();
   const days = daysRemaining();
@@ -128,6 +129,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setTokenError('');
     setImportStatus(null);
     setImportError('');
+    setStrategicContext(getPreference('strategic_context') ?? '');
 
     loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
   }, [isOpen, loadModelsForProvider]);
@@ -191,8 +193,9 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     if (tradierKey.trim() !== oldTradier || finnhubKey.trim() !== oldFinnhub) {
       window.dispatchEvent(new CustomEvent('data-source-changed'));
     }
+    setPreference('strategic_context', strategicContext?.trim() || null);
     onClose();
-  }, [provider, keys, selectedModel, models, tradierKey, finnhubKey, onClose]);
+  }, [provider, keys, selectedModel, models, tradierKey, finnhubKey, strategicContext, onClose]);
 
   const handleReset = useCallback(() => {
     if (!window.confirm('Reset all settings? This will clear your API keys, model selection, and Tradier key. This cannot be undone.')) return;
@@ -610,6 +613,26 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   : 'Free API key from finnhub.io. Enables news, earnings, analyst data, and technical indicators for the AI Co-Pilot and Research panel.'}
               </p>
             </div>
+          </section>
+
+          <hr className="border-[var(--color-border-subtle)]" />
+
+          {/* ── Strategic Context ── */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+              <FileText size={12} />
+              Strategic Context
+            </div>
+            <textarea
+              value={strategicContext}
+              onChange={(e) => setStrategicContext(e.target.value)}
+              placeholder="Paste macro, earnings, competitive, or capital-returns notes. Appended to the AI Co-Pilot context so the model can give higher-quality advice."
+              rows={4}
+              className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-y min-h-[80px]"
+            />
+            <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+              Optional. Exported/imported with your data. Use for Iran/macro, earnings risk, moat, capital returns, pain tolerance, or flow-window notes.
+            </p>
           </section>
 
           <hr className="border-[var(--color-border-subtle)]" />
