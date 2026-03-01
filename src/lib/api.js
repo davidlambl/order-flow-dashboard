@@ -84,7 +84,20 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      // Flush any remaining buffer so the last chunk(s) are not dropped
+      if (buffer.trim()) {
+        const lines = buffer.split('\n');
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+          const text = parseSSELine(jsonStr, effectiveProvider);
+          if (text) onChunk(text);
+        }
+      }
+      break;
+    }
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');

@@ -51,7 +51,7 @@ export default function FlowChart({ data, loading }) {
             Net Premium Flow (30d)
           </h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            Cumulative institutional premium direction
+            Cumulative institutional premium direction. Trend depends on lookback window.
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">

@@ -150,10 +150,10 @@ export default async (req) => {
         period: latest.period ?? null,
       },
       priceTarget: {
-        mean: pt.targetMean ?? null,
-        median: pt.targetMedian ?? null,
-        high: pt.targetHigh ?? null,
-        low: pt.targetLow ?? null,
+        mean: pt.targetMean ?? pt.target_mean ?? null,
+        median: pt.targetMedian ?? pt.target_median ?? null,
+        high: pt.targetHigh ?? pt.target_high ?? null,
+        low: pt.targetLow ?? pt.target_low ?? null,
       },
     };
   } else if (recRes.status === 'fulfilled') {

@@ -227,6 +227,7 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
 
   const pt = analysts.priceTarget || {};
   const displayPrice = pt.median ?? pt.mean;
+  const hasAnyTarget = pt.mean != null || pt.median != null || pt.high != null || pt.low != null;
   const upside = displayPrice && spotPrice
     ? ((displayPrice - spotPrice) / spotPrice * 100).toFixed(1)
     : null;
@@ -240,29 +241,32 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
         <RatingBar consensus={analysts.consensus} />
       </div>
 
-      {(pt.mean != null || pt.median != null) && (
-        <div className="space-y-1.5">
-          <div className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-            Price targets
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-[10px] text-[var(--color-text-muted)]">
-              {pt.median != null ? 'Median' : 'Mean'}
-            </span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-sm font-bold text-[var(--color-text-primary)] tabular-nums">
-                ${(pt.median ?? pt.mean).toFixed(2)}
-              </span>
-              {upside != null && spotPrice && (
-                <span className={`text-[10px] font-semibold tabular-nums ${
-                  Number(upside) >= 0 ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'
-                }`}>
-                  {Number(upside) > 0 ? '+' : ''}{upside}%
+      <div className="space-y-1.5">
+        <div className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+          Price targets
+        </div>
+        {hasAnyTarget ? (
+          <>
+            {displayPrice != null && (
+              <div className="flex items-baseline justify-between">
+                <span className="text-[10px] text-[var(--color-text-muted)]">
+                  {pt.median != null ? 'Median' : 'Mean'}
                 </span>
-              )}
-            </div>
-          </div>
-          {pt.mean != null && pt.median != null && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-sm font-bold text-[var(--color-text-primary)] tabular-nums">
+                    ${displayPrice.toFixed(2)}
+                  </span>
+                  {upside != null && spotPrice && (
+                    <span className={`text-[10px] font-semibold tabular-nums ${
+                      Number(upside) >= 0 ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'
+                    }`}>
+                      {Number(upside) > 0 ? '+' : ''}{upside}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {pt.mean != null && pt.median != null && (
             <div className="text-[10px] text-[var(--color-text-muted)]">
               Mean: ${pt.mean.toFixed(2)}
             </div>
@@ -293,8 +297,13 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
             <span>Low: ${pt.low?.toFixed(2) ?? '—'}</span>
             <span>High: ${pt.high?.toFixed(2) ?? '—'}</span>
           </div>
-        </div>
-      )}
+          </>
+        ) : (
+          <p className="text-[11px] text-[var(--color-text-muted)] italic">
+            No price target data for this symbol.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
