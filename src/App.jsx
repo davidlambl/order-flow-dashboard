@@ -26,7 +26,7 @@ export default function App() {
   const [costBasis, setCostBasis] = useState(null);
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
-  const { data, loading, error, usingMock, refresh } = useMarketData(ticker);
+  const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -119,6 +119,10 @@ export default function App() {
         onLogout={handleLogout}
         onOpenSettings={openSettings}
         earnings={tickerContext?.earnings}
+        autoRefresh={autoRefresh}
+        secondsLeft={secondsLeft}
+        marketOpen={marketOpen}
+        onToggleAutoRefresh={toggleAutoRefresh}
       />
 
       <div className="flex-1 flex overflow-hidden">
