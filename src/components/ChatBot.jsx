@@ -8,6 +8,7 @@ import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import { getChatHistory, setChatHistory } from '../lib/store';
 import { getAISettings } from './AppSettings';
+import { computeRecommendation } from '../lib/recommend';
 
 /**
  * Serializes the current dashboard state into a plain-text context block
@@ -101,6 +102,14 @@ USER POSITION:
     .map((f) => `  ${f.date}: Net ${formatDollar(f.netPremium)}, Cum ${formatDollar(f.cumPremium)}, Calls ${f.callVolume.toLocaleString()}, Puts ${f.putVolume.toLocaleString()}`)
     .join('\n');
   const flowTrend = buildFlowTrend(flowHistory);
+
+  let signalBlock = '';
+  const rec = computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
+  if (rec) {
+    signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+  Recommendation: ${rec.signal} (${rec.confidence} confidence)
+${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
+  }
 
   let enriched = '';
 
@@ -207,7 +216,7 @@ TOP 5 GEX STRIKES (by magnitude):
 ${topGex || '  No GEX data'}${gexStructure}
 
 RECENT NET PREMIUM FLOW (last 5 sessions):
-${recentFlow || '  No flow history'}${flowTrend}${enriched}`;
+${recentFlow || '  No flow history'}${flowTrend}${signalBlock}${enriched}`;
 }
 
 const remarkPlugins = [remarkGfm];
