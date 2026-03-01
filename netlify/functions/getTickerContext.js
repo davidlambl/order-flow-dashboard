@@ -201,5 +201,3 @@ export default async (req) => {
     headers: { ...CORS, 'Content-Type': 'application/json' },
   });
 };
-
-export const config = { path: '/.netlify/functions/getTickerContext' };
