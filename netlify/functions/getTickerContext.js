@@ -2,6 +2,8 @@
 //
 // Fetches enriched ticker context from Finnhub in parallel:
 //   - Company news (last 7 days)
+//   - General market news (top headlines)
+//   - Market index quotes (SPY, QQQ, VIX, USO, GLD)
 //   - Earnings calendar (next/recent)
 //   - Analyst recommendation trends
 //   - Price target consensus
@@ -87,13 +89,21 @@ export default async (req) => {
   const earningsTo = new Date(now);
   earningsTo.setDate(earningsTo.getDate() + 60);
 
-  const [newsRes, earningsRes, recRes, ptRes, metricsRes, candleRes] = await Promise.allSettled([
+  const MARKET_SYMBOLS = ['SPY', 'QQQ', 'VIX', 'USO', 'GLD'];
+  const MARKET_LABELS = { SPY: 'S&P 500', QQQ: 'Nasdaq 100', VIX: 'VIX', USO: 'Oil (USO)', GLD: 'Gold (GLD)' };
+
+  const [
+    newsRes, earningsRes, recRes, ptRes, metricsRes, candleRes,
+    generalNewsRes, ...quoteResults
+  ] = await Promise.allSettled([
     finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
     finnhubGet(`/calendar/earnings?symbol=${ticker}&from=${earningsFrom.toISOString().slice(0, 10)}&to=${earningsTo.toISOString().slice(0, 10)}`, finnhubKey),
     finnhubGet(`/stock/recommendation?symbol=${ticker}`, finnhubKey),
     finnhubGet(`/stock/price-target?symbol=${ticker}`, finnhubKey),
     finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
     finnhubGet(`/stock/candle?symbol=${ticker}&resolution=D&from=${oneYearAgo}&to=${nowUnix}`, finnhubKey),
+    finnhubGet('/news?category=general', finnhubKey),
+    ...MARKET_SYMBOLS.map((sym) => finnhubGet(`/quote?symbol=${sym}`, finnhubKey)),
   ]);
 
   const news = newsRes.status === 'fulfilled'
@@ -199,7 +209,34 @@ export default async (req) => {
     delete fundamentals.fiftyDayMA;
   }
 
-  const body = { ticker, news, earnings, analysts, technicals, fundamentals };
+  const marketNews = generalNewsRes.status === 'fulfilled'
+    ? (generalNewsRes.value || []).slice(0, 5).map((n) => ({
+        headline: n.headline,
+        source: n.source,
+        url: n.url,
+        datetime: n.datetime ? new Date(n.datetime * 1000).toISOString() : null,
+      }))
+    : [];
+
+  const marketQuotes = {};
+  MARKET_SYMBOLS.forEach((sym, i) => {
+    const r = quoteResults[i];
+    if (r.status === 'fulfilled' && r.value && r.value.c) {
+      marketQuotes[sym] = {
+        label: MARKET_LABELS[sym],
+        price: r.value.c,
+        change: r.value.d ?? null,
+        changePct: r.value.dp ?? null,
+        previousClose: r.value.pc ?? null,
+      };
+    }
+  });
+
+  const body = {
+    ticker, news, earnings, analysts, technicals, fundamentals,
+    marketNews,
+    marketQuotes: Object.keys(marketQuotes).length > 0 ? marketQuotes : null,
+  };
 
   return new Response(JSON.stringify(body), {
     status: 200,
