@@ -1,9 +1,10 @@
 // src/components/TickerResearch.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Newspaper, Calendar, TrendingUp, ChevronDown, ChevronUp,
   ExternalLink, Clock,
 } from 'lucide-react';
+import { getPreference, setPreference } from '../lib/store';
 
 function timeAgo(isoDate) {
   if (!isoDate) return '';
@@ -283,7 +284,25 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
 }
 
 export default function TickerResearch({ context, loading, spotPrice }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(() => {
+    const saved = getPreference('section_research');
+    return saved != null ? saved : true;
+  });
+
+  useEffect(() => {
+    const handler = () => {
+      const saved = getPreference('section_research');
+      if (saved != null) setOpen(saved);
+    };
+    window.addEventListener('store-changed', handler);
+    return () => window.removeEventListener('store-changed', handler);
+  }, []);
+
+  const toggle = () => setOpen((v) => {
+    const next = !v;
+    setPreference('section_research', next);
+    return next;
+  });
 
   const hasData = context && (
     (context.news?.length > 0) || context.earnings || context.analysts
@@ -293,7 +312,7 @@ export default function TickerResearch({ context, loading, spotPrice }) {
   return (
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] fade-in">
       <button
-        onClick={() => setCollapsed((v) => !v)}
+        onClick={toggle}
         className="flex items-center justify-between w-full px-4 py-3 text-left"
       >
         <div className="flex items-center gap-2">
@@ -307,13 +326,13 @@ export default function TickerResearch({ context, loading, spotPrice }) {
             </span>
           )}
         </div>
-        {collapsed
-          ? <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
-          : <ChevronUp size={14} className="text-[var(--color-text-muted)]" />
+        {open
+          ? <ChevronUp size={14} className="text-[var(--color-text-muted)]" />
+          : <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
         }
       </button>
 
-      {!collapsed && (
+      {open && (
         <div className="px-4 pb-4">
           {showEmpty ? (
             <p className="text-xs text-[var(--color-text-muted)] text-center py-4">

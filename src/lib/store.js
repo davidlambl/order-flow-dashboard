@@ -9,6 +9,9 @@ const CHAT_PREFIX = 'chat_history_';
 
 const PREF_MAP = {
   sidebarWidth: 'chat_sidebar_w',
+  section_position: 'section_position',
+  section_research: 'section_research',
+  section_charts: 'section_charts',
 };
 
 class LocalStorageBackend {

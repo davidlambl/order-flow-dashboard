@@ -1,8 +1,9 @@
 // src/App.jsx
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Target, BarChart2 } from 'lucide-react';
 import Header from './components/Header';
 import KPICards from './components/KPICards';
+import CollapsibleSection from './components/CollapsibleSection';
 import PositionAnalysis from './components/PositionAnalysis';
 import TickerResearch from './components/TickerResearch';
 import GexChart from './components/GexChart';
@@ -164,17 +165,19 @@ export default function App() {
           <KPICards kpis={data?.kpis} loading={loading} />
 
           {/* Position Analysis */}
-          <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Position Analysis">
-            <PositionAnalysis
-              costBasis={costBasis}
-              shares={shares}
-              onUpdate={updatePosition}
-              spotPrice={data?.spotPrice}
-              kpis={data?.kpis}
-              gexByStrike={data?.gexByStrike}
-              loading={loading}
-            />
-          </PremiumGate>
+          <CollapsibleSection id="position" title="Position Analysis" icon={Target}>
+            <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Position Analysis">
+              <PositionAnalysis
+                costBasis={costBasis}
+                shares={shares}
+                onUpdate={updatePosition}
+                spotPrice={data?.spotPrice}
+                kpis={data?.kpis}
+                gexByStrike={data?.gexByStrike}
+                loading={loading}
+              />
+            </PremiumGate>
+          </CollapsibleSection>
 
           {/* Research */}
           <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Ticker Research">
@@ -182,10 +185,12 @@ export default function App() {
           </PremiumGate>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} technicals={tickerContext?.technicals} />
-            <FlowChart data={data?.flowHistory} loading={loading} />
-          </div>
+          <CollapsibleSection id="charts" title="Charts" icon={BarChart2}>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} technicals={tickerContext?.technicals} />
+              <FlowChart data={data?.flowHistory} loading={loading} />
+            </div>
+          </CollapsibleSection>
 
           {/* Info footer */}
           <div className="text-xs text-[var(--color-text-muted)] pt-2 pb-4">
