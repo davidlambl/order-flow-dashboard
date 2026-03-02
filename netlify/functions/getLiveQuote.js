@@ -11,7 +11,8 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, x-finnhub-key, Authorization',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'public, max-age=60',
+  'Cache-Control': 'private, max-age=60',
+  'Vary': 'x-finnhub-key',
 };
 
 async function finnhubGet(path, token) {

@@ -19,7 +19,8 @@ const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, x-finnhub-key, Authorization',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'public, max-age=900',
+  'Cache-Control': 'private, max-age=900',
+  'Vary': 'x-finnhub-key',
 };
 
 function computeSMA(closes, period) {
