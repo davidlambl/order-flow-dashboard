@@ -713,7 +713,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, costBasis, shares, tickerContext, onStreamChunk, flushChunks]);
+  }, [messages, sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
