@@ -144,41 +144,44 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
 }
 
 export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
+  // Normalize prices once so all downstream logic (showDual, hasSpotPrice, P&L) uses consistent numeric values
+  const spotNum = Number(spotPrice);
+  const liveNum = Number(liveQuote?.current);
+
   const showDual = useMemo(() => {
     if (!liveQuote || !costBasis || !kpis) return false;
     if (optionsMarketOpen) return false;
-    const spotNum = Number(spotPrice);
-    const liveNum = Number(liveQuote.current);
     if (!Number.isFinite(spotNum) || spotNum <= 0) return false;
     if (!Number.isFinite(liveNum) || liveNum <= 0) return false;
     // Only show dual display when the gap exceeds the threshold
     const gapPct = Math.abs(((liveNum - spotNum) / spotNum) * 100);
     return gapPct >= GAP_DUAL_REC_THRESHOLD_PCT;
-  }, [liveQuote, spotPrice, costBasis, kpis, optionsMarketOpen]);
+  }, [liveQuote, spotNum, liveNum, costBasis, kpis, optionsMarketOpen]);
 
   const dualRec = useMemo(() => {
-    if (!showDual || !costBasis || !liveQuote) return null;
+    if (!showDual || !costBasis) return null;
+    if (!Number.isFinite(spotNum) || !Number.isFinite(liveNum)) return null;
     return computeDualRecommendation({
       costBasis,
       shares,
-      optionsSnapshotPrice: spotPrice,
-      livePrice: liveQuote.current,
+      optionsSnapshotPrice: spotNum,
+      livePrice: liveNum,
       kpis,
       gexByStrike,
       optionsMarketOpen: optionsMarketOpen || false,
     });
-  }, [showDual, costBasis, shares, spotPrice, liveQuote, kpis, gexByStrike, optionsMarketOpen]);
+  }, [showDual, costBasis, shares, spotNum, liveNum, kpis, gexByStrike, optionsMarketOpen]);
 
   const rec = useMemo(() => {
     if (showDual && dualRec) return null;
-    if (!costBasis || !spotPrice) return null;
-    return computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
-  }, [showDual, dualRec, costBasis, shares, spotPrice, kpis, gexByStrike]);
+    if (!costBasis || !Number.isFinite(spotNum) || spotNum <= 0) return null;
+    return computeRecommendation({ costBasis, shares, spotPrice: spotNum, kpis, gexByStrike });
+  }, [showDual, dualRec, costBasis, shares, spotNum, kpis, gexByStrike]);
 
   const levels = useMemo(() => {
-    if (!costBasis || !spotPrice) return [];
-    return extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike });
-  }, [costBasis, spotPrice, kpis, gexByStrike]);
+    if (!costBasis || !Number.isFinite(spotNum) || spotNum <= 0) return [];
+    return extractPriceLevels({ costBasis, spotPrice: spotNum, kpis, gexByStrike });
+  }, [costBasis, spotNum, kpis, gexByStrike]);
 
   const isStale = useMemo(() => {
     if (!lastUpdated) return false;
@@ -195,15 +198,15 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   const hasBasis = costBasis != null && costBasis > 0;
   const hasShares = shares != null && shares > 0;
-  const hasSpotPrice = spotPrice != null && Number.isFinite(spotPrice);
-  const hasLiveQuote = liveQuote?.current != null && Number.isFinite(liveQuote.current);
+  const hasSpotPrice = Number.isFinite(spotNum) && spotNum > 0;
+  const hasLiveQuote = Number.isFinite(liveNum) && liveNum > 0;
   
-  const pnlPct = hasBasis && hasSpotPrice ? ((spotPrice - costBasis) / costBasis) * 100 : null;
-  const pnlDollars = hasBasis && hasShares && hasSpotPrice ? (spotPrice - costBasis) * shares : null;
+  const pnlPct = hasBasis && hasSpotPrice ? ((spotNum - costBasis) / costBasis) * 100 : null;
+  const pnlDollars = hasBasis && hasShares && hasSpotPrice ? (spotNum - costBasis) * shares : null;
   const pnlUp = (pnlPct || 0) >= 0;
 
-  const livePnlPct = hasBasis && hasLiveQuote ? ((liveQuote.current - costBasis) / costBasis) * 100 : null;
-  const livePnlDollars = hasBasis && hasShares && hasLiveQuote ? (liveQuote.current - costBasis) * shares : null;
+  const livePnlPct = hasBasis && hasLiveQuote ? ((liveNum - costBasis) / costBasis) * 100 : null;
+  const livePnlDollars = hasBasis && hasShares && hasLiveQuote ? (liveNum - costBasis) * shares : null;
   const livePnlUp = (livePnlPct || 0) >= 0;
 
   const handleCostChange = (e) => {
