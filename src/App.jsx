@@ -169,7 +169,7 @@ export default function App() {
           </div>
 
           {/* KPI Cards */}
-          <KPICards kpis={data?.kpis} liveQuote={liveQuote} loading={loading} />
+          <KPICards kpis={data?.kpis} loading={loading} />
 
           {/* Position Analysis */}
           <CollapsibleSection id="position" title="Position Analysis" icon={Target}>

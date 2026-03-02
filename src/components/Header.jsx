@@ -26,19 +26,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
         minute: '2-digit',
         second: '2-digit',
       })
-    : '—';
-
-  const spotPrice = data?.spotPrice;
-  const priceChange = data?.priceChange;
-  const priceChangePct = data?.priceChangePct;
-  const priceUp = (priceChange || 0) >= 0;
-
-  const priceSource = data?.provider === 'tradier'
-    ? 'Tradier real-time'
-    : data?.provider === 'tradier-sandbox'
-    ? 'Tradier sandbox (delayed)'
-    : usingMock ? 'Simulated demo data'
-    : 'CBOE ~15-min delayed';
+    : '\u2014';
 
   return (
     <header className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
@@ -57,7 +45,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
         </div>
       </div>
 
-      {/* Search + Price */}
+      {/* Search */}
       <div className="flex items-center gap-2 sm:gap-4">
         <form onSubmit={handleSubmit} className="flex items-center gap-1.5 sm:gap-2">
           <div
@@ -125,20 +113,6 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </button>
         </form>
 
-        {/* Spot price with source tooltip */}
-        {spotPrice != null && !loading && (
-          <div className="hidden lg:flex items-baseline gap-2 tabular-nums" title={priceSource}>
-            <span className="text-base font-bold font-mono text-[var(--color-text-primary)]">
-              ${spotPrice.toFixed(2)}
-            </span>
-            <span
-              className={`text-xs font-semibold font-mono ${priceUp ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'}`}
-            >
-              {priceUp ? '+' : ''}{priceChange?.toFixed(2)} ({priceUp ? '+' : ''}{priceChangePct?.toFixed(2)}%)
-            </span>
-          </div>
-        )}
-
         {/* Earnings badge */}
         {earnings?.date && (() => {
           const daysTo = Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000);
@@ -168,7 +142,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               }}
             >
               <ShieldCheck size={10} />
-              <span className="hidden xs:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` · ${daysLeft}d` : ''}`}</span>
+              <span className="hidden xs:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` \u00b7 ${daysLeft}d` : ''}`}</span>
             </span>
             <button
               onClick={onLogout}
@@ -180,7 +154,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </div>
         )}
         <span className="hidden md:inline tabular-nums">{timeStr}</span>
-        <div className="flex items-center gap-1 sm:gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} — ${data?.delay || 'delayed'}`}>
+        <div className="flex items-center gap-1 sm:gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} \u2014 ${data?.delay || 'delayed'}`}>
           {usingMock ? (
             <>
               <WifiOff size={12} className="text-[var(--color-warn)]" />
