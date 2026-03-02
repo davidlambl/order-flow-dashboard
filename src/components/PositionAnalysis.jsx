@@ -9,19 +9,19 @@ const SIGNAL_STYLES = {
     color: 'var(--color-bull)',
     bg: 'var(--color-bull-bg)',
     border: 'var(--color-bull)',
-    borderMuted: 'color-mix(in srgb, var(--color-bull) 20%, transparent)',
+    borderMuted: 'var(--color-bull-border-muted)',
   },
   HOLD: {
     color: 'var(--color-warn)',
     bg: 'var(--color-warn-bg)',
     border: 'var(--color-warn)',
-    borderMuted: 'color-mix(in srgb, var(--color-warn) 20%, transparent)',
+    borderMuted: 'var(--color-warn-border-muted)',
   },
   SELL: {
     color: 'var(--color-bear)',
     bg: 'var(--color-bear-bg)',
     border: 'var(--color-bear)',
-    borderMuted: 'color-mix(in srgb, var(--color-bear) 20%, transparent)',
+    borderMuted: 'var(--color-bear-border-muted)',
   },
 };
 
