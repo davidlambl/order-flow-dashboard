@@ -30,8 +30,11 @@ export function useLiveQuote(ticker) {
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
   const activeTickerRef = useRef(ticker);
+  const loadingRef = useRef(false);
 
-  const load = useCallback(async (symbol, force = false) => {
+  // background=true: silent periodic refresh — keeps existing quote visible,
+  // no loading spinner, and skips if a foreground fetch is already in flight.
+  const load = useCallback(async (symbol, force = false, background = false) => {
     if (!symbol) return;
 
     // Track ticker change to detect stale state
@@ -47,8 +50,9 @@ export function useLiveQuote(ticker) {
       }
     }
 
-    // Clear stale quote when switching tickers or no cache hit
-    if (isTickerChange || force) {
+    // Background refreshes keep the existing quote visible; only clear on
+    // explicit ticker changes or foreground force-refreshes.
+    if (isTickerChange || (force && !background)) {
       setQuote(null);
     }
 
@@ -56,7 +60,8 @@ export function useLiveQuote(ticker) {
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setLoading(true);
+    if (!background) setLoading(true);
+    loadingRef.current = true;
     setError(null);
 
     try {
@@ -69,7 +74,10 @@ export function useLiveQuote(ticker) {
       console.warn('Live quote fetch failed:', err.message);
       setError(err.message);
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (!controller.signal.aborted) {
+        loadingRef.current = false;
+        if (!background) setLoading(false);
+      }
     }
   }, []);
 
@@ -79,10 +87,13 @@ export function useLiveQuote(ticker) {
   }, [ticker, load]);
 
   // Periodic refresh: re-fetch every CACHE_TTL ms so the quote never goes stale
-  // while the app is open (e.g. left running overnight).
+  // while the app is open (e.g. left running overnight). Skip if a fetch is
+  // already in flight to avoid an abort/retry loop on slow networks.
   useEffect(() => {
     if (!ticker) return;
-    const id = setInterval(() => load(ticker, true), CACHE_TTL);
+    const id = setInterval(() => {
+      if (!loadingRef.current) load(ticker, true, true);
+    }, CACHE_TTL);
     return () => clearInterval(id);
   }, [ticker, load]);
 
