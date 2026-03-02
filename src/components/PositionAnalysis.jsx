@@ -29,7 +29,7 @@ function PriceLevelBar({ levels }) {
     .map((l) => ({ ...l, pct: Math.max(5, Math.min(95, toPercent(l.price))) }))
     .sort((a, b) => a.pct - b.pct);
 
-  const MIN_GAP = 10;
+  const MIN_GAP = 15;
   let lastTopPct = -Infinity;
   for (const item of positioned) {
     if (item.pct - lastTopPct < MIN_GAP) {

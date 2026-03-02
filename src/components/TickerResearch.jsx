@@ -1,7 +1,7 @@
 // src/components/TickerResearch.jsx
 import { useState, useEffect } from 'react';
 import {
-  Newspaper, Calendar, TrendingUp, ChevronDown, ChevronUp,
+  Newspaper, Calendar, TrendingUp, ChevronDown, ChevronRight,
   ExternalLink, Clock, Globe,
 } from 'lucide-react';
 import { getPreference, setPreference } from '../lib/store';
@@ -396,23 +396,21 @@ export default function TickerResearch({ context, loading, spotPrice }) {
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] fade-in">
       <button
         onClick={toggle}
-        className="flex items-center justify-between w-full px-4 py-3 text-left"
+        className="flex items-center gap-2 w-full px-4 py-3 text-left"
       >
-        <div className="flex items-center gap-2">
-          <TrendingUp size={14} className="text-[var(--color-accent)]" />
-          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-            Research
-          </h3>
-          {loading && (
-            <span className="text-[10px] text-[var(--color-text-muted)] animate-pulse">
-              Loading...
-            </span>
-          )}
-        </div>
         {open
-          ? <ChevronUp size={14} className="text-[var(--color-text-muted)]" />
-          : <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
+          ? <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
+          : <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
         }
+        <TrendingUp size={14} className="text-[var(--color-accent)]" />
+        <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+          Research
+        </h3>
+        {loading && (
+          <span className="text-[10px] text-[var(--color-text-muted)] animate-pulse">
+            Loading...
+          </span>
+        )}
       </button>
 
       {open && (
