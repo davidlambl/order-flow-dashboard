@@ -1,12 +1,12 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListPlus } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
-import { getChatHistory, setChatHistory, getPreference } from '../lib/store';
+import { getChatHistory, setChatHistory, getPreference, setPreference } from '../lib/store';
 import { getAISettings } from './AppSettings';
 import { computeRecommendation } from '../lib/recommend';
 
@@ -301,15 +301,23 @@ const markdownComponents = {
   ),
 };
 
-function MessageBubble({ msg, onCopy, onDelete }) {
+function MessageBubble({ msg, onCopy, onDelete, onAddToContext }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
   const isUser = msg.role === 'user';
   const isError = msg.role === 'error';
+  const isAssistant = msg.role === 'assistant';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleSaveToContext = () => {
+    onAddToContext?.(msg.content);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -350,6 +358,16 @@ function MessageBubble({ msg, onCopy, onDelete }) {
           >
             {copied ? <Check size={11} className="text-[var(--color-bull)]" /> : <Copy size={11} />}
           </button>
+          {isAssistant && (
+            <button
+              onClick={handleSaveToContext}
+              className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
+              aria-label="Add to strategic context"
+              title={saved ? 'Added!' : 'Add to Strategic Context'}
+            >
+              {saved ? <Check size={11} className="text-[var(--color-bull)]" /> : <ListPlus size={11} />}
+            </button>
+          )}
           <button
             onClick={onDelete}
             className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
@@ -646,6 +664,14 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setChatHistory(currentTicker, []);
   }, [currentTicker]);
 
+  const addToStrategicContext = useCallback((content) => {
+    const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    const existing = (getPreference('strategic_context') || '').trim();
+    const header = `\n\n--- ${dateStr} (from Co-Pilot) ---`;
+    const sep = existing ? header : `--- ${dateStr} (from Co-Pilot) ---`;
+    setPreference('strategic_context', existing + sep + '\n' + content.trim());
+  }, []);
+
   if (!isOpen) return null;
 
   if (!isPremium) {
@@ -768,7 +794,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         )}
 
         {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} onDelete={() => deleteMessage(i)} />
+          <MessageBubble key={i} msg={msg} onDelete={() => deleteMessage(i)} onAddToContext={addToStrategicContext} />
         ))}
 
         {sending && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}

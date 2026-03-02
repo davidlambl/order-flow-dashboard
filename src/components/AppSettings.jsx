@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
-  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive,
+  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive, ListPlus,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, getToken, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
@@ -66,6 +66,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const [importStatus, setImportStatus] = useState(null);
   const [importError, setImportError] = useState('');
   const [strategicContext, setStrategicContext] = useState('');
+  const [showChecklistModal, setShowChecklistModal] = useState(false);
+  const [checklistDraft, setChecklistDraft] = useState('');
   const isPremium = hasValidToken();
   const tier = getTokenTier();
   const days = daysRemaining();
@@ -619,9 +621,22 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
 
           {/* ── Strategic Context ── */}
           <section className="space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-              <FileText size={12} />
-              Strategic Context
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
+                <FileText size={12} />
+                Strategic Context
+              </div>
+              {strategicContext?.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Clear all strategic context?')) setStrategicContext('');
+                  }}
+                  className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
             </div>
             <textarea
               value={strategicContext}
@@ -630,8 +645,62 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               rows={4}
               className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-y min-h-[80px]"
             />
+
+            {showChecklistModal ? (
+              <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-surface-2)] p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-[var(--color-text-secondary)]">
+                    Add bullet points
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setShowChecklistModal(false); setChecklistDraft(''); }}
+                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+                <textarea
+                  value={checklistDraft}
+                  onChange={(e) => setChecklistDraft(e.target.value)}
+                  placeholder={"- Overnight: NQ & WTI levels to watch\n- Pre-market: AVGO print and direction\n- Earnings: Key sentences to monitor"}
+                  rows={3}
+                  autoFocus
+                  className="w-full bg-[var(--color-surface)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-y min-h-[60px]"
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] text-[var(--color-text-muted)]">
+                    Appended with today's date as a header.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!checklistDraft.trim()}
+                    onClick={() => {
+                      const dateHeader = `\n\n--- ${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} ---`;
+                      const sep = strategicContext?.trim() ? dateHeader : `--- ${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} ---`;
+                      setStrategicContext((prev) => ((prev || '').trim() + sep + '\n' + checklistDraft.trim()));
+                      setChecklistDraft('');
+                      setShowChecklistModal(false);
+                    }}
+                    className="px-3 py-1.5 text-[11px] font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Append
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowChecklistModal(true)}
+                className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
+              >
+                <ListPlus size={12} />
+                Add to Strategic Context
+              </button>
+            )}
+
             <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
-              Optional. Exported/imported with your data. Use for Iran/macro, earnings risk, moat, capital returns, pain tolerance, or flow-window notes.
+              Optional. Exported/imported with your data. Use for macro, earnings risk, moat, capital returns, pain tolerance, or monitoring checkpoints.
             </p>
           </section>
 
