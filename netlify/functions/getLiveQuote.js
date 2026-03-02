@@ -181,34 +181,50 @@ async function fetchYahooQuote(ticker) {
     source,
   };
   
-  // If only regular price and ticker is Nasdaq-100 constituent, fetch futures for context
+  // If only regular price and ticker is Nasdaq-100 constituent, fetch futures for context.
+  // Only apply when US equity market is closed to avoid overriding actual traded prices.
   if (source === 'yahoo-regular' && previousClose && NASDAQ_100_CONSTITUENTS.has(ticker)) {
-    try {
-      const futures = await fetchNasdaqFutures();
-      
-      // Only include futures if they've moved meaningfully (>0.1%)
-      if (Math.abs(futures.changePercent) > 0.1) {
-        const impliedPrice = previousClose * (1 + futures.changePercent / 100);
+    // Check if US equity market is currently open (9:30 AM - 4:00 PM ET weekdays)
+    const isUSMarketOpen = (() => {
+      try {
+        const now = new Date();
+        const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
+        const [datePart, timePart] = etStr.split(', ');
+        const [h, m] = timePart.split(':').map(Number);
+        const mins = h * 60 + m;
+        const day = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })).getDay();
+        return day >= 1 && day <= 5 && mins >= 570 && mins < 960;
+      } catch { return false; }
+    })();
+
+    if (!isUSMarketOpen) {
+      try {
+        const futures = await fetchNasdaqFutures();
         
-        // Add futures context to the response (don't override actual price)
-        quote.futuresContext = {
-          nqChangePercent: futures.changePercent,
-          impliedPrice: impliedPrice,
-          nqCurrent: futures.current,
-          nqPreviousClose: futures.previousClose,
-        };
-        
-        // Only use implied price if it differs meaningfully AND there's no actual extended hours data
-        if (Math.abs(impliedPrice - currentPrice) / currentPrice > 0.001) {
-          quote.current = impliedPrice;
-          quote.timestamp = Date.now();
-          quote.source = 'futures-implied';
-          quote.changePercent = ((impliedPrice - previousClose) / previousClose) * 100;
+        // Only include futures if they've moved meaningfully (>0.1%)
+        if (Math.abs(futures.changePercent) > 0.1) {
+          const impliedPrice = previousClose * (1 + futures.changePercent / 100);
+          
+          // Add futures context to the response (don't override actual price)
+          quote.futuresContext = {
+            nqChangePercent: futures.changePercent,
+            impliedPrice: impliedPrice,
+            nqCurrent: futures.current,
+            nqPreviousClose: futures.previousClose,
+          };
+          
+          // Only use implied price if it differs meaningfully
+          if (Math.abs(impliedPrice - currentPrice) / currentPrice > 0.001) {
+            quote.current = impliedPrice;
+            quote.timestamp = Date.now();
+            quote.source = 'futures-implied';
+            quote.changePercent = ((impliedPrice - previousClose) / previousClose) * 100;
+          }
         }
+      } catch (futuresErr) {
+        // Futures fetch failed, continue with regular price only
+        console.warn('Futures fetch failed:', futuresErr.message);
       }
-    } catch (futuresErr) {
-      // Futures fetch failed, continue with regular price only
-      console.warn('Futures fetch failed:', futuresErr.message);
     }
   }
   
