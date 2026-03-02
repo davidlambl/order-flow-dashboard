@@ -189,7 +189,7 @@ async function fetchYahooQuote(ticker) {
       try {
         const now = new Date();
         const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
-        const [datePart, timePart] = etStr.split(', ');
+        const [, timePart] = etStr.split(', ');
         const [h, m] = timePart.split(':').map(Number);
         const mins = h * 60 + m;
         const day = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })).getDay();

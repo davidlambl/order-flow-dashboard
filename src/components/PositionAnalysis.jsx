@@ -82,7 +82,7 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
     if (diffHours < 24) {
       timeAgo = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     } else {
-      timeAgo = d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+      timeAgo = d.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
     }
   }
 
