@@ -174,7 +174,8 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       if (lastUpdated) {
         const diffMs = Date.now() - new Date(lastUpdated).getTime();
         const diffMinutes = diffMs / (1000 * 60);
-        const isStale = marketOpen ? diffMinutes > 60 : diffMinutes > 240;
+        // Use optionsMarketOpen since options data updates until 4:15 PM ET
+        const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
         
         if (isStale) {
           const d = new Date(lastUpdated);

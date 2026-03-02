@@ -167,12 +167,13 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
     const diffMs = Date.now() - new Date(lastUpdated).getTime();
     const diffMinutes = diffMs / (1000 * 60);
     
-    if (marketOpen) {
+    // Use optionsMarketOpen since options data updates until 4:15 PM ET
+    if (optionsMarketOpen || marketOpen) {
       return diffMinutes > 60;
     } else {
       return diffMinutes > 240;
     }
-  }, [lastUpdated, marketOpen]);
+  }, [lastUpdated, optionsMarketOpen, marketOpen]);
 
   const hasBasis = costBasis != null && costBasis > 0;
   const hasShares = shares != null && shares > 0;
