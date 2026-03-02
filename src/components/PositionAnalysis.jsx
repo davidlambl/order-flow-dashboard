@@ -27,7 +27,9 @@ const SIGNAL_STYLES = {
  */
 function quoteSourceLabel(source) {
   if (!source) return '';
-  if (source === 'yahoo-extended') return 'After Hours';
+  if (source === 'yahoo-post') return 'After Hours';
+  if (source === 'yahoo-pre') return 'Pre-Market';
+  if (source === 'yahoo-extended') return 'Extended Hours'; // legacy fallback
   if (source === 'futures-implied') return 'Futures-Implied';
   if (source === 'finnhub') return 'Finnhub';
   return 'Live';
@@ -171,11 +173,8 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
 
 /**
  * Yahoo-style price display.
- * Always visible \u2014 shows closing price + after-hours drift when market is closed,
+ * Always visible — shows closing price + after-hours drift when market is closed,
  * or the live price during market hours.
- *
- * dataProvider: 'tradier' | 'tradier-sandbox' | 'cboe' | undefined
- * When CBOE (delayed), labels clearly indicate the price is ~15min stale.
  */
 function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider }) {
   const isDelayed = !dataProvider || dataProvider === 'cboe' || dataProvider === 'tradier-sandbox';
@@ -188,7 +187,7 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
 
   if (!hasSpot && !hasLive) return null;
 
-  const isExtended = q.source === 'yahoo-extended' || q.source === 'futures-implied';
+  const isExtended = q.source === 'yahoo-post' || q.source === 'yahoo-pre' || q.source === 'yahoo-extended' || q.source === 'futures-implied';
   const sourceLabel = quoteSourceLabel(q.source);
 
   // During market hours (or no extended data): show spot/live as primary price
@@ -222,7 +221,7 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
     );
   }
 
-  // After hours: Yahoo-style \u2014 close price primary, extended price secondary with drift
+  // After hours: Yahoo-style — close price primary, extended price secondary with drift
   const closePrevClose = q.previousClose;
   const hasCloseChange = Number.isFinite(closePrevClose) && closePrevClose > 0 && hasSpot;
   const closeChangePct = hasCloseChange ? ((spotNum - closePrevClose) / closePrevClose) * 100 : null;
@@ -360,7 +359,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   return (
     <div>
-      {/* Price Display \u2014 always visible */}
+      {/* Price Display — always visible */}
       <PriceDisplay
         spotPrice={spotPrice}
         liveQuote={liveQuote}
@@ -436,7 +435,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn)]/20">
             <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
             <span className="text-xs text-[var(--color-warn)] font-medium">
-              Options market closed \u2014 price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since last close
+              Options market closed — price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since last close
             </span>
           </div>
 

@@ -29,9 +29,9 @@ function isFiniteNum(v) {
 }
 
 /**
- * Nasdaq-100 constituent tickers (high correlation with NQ futures).
+ * Curated subset of major Nasdaq-100 components (high correlation with NQ futures).
  * Only these tickers should use futures-implied pricing.
- * Source: Major Nasdaq-100 components as of 2026.
+ * Not exhaustive — update periodically as the index rebalances.
  */
 const NASDAQ_100_CONSTITUENTS = new Set([
   'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'COST',
@@ -149,35 +149,40 @@ function extractExtendedHoursPrice(result) {
 
   const now = Math.floor(Date.now() / 1000);
 
-  // Regular session boundaries \u2014 skip extraction if we're inside regular hours
+  // Regular session boundaries — skip extraction if we're inside regular hours
   const regStart = tradingPeriods.regular?.start;
   const regEnd   = tradingPeriods.regular?.end;
   if (regStart && regEnd && now >= regStart && now < regEnd) {
     return null;
   }
 
-  // Post-market: 4:00 PM \u2013 8:00 PM ET
+  // Post-market: 4:00 PM – 8:00 PM ET
   const postStart = tradingPeriods.post?.start;
   const postEnd   = tradingPeriods.post?.end;
 
-  // Pre-market: 4:00 AM \u2013 9:30 AM ET
+  // Pre-market: 4:00 AM – 9:30 AM ET
   const preStart  = tradingPeriods.pre?.start;
   const preEnd    = tradingPeriods.pre?.end;
 
-  // Try post-market first (more common: user checks after close)
-  if (postStart && postEnd && now >= postStart && now <= postEnd) {
+  // Try post-market first (more common: user checks after close).
+  // Scan whenever we're outside regular hours — candles in the post-market
+  // window are still valid even after the session formally ends (e.g., 8:05pm ET).
+  if (postStart && postEnd) {
     for (let i = timestamps.length - 1; i >= 0; i--) {
-      if (timestamps[i] >= postStart && timestamps[i] <= postEnd && isFiniteNum(closes[i])) {
-        return { price: Number(closes[i]), timestamp: timestamps[i], session: 'post' };
+      const ts = timestamps[i];
+      if (ts >= postStart && ts <= postEnd && ts <= now && isFiniteNum(closes[i])) {
+        return { price: Number(closes[i]), timestamp: ts, session: 'post' };
       }
     }
   }
 
-  // Try pre-market
-  if (preStart && preEnd && now >= preStart && now <= preEnd) {
+  // Try pre-market with the same logic: use the latest candle in the pre
+  // window that is not in the future.
+  if (preStart && preEnd) {
     for (let i = timestamps.length - 1; i >= 0; i--) {
-      if (timestamps[i] >= preStart && timestamps[i] <= preEnd && isFiniteNum(closes[i])) {
-        return { price: Number(closes[i]), timestamp: timestamps[i], session: 'pre' };
+      const ts = timestamps[i];
+      if (ts >= preStart && ts <= preEnd && ts <= now && isFiniteNum(closes[i])) {
+        return { price: Number(closes[i]), timestamp: ts, session: 'pre' };
       }
     }
   }
@@ -220,13 +225,13 @@ async function fetchYahooQuote(ticker) {
   if (isFiniteNum(meta.postMarketPrice) && isFiniteNum(meta.postMarketTime)) {
     currentPrice = Number(meta.postMarketPrice);
     currentTimestamp = Number(meta.postMarketTime);
-    source = 'yahoo-extended';
+    source = 'yahoo-post';
   }
   // 2. Check for pre-market price from meta fields
   else if (isFiniteNum(meta.preMarketPrice) && isFiniteNum(meta.preMarketTime)) {
     currentPrice = Number(meta.preMarketPrice);
     currentTimestamp = Number(meta.preMarketTime);
-    source = 'yahoo-extended';
+    source = 'yahoo-pre';
   }
   // 3. Extract extended-hours price from time series candles
   //    (meta fields are often unpopulated even when candles exist)
@@ -235,7 +240,7 @@ async function fetchYahooQuote(ticker) {
     if (extHours) {
       currentPrice = extHours.price;
       currentTimestamp = extHours.timestamp;
-      source = 'yahoo-extended';
+      source = extHours.session === 'pre' ? 'yahoo-pre' : 'yahoo-post';
     }
   }
   // 4. Fall back to regular market price
