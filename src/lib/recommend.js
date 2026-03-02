@@ -155,23 +155,56 @@ export function computeDualRecommendation({
     return null;
   }
 
+  const gapPercent = ((livePrice - cboeClosePrice) / cboeClosePrice) * 100;
+
+  // If options market is open, only compute live recommendation (no dual mode needed)
+  if (optionsMarketOpen) {
+    const liveRec = computeRecommendation({
+      costBasis,
+      shares,
+      spotPrice: livePrice,
+      kpis,
+      gexByStrike,
+    });
+
+    if (!liveRec) {
+      return null;
+    }
+
+    return {
+      primary: liveRec,
+      secondary: null,
+      cboeClosePrice,
+      livePrice,
+      gapPercent,
+      optionsMarketOpen,
+    };
+  }
+
+  // Options market closed - compute both recommendations for dual mode
   const optionsCloseRec = computeRecommendation({
-    costBasis, shares, spotPrice: cboeClosePrice, kpis, gexByStrike
+    costBasis,
+    shares,
+    spotPrice: cboeClosePrice,
+    kpis,
+    gexByStrike,
   });
 
   const liveRec = computeRecommendation({
-    costBasis, shares, spotPrice: livePrice, kpis, gexByStrike
+    costBasis,
+    shares,
+    spotPrice: livePrice,
+    kpis,
+    gexByStrike,
   });
 
   if (!optionsCloseRec || !liveRec) {
     return null;
   }
 
-  const gapPercent = ((livePrice - cboeClosePrice) / cboeClosePrice) * 100;
-
   return {
-    primary: optionsMarketOpen ? liveRec : optionsCloseRec,
-    secondary: optionsMarketOpen ? null : liveRec,
+    primary: optionsCloseRec,
+    secondary: liveRec,
     cboeClosePrice,
     livePrice,
     gapPercent,
