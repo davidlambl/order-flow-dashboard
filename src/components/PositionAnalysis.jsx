@@ -98,8 +98,11 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
           <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
         )}
         <div
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isSecondary ? 'border-dashed border-opacity-20' : 'border-opacity-20'}`}
-          style={{ backgroundColor: style.bg, borderColor: style.border }}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isSecondary ? 'border-dashed' : ''}`}
+          style={{ 
+            backgroundColor: style.bg, 
+            borderColor: `color-mix(in srgb, ${style.border} 20%, transparent)` 
+          }}
         >
           {rec.signal === 'BUY' ? <TrendingUp size={16} style={{ color: style.color }} /> :
            rec.signal === 'SELL' ? <TrendingDown size={16} style={{ color: style.color }} /> :
@@ -110,8 +113,12 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
         </div>
       </div>
       <span
-        className="text-[10px] font-medium px-2 py-0.5 rounded-full border border-opacity-20"
-        style={{ color: style.color, backgroundColor: style.bg, borderColor: style.border }}
+        className="text-[10px] font-medium px-2 py-0.5 rounded-full border"
+        style={{ 
+          color: style.color, 
+          backgroundColor: style.bg, 
+          borderColor: `color-mix(in srgb, ${style.border} 20%, transparent)` 
+        }}
       >
         {rec.confidence} confidence
       </span>
