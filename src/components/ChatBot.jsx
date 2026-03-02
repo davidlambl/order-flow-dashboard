@@ -129,7 +129,7 @@ USER POSITION:
     const dualRec = computeDualRecommendation({
       costBasis,
       shares,
-      cboeClosePrice: spotPrice,
+      optionsSnapshotPrice: spotPrice,
       livePrice: liveQuote.current,
       kpis,
       gexByStrike,

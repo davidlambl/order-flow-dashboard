@@ -142,22 +142,22 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
 
 /**
  * Compute dual recommendations for when options market is closed and spot price has diverged.
- * @param {{ costBasis: number, shares: number, cboeClosePrice: number, livePrice: number, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
- *   - cboeClosePrice: Delayed CBOE quote (15-min delayed current_price, not official close)
+ * @param {{ costBasis: number, shares: number, optionsSnapshotPrice: number, livePrice: number, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
+ *   - optionsSnapshotPrice: Delayed CBOE quote (15-min delayed current_price from options data feed)
  *   - livePrice: Real-time price from Yahoo/Finnhub (extended hours or futures-implied)
- * @returns {{ primary: object, secondary: object|null, cboeClosePrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
+ * @returns {{ primary: object, secondary: object|null, optionsSnapshotPrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
  */
 export function computeDualRecommendation({
   costBasis, shares,
-  cboeClosePrice, livePrice,
+  optionsSnapshotPrice, livePrice,
   kpis, gexByStrike,
   optionsMarketOpen
 }) {
-  if (!costBasis || !cboeClosePrice || !livePrice || !kpis) {
+  if (!costBasis || !optionsSnapshotPrice || !livePrice || !kpis) {
     return null;
   }
 
-  const gapPercent = ((livePrice - cboeClosePrice) / cboeClosePrice) * 100;
+  const gapPercent = ((livePrice - optionsSnapshotPrice) / optionsSnapshotPrice) * 100;
 
   // If options market is open, only compute live recommendation (no dual mode needed)
   if (optionsMarketOpen) {
@@ -176,7 +176,7 @@ export function computeDualRecommendation({
     return {
       primary: liveRec,
       secondary: null,
-      cboeClosePrice,
+      optionsSnapshotPrice,
       livePrice,
       gapPercent,
       optionsMarketOpen,
@@ -187,7 +187,7 @@ export function computeDualRecommendation({
   const optionsCloseRec = computeRecommendation({
     costBasis,
     shares,
-    spotPrice: cboeClosePrice,
+    spotPrice: optionsSnapshotPrice,
     kpis,
     gexByStrike,
   });
@@ -207,7 +207,7 @@ export function computeDualRecommendation({
   return {
     primary: optionsCloseRec,
     secondary: liveRec,
-    cboeClosePrice,
+    optionsSnapshotPrice,
     livePrice,
     gapPercent,
     optionsMarketOpen,

@@ -143,7 +143,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
     return computeDualRecommendation({
       costBasis,
       shares,
-      cboeClosePrice: spotPrice,
+      optionsSnapshotPrice: spotPrice,
       livePrice: liveQuote.current,
       kpis,
       gexByStrike,
@@ -290,7 +290,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                   Options Snapshot (delayed)
                 </span>
                 <span className="text-sm font-mono tabular-nums text-[var(--color-text-secondary)]">
-                  {formatPrice(dualRec.cboeClosePrice)}
+                  {formatPrice(dualRec.optionsSnapshotPrice)}
                 </span>
               </div>
               {hasBasis && (
