@@ -27,9 +27,14 @@ export function useLiveQuote(ticker) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
+  const activeTickerRef = useRef(ticker);
 
   const load = useCallback(async (symbol, force = false) => {
     if (!symbol) return;
+
+    // Track ticker change to detect stale state
+    const isTickerChange = activeTickerRef.current !== symbol;
+    activeTickerRef.current = symbol;
 
     if (!force) {
       const hit = getCached(symbol);
@@ -38,6 +43,11 @@ export function useLiveQuote(ticker) {
         setError(null);
         return;
       }
+    }
+
+    // Clear stale quote when switching tickers or no cache hit
+    if (isTickerChange || force) {
+      setQuote(null);
     }
 
     if (abortRef.current) abortRef.current.abort();
