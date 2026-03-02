@@ -48,7 +48,7 @@ export function useLiveQuote(ticker) {
     setError(null);
 
     try {
-      const data = await fetchLiveQuote(symbol);
+      const data = await fetchLiveQuote(symbol, controller.signal);
       if (controller.signal.aborted) return;
       setCache(symbol, data);
       setQuote(data);

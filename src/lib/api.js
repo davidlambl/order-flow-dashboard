@@ -117,8 +117,9 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
 /**
  * Fetch enriched ticker context from Finnhub (news, earnings, analyst, technicals, fundamentals).
  * @param {string} ticker - Stock symbol
+ * @param {AbortSignal} signal - Optional abort signal for cancellation
  */
-export async function fetchTickerContext(ticker) {
+export async function fetchTickerContext(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getTickerContext?${params}`;
 
@@ -128,7 +129,7 @@ export async function fetchTickerContext(ticker) {
 
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, { headers, signal });
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
@@ -165,7 +166,7 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
 /**
  * Fetches real-time stock quote from Finnhub (lightweight endpoint).
  */
-export async function fetchLiveQuote(ticker) {
+export async function fetchLiveQuote(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getLiveQuote?${params}`;
 
@@ -175,7 +176,7 @@ export async function fetchLiveQuote(ticker) {
 
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, { headers, signal });
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
