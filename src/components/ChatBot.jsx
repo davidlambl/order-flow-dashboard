@@ -69,31 +69,31 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
     : '';
 
   let positionBlock = '';
-  if (costBasis && spotPrice) {
-    const pnlPct = ((spotPrice - costBasis) / costBasis * 100).toFixed(2);
-    const pnlDollars = shares ? (spotPrice - costBasis) * shares : null;
-    const notional = shares ? spotPrice * shares : null;
+  if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+    const pnlPct = ((spotPriceNum - costBasisNum) / costBasisNum * 100).toFixed(2);
+    const pnlDollars = shares ? (spotPriceNum - costBasisNum) * shares : null;
+    const notional = shares ? spotPriceNum * shares : null;
     
     if (showDual) {
-      const livePnlPct = ((liveQuote.current - costBasis) / costBasis * 100).toFixed(2);
-      const livePnlDollars = shares ? (liveQuote.current - costBasis) * shares : null;
-      const gapPctNum = ((liveQuote.current - spotPrice) / spotPrice) * 100;
+      const livePnlPct = ((livePriceNum - costBasisNum) / costBasisNum * 100).toFixed(2);
+      const livePnlDollars = shares ? (livePriceNum - costBasisNum) * shares : null;
+      const gapPctNum = ((livePriceNum - spotPriceNum) / spotPriceNum) * 100;
       const gapPct = Math.abs(gapPctNum).toFixed(1);
       positionBlock = `
 USER POSITION:
-  Cost Basis: ${formatPrice(costBasis)}
+  Cost Basis: ${formatPrice(costBasisNum)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
-  Options Snapshot (delayed): ${formatPrice(spotPrice)}
-  Live Price (Overnight): ${formatPrice(liveQuote.current)} (${gapPctNum >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
+  Options Snapshot (delayed): ${formatPrice(spotPriceNum)}
+  Live Price (Overnight): ${formatPrice(livePriceNum)} (${gapPctNum >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
   Unrealized P&L (at Snapshot): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
   Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Snapshot): ~${formatDollar(notional)}` : ''}
 `;
     } else {
       positionBlock = `
 USER POSITION:
-  Cost Basis: ${formatPrice(costBasis)}
+  Cost Basis: ${formatPrice(costBasisNum)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
-  Current Spot: ${formatPrice(spotPrice)}
+  Current Spot: ${formatPrice(spotPriceNum)}
   Unrealized P&L: ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure: ~${formatDollar(notional)}` : ''}
 `;
     }
