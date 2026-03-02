@@ -1,7 +1,7 @@
 // src/components/PositionAnalysis.jsx
 import { useMemo } from 'react';
 import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight, AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
-import { computeRecommendation, computeDualRecommendation, extractPriceLevels } from '../lib/recommend';
+import { computeRecommendation, computeDualRecommendation, extractPriceLevels, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 import { formatDollar, formatPrice } from '../lib/format';
 
 const SIGNAL_STYLES = {
@@ -128,7 +128,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
   const showDual = useMemo(() => {
     if (!liveQuote || !spotPrice || !costBasis || !kpis) return false;
     const gapPercent = Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100);
-    return !optionsMarketOpen && gapPercent >= 0.5;
+    return !optionsMarketOpen && gapPercent >= GAP_DUAL_REC_THRESHOLD_PCT;
   }, [liveQuote, spotPrice, costBasis, kpis, optionsMarketOpen]);
 
   const dualRec = useMemo(() => {

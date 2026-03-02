@@ -8,7 +8,7 @@ import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import { getChatHistory, setChatHistory, getPreference, setPreference } from '../lib/store';
 import { getAISettings } from './AppSettings';
-import { computeRecommendation, computeDualRecommendation } from '../lib/recommend';
+import { computeRecommendation, computeDualRecommendation, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 
 /**
  * Serializes the current dashboard state into a plain-text context block
@@ -45,7 +45,7 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
   
   const liveQuote = tickerCtx?.liveQuote;
   const showDual = liveQuote && spotPrice && !optionsMarketOpen && 
-    Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100) >= 0.5;
+    Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
 
   let staleness = '';
   if (lastUpdated) {

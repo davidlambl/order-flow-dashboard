@@ -2,6 +2,9 @@
 // Algorithmic position recommendation engine.
 // Scores 5 market factors and aggregates into a BUY / HOLD / SELL signal.
 
+// Minimum gap percentage to trigger dual recommendation mode
+export const GAP_DUAL_REC_THRESHOLD_PCT = 0.5;
+
 /**
  * @param {{ costBasis: number, shares: number, spotPrice: number, kpis: object, gexByStrike: Array }} params
  * @returns {{ signal: 'BUY'|'HOLD'|'SELL', confidence: 'HIGH'|'MEDIUM'|'LOW', reasons: string[], pnl: { dollars: number, percent: number } }}
