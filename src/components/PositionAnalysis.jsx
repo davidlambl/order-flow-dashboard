@@ -5,9 +5,21 @@ import { computeRecommendation, computeDualRecommendation, extractPriceLevels, G
 import { formatDollar, formatPrice } from '../lib/format';
 
 const SIGNAL_STYLES = {
-  BUY: { color: 'var(--color-bull)', bg: 'var(--color-bull-bg)', border: 'var(--color-bull)' },
-  HOLD: { color: 'var(--color-warn)', bg: 'var(--color-warn-bg)', border: 'var(--color-warn)' },
-  SELL: { color: 'var(--color-bear)', bg: 'var(--color-bear-bg)', border: 'var(--color-bear)' },
+  BUY: {
+    color: 'var(--color-bull)',
+    bg: 'var(--color-bull-bg)',
+    borderMuted: 'var(--color-bull-border-muted)',
+  },
+  HOLD: {
+    color: 'var(--color-warn)',
+    bg: 'var(--color-warn-bg)',
+    borderMuted: 'var(--color-warn-border-muted)',
+  },
+  SELL: {
+    color: 'var(--color-bear)',
+    bg: 'var(--color-bear-bg)',
+    borderMuted: 'var(--color-bear-border-muted)',
+  },
 };
 
 function PriceLevelBar({ levels }) {
@@ -101,7 +113,7 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isSecondary ? 'border-dashed' : ''}`}
           style={{ 
             backgroundColor: style.bg, 
-            borderColor: `color-mix(in srgb, ${style.border} 20%, transparent)` 
+            borderColor: style.borderMuted 
           }}
         >
           {rec.signal === 'BUY' ? <TrendingUp size={16} style={{ color: style.color }} /> :
@@ -117,7 +129,7 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
         style={{ 
           color: style.color, 
           backgroundColor: style.bg, 
-          borderColor: `color-mix(in srgb, ${style.border} 20%, transparent)` 
+          borderColor: style.borderMuted 
         }}
       >
         {rec.confidence} confidence
