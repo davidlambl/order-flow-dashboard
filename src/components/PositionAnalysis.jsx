@@ -328,6 +328,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                   {liveQuote?.source && (
                     <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono">
                       {liveQuote.source === 'yahoo-extended' ? 'Extended Hours' : 
+                       liveQuote.source === 'futures-implied' ? 'Futures-Implied' :
                        liveQuote.source === 'yahoo-regular' ? 'Yahoo' : 'Finnhub'}
                     </span>
                   )}

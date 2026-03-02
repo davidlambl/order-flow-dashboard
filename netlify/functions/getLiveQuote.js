@@ -22,6 +22,62 @@ const CORS = {
 };
 
 /**
+ * Fetch Nasdaq-100 futures data to calculate overnight implied prices.
+ */
+async function fetchNasdaqFutures() {
+  // NQ=F is the Nasdaq-100 futures ticker on Yahoo Finance
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1m&range=1d`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+    },
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Futures fetch failed: ${res.status}`);
+  }
+  
+  const data = await res.json();
+  const result = data?.chart?.result?.[0];
+  
+  if (!result) {
+    throw new Error('No futures data returned');
+  }
+  
+  const meta = result.meta;
+  
+  // Get current futures price (trades nearly 24/7)
+  let currentPrice = meta.regularMarketPrice;
+  
+  // Check for the most recent price in time series
+  const timestamps = result.timestamp || [];
+  const closes = result.indicators?.quote?.[0]?.close || [];
+  
+  for (let i = timestamps.length - 1; i >= 0; i--) {
+    if (closes[i] != null && !isNaN(closes[i])) {
+      currentPrice = closes[i];
+      break;
+    }
+  }
+  
+  // Previous close (typically Friday 4 PM ET close for weekend gaps)
+  const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
+  
+  if (!currentPrice || !previousClose) {
+    throw new Error('Futures data incomplete');
+  }
+  
+  // Calculate futures change percentage
+  const futuresChangePercent = ((currentPrice - previousClose) / previousClose) * 100;
+  
+  return {
+    current: currentPrice,
+    previousClose,
+    changePercent: futuresChangePercent,
+  };
+}
+
+/**
  * Fetch live quote from Yahoo Finance (includes extended hours).
  */
 async function fetchYahooQuote(ticker) {
@@ -69,27 +125,36 @@ async function fetchYahooQuote(ticker) {
     currentTimestamp = meta.regularMarketTime;
     source = 'yahoo-regular';
   }
-  // 4. Last resort: look at time series data
-  else {
-    const timestamps = result.timestamp || [];
-    const closes = result.indicators?.quote?.[0]?.close || [];
-    
-    // Find most recent non-null price
-    for (let i = timestamps.length - 1; i >= 0; i--) {
-      if (closes[i] != null && !isNaN(closes[i])) {
-        currentPrice = closes[i];
-        currentTimestamp = timestamps[i];
-        source = 'yahoo-regular';
-        break;
+  
+  const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
+  
+  // If we only have regular market price, check if we should use futures-implied pricing
+  if (source === 'yahoo-regular' && previousClose) {
+    try {
+      // Fetch Nasdaq-100 futures to calculate implied overnight price
+      const futures = await fetchNasdaqFutures();
+      
+      // Check if futures have moved significantly (>0.1%) - indicates active trading
+      if (Math.abs(futures.changePercent) > 0.1) {
+        // Calculate implied stock price based on futures movement
+        const impliedPrice = previousClose * (1 + futures.changePercent / 100);
+        
+        // Use implied price if it differs meaningfully from close
+        if (Math.abs(impliedPrice - currentPrice) / currentPrice > 0.001) { // 0.1% threshold
+          currentPrice = impliedPrice;
+          currentTimestamp = Math.floor(Date.now() / 1000);
+          source = 'futures-implied';
+        }
       }
+    } catch (futuresErr) {
+      // Futures fetch failed, continue with regular price
+      console.warn('Futures fetch failed:', futuresErr.message);
     }
   }
   
   if (!currentPrice) {
     throw new Error('Yahoo Finance: No valid price found');
   }
-  
-  const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
   
   return {
     ticker,
