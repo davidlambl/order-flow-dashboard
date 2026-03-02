@@ -40,9 +40,24 @@ const NASDAQ_100_CONSTITUENTS = new Set([
 ]);
 
 /**
+ * In-memory cache for futures data to avoid repeated API calls.
+ * Futures data is the same for all tickers, so we cache it with a 60s TTL.
+ */
+let futuresCache = null;
+let futuresCacheTimestamp = 0;
+const FUTURES_CACHE_TTL = 60 * 1000; // 60 seconds
+
+/**
  * Fetch Nasdaq-100 futures data to calculate overnight implied prices.
+ * Uses in-memory cache to avoid repeated API calls within 60s window.
  */
 async function fetchNasdaqFutures() {
+  // Check cache first
+  const now = Date.now();
+  if (futuresCache && (now - futuresCacheTimestamp) < FUTURES_CACHE_TTL) {
+    return futuresCache;
+  }
+
   // NQ=F is the Nasdaq-100 futures ticker on Yahoo Finance
   const url = `https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1m&range=1d`;
   const res = await fetch(url, {
@@ -88,11 +103,17 @@ async function fetchNasdaqFutures() {
   // Calculate futures change percentage
   const futuresChangePercent = ((currentPrice - previousClose) / previousClose) * 100;
   
-  return {
+  const futuresData = {
     current: currentPrice,
     previousClose,
     changePercent: futuresChangePercent,
   };
+
+  // Cache the result
+  futuresCache = futuresData;
+  futuresCacheTimestamp = now;
+
+  return futuresData;
 }
 
 /**
