@@ -234,12 +234,12 @@ export default async (req) => {
   });
 
   let liveQuote = null;
-  if (tickerQuoteRes.status === 'fulfilled' && tickerQuoteRes.value && tickerQuoteRes.value.c) {
+  if (tickerQuoteRes.status === 'fulfilled' && tickerQuoteRes.value && tickerQuoteRes.value.c != null) {
     const q = tickerQuoteRes.value;
     liveQuote = {
       current: q.c,
       previousClose: q.pc ?? null,
-      changePercent: q.pc ? ((q.c - q.pc) / q.pc) * 100 : 0,
+      changePercent: q.pc != null ? ((q.c - q.pc) / q.pc) * 100 : null,
       timestamp: q.t ? q.t * 1000 : Date.now(),
     };
   }

@@ -126,10 +126,10 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
 
 export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
   const showDual = useMemo(() => {
-    if (!liveQuote || !spotPrice || !optionsMarketOpen) return false;
+    if (!liveQuote || !spotPrice || !costBasis || !kpis) return false;
     const gapPercent = Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100);
     return !optionsMarketOpen && gapPercent >= 0.5;
-  }, [liveQuote, spotPrice, optionsMarketOpen]);
+  }, [liveQuote, spotPrice, costBasis, kpis, optionsMarketOpen]);
 
   const dualRec = useMemo(() => {
     if (!showDual || !costBasis || !liveQuote) return null;
@@ -270,7 +270,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn)]/20">
             <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
             <span className="text-xs text-[var(--color-warn)] font-medium">
-              Options market closed until 9:30 AM ET — overnight price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}%
+              Options market closed — price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since last close
             </span>
           </div>
 
@@ -368,7 +368,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                 rec={dualRec.primary}
                 isStale={isStale}
                 lastUpdated={lastUpdated}
-                label="Based on Friday Options"
+                label="Options Close Snapshot"
                 hasWarning={true}
               />
               {dualRec.primary && (
@@ -402,7 +402,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                   </div>
                 )}
                 <div className="mt-2 text-[10px] text-[var(--color-text-muted)] italic">
-                  Options positioning unknown until market opens at 9:30 AM ET
+                  Options positioning unknown until market reopens
                 </div>
               </div>
             )}

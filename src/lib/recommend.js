@@ -140,7 +140,7 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
 /**
  * Compute dual recommendations for when options market is closed and spot price has diverged.
  * @param {{ costBasis: number, shares: number, cboeClosePrice: number, livePrice: number, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
- * @returns {{ primary: object, secondary: object|null, cboeClosePrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean }}
+ * @returns {{ primary: object, secondary: object|null, cboeClosePrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
  */
 export function computeDualRecommendation({
   costBasis, shares,
@@ -148,11 +148,11 @@ export function computeDualRecommendation({
   kpis, gexByStrike,
   optionsMarketOpen
 }) {
-  if (!cboeClosePrice || !livePrice) {
+  if (!costBasis || !cboeClosePrice || !livePrice || !kpis) {
     return null;
   }
 
-  const fridayRec = computeRecommendation({
+  const optionsCloseRec = computeRecommendation({
     costBasis, shares, spotPrice: cboeClosePrice, kpis, gexByStrike
   });
 
@@ -160,10 +160,14 @@ export function computeDualRecommendation({
     costBasis, shares, spotPrice: livePrice, kpis, gexByStrike
   });
 
+  if (!optionsCloseRec || !liveRec) {
+    return null;
+  }
+
   const gapPercent = ((livePrice - cboeClosePrice) / cboeClosePrice) * 100;
 
   return {
-    primary: optionsMarketOpen ? liveRec : fridayRec,
+    primary: optionsMarketOpen ? liveRec : optionsCloseRec,
     secondary: optionsMarketOpen ? null : liveRec,
     cboeClosePrice,
     livePrice,

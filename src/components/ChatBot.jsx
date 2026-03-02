@@ -79,7 +79,7 @@ USER POSITION:
   CBOE Close (Options Data): ${formatPrice(spotPrice)}
   Live Price (Overnight): ${formatPrice(liveQuote.current)} (${gapPct >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
   Unrealized P&L (Close): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
-  Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure: ~${formatDollar(notional)}` : ''}
+  Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Close): ~${formatDollar(notional)}` : ''}
 `;
     } else {
       positionBlock = `
@@ -137,7 +137,7 @@ USER POSITION:
       optionsMarketOpen: optionsMarketOpen || false,
     });
     
-    if (dualRec) {
+    if (dualRec && dualRec.primary) {
       const timeStr = lastUpdated ? new Date(lastUpdated).toLocaleString('en-US', { 
         weekday: 'short', 
         month: 'short', 
@@ -146,18 +146,22 @@ USER POSITION:
         minute: '2-digit', 
         hour12: true 
       }) : '';
-      
+
       signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
-  
-  Recommendation #1 (Friday Options): ${dualRec.primary.signal} (${dualRec.primary.confidence} confidence)
+
+  Recommendation #1 (Options Close Snapshot): ${dualRec.primary.signal} (${dualRec.primary.confidence} confidence)
 ${dualRec.primary.reasons.map((r) => `    • ${r}`).join('\n')}
-    ⚠ Note: This recommendation is based on options data from ${timeStr}.
-           Options market closed. Signal won't update until 9:30 AM ET Monday.
-  
+    ⚠ Note: This recommendation is based on options data from ${timeStr} (last options close).
+           Options market is currently closed. This signal will update when options trading resumes.`;
+
+      if (dualRec.secondary) {
+        signalBlock += `
+
   Scenario #2 (If Live Price Holds): ${dualRec.secondary.signal} (${dualRec.secondary.confidence} confidence)
 ${dualRec.secondary.reasons.map((r) => `    • ${r}`).join('\n')}
-    ⚠ Note: This is a hypothetical adjustment. Actual recommendation depends on
-           how options traders react at 9:30 AM open.`;
+    ⚠ Note: This is a hypothetical adjustment based on the current live price. The actual recommendation
+           will depend on how options traders react when the options market next opens.`;
+      }
     }
   } else {
     const rec = computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
