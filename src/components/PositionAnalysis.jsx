@@ -259,7 +259,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
         </div>
 
         {/* Center: P&L (single or dual) */}
-        {hasBasis && spotPrice && !showDual && (
+        {hasBasis && hasSpotPrice && !showDual && (
           <div className="flex flex-col items-center gap-0.5">
             <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
               Unrealized P&L
