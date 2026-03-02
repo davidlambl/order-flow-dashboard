@@ -147,14 +147,14 @@ USER POSITION:
         hour12: true 
       }) : '';
       
-      const timeClause = timeStr ? ` (last updated at ${timeStr})` : '';
+      const timeClause = timeStr ? ` (snapshot as of ${timeStr}, may be delayed)` : '';
 
       signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
 
-  Recommendation #1 (Options Close Snapshot): ${dualRec.primary.signal} (${dualRec.primary.confidence} confidence)
+  Recommendation #1 (Options Snapshot): ${dualRec.primary.signal} (${dualRec.primary.confidence} confidence)
 ${dualRec.primary.reasons.map((r) => `    • ${r}`).join('\n')}
-    ⚠ Note: This recommendation is based on options data from the last options close${timeClause}.
-           Options market is currently closed. This signal will update when options trading resumes.`;
+    ⚠ Note: This recommendation is based on a delayed options quote snapshot${timeClause}, not the official options close price.
+           Options market is currently closed; this signal will refresh after the next options snapshot when trading resumes.`;
 
       if (dualRec.secondary) {
         signalBlock += `
