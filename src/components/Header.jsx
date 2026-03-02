@@ -41,11 +41,11 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
     : 'CBOE ~15-min delayed';
 
   return (
-    <header className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
+    <header className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
       {/* Logo */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-[var(--color-accent)] text-white">
-          <Activity size={18} strokeWidth={2.5} />
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[var(--color-accent)] text-white">
+          <Activity size={16} strokeWidth={2.5} className="sm:w-[18px] sm:h-[18px]" />
         </div>
         <div className="hidden sm:block">
           <h1 className="text-sm font-semibold tracking-tight text-[var(--color-text-primary)] leading-none">
@@ -58,10 +58,10 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
       </div>
 
       {/* Search + Price */}
-      <div className="flex items-center gap-4">
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <div className="flex items-center gap-2 sm:gap-4">
+        <form onSubmit={handleSubmit} className="flex items-center gap-1.5 sm:gap-2">
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200 ${
+            className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-all duration-200 ${
               focused
                 ? 'border-[var(--color-accent)] bg-[var(--color-surface-2)] ring-1 ring-[var(--color-accent)]/30'
                 : 'border-[var(--color-border)] bg-[var(--color-surface-2)]'
@@ -77,7 +77,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               onBlur={() => setFocused(false)}
               placeholder="Ticker"
               spellCheck={false}
-              className="w-20 bg-transparent text-sm font-mono font-semibold text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
+              className="w-16 sm:w-20 bg-transparent text-sm font-mono font-semibold text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
               aria-label="Stock ticker symbol"
             />
           </div>
@@ -85,7 +85,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             type="button"
             onClick={onRefresh}
             disabled={loading}
-            className="p-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-muted)] transition-all duration-200 disabled:opacity-40"
+            className="p-1.5 sm:p-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-muted)] transition-all duration-200 disabled:opacity-40"
             aria-label="Refresh data"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
@@ -95,7 +95,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           <button
             type="button"
             onClick={onToggleAutoRefresh}
-            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg border text-[10px] font-semibold tabular-nums transition-all ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-lg border text-[10px] font-semibold tabular-nums transition-all ${
               autoRefresh && marketOpen && !usingMock
                 ? 'border-[var(--color-bull)]/30 text-[var(--color-bull)]'
                 : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:border-[var(--color-text-muted)]'
@@ -115,10 +115,10 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-bull)] opacity-75" />
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--color-bull)]" />
                 </span>
-                {secondsLeft}s
+                <span className="hidden xs:inline">{secondsLeft}s</span>
               </>
             ) : autoRefresh && !marketOpen ? (
-              'Mkt Closed'
+              <span className="hidden xs:inline">Mkt Closed</span>
             ) : (
               'Auto'
             )}
@@ -127,7 +127,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
 
         {/* Spot price with source tooltip */}
         {spotPrice != null && !loading && (
-          <div className="hidden md:flex items-baseline gap-2 tabular-nums" title={priceSource}>
+          <div className="hidden lg:flex items-baseline gap-2 tabular-nums" title={priceSource}>
             <span className="text-base font-bold font-mono text-[var(--color-text-primary)]">
               ${spotPrice.toFixed(2)}
             </span>
@@ -145,7 +145,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           if (daysTo < 0 || daysTo > 7) return null;
           return (
             <span
-              className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-[var(--color-warn)]/10 text-[var(--color-warn)] border-[var(--color-warn)]/30"
+              className="hidden lg:flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-[var(--color-warn)]/10 text-[var(--color-warn)] border-[var(--color-warn)]/30"
               title={`Earnings: ${earnings.date}`}
             >
               <Calendar size={10} />
@@ -156,11 +156,11 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
       </div>
 
       {/* Status */}
-      <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
+      <div className="flex items-center gap-2 sm:gap-3 text-xs text-[var(--color-text-muted)]">
         {isPremium && (
           <div className="flex items-center gap-1.5">
             <span
-              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-semibold border"
               style={{
                 color: tokenTier === 'pro' ? 'var(--color-accent)' : 'var(--color-purple)',
                 backgroundColor: tokenTier === 'pro' ? 'rgba(59,130,246,0.1)' : 'var(--color-purple-bg)',
@@ -168,7 +168,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               }}
             >
               <ShieldCheck size={10} />
-              {tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` · ${daysLeft}d` : ''}`}
+              <span className="hidden xs:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` · ${daysLeft}d` : ''}`}</span>
             </span>
             <button
               onClick={onLogout}
@@ -180,7 +180,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </div>
         )}
         <span className="hidden md:inline tabular-nums">{timeStr}</span>
-        <div className="flex items-center gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} — ${data?.delay || 'delayed'}`}>
+        <div className="flex items-center gap-1 sm:gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} — ${data?.delay || 'delayed'}`}>
           {usingMock ? (
             <>
               <WifiOff size={12} className="text-[var(--color-warn)]" />

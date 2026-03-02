@@ -54,10 +54,10 @@ function PriceLevelBar({ levels }) {
               style={{ left: `${level.pct}%`, top: barY - 16 }}
             >
               <div className="w-0.5 h-4 rounded-full" style={{ backgroundColor: level.color }} />
-              <span className="text-[10px] font-mono tabular-nums whitespace-nowrap mt-0.5" style={{ color: level.color }}>
+              <span className="text-[9px] sm:text-[10px] font-mono tabular-nums whitespace-nowrap mt-0.5" style={{ color: level.color }}>
                 {formatPrice(level.price)}
               </span>
-              <span className="text-[9px] font-semibold whitespace-nowrap" style={{ color: level.color }}>
+              <span className="text-[8px] sm:text-[9px] font-semibold whitespace-nowrap" style={{ color: level.color }}>
                 {level.label}
               </span>
             </div>
@@ -69,10 +69,10 @@ function PriceLevelBar({ levels }) {
             className="absolute flex flex-col items-center -translate-x-1/2"
             style={{ left: `${level.pct}%`, top: 0 }}
           >
-            <span className="text-[9px] font-semibold whitespace-nowrap mb-0.5" style={{ color: level.color }}>
+            <span className="text-[8px] sm:text-[9px] font-semibold whitespace-nowrap mb-0.5" style={{ color: level.color }}>
               {level.label}
             </span>
-            <span className="text-[10px] font-mono tabular-nums whitespace-nowrap mb-1" style={{ color: level.color }}>
+            <span className="text-[9px] sm:text-[10px] font-mono tabular-nums whitespace-nowrap mb-1" style={{ color: level.color }}>
               {formatPrice(level.price)}
             </span>
             <div className="w-0.5 h-4 rounded-full" style={{ backgroundColor: level.color }} />

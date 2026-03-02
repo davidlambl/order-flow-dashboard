@@ -68,6 +68,13 @@
     color: inherit;
   }
 
+  /* Prevent zoom on mobile input focus */
+  @media screen and (max-width: 768px) {
+    input, textarea, select {
+      font-size: 16px !important;
+    }
+  }
+
   button {
     cursor: pointer;
     background: none;
