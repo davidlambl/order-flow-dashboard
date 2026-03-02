@@ -2,6 +2,9 @@
 // Algorithmic position recommendation engine.
 // Scores 5 market factors and aggregates into a BUY / HOLD / SELL signal.
 
+// Minimum gap percentage to trigger dual recommendation mode
+export const GAP_DUAL_REC_THRESHOLD_PCT = 0.5;
+
 /**
  * @param {{ costBasis: number, shares: number, spotPrice: number, kpis: object, gexByStrike: Array }} params
  * @returns {{ signal: 'BUY'|'HOLD'|'SELL', confidence: 'HIGH'|'MEDIUM'|'LOW', reasons: string[], pnl: { dollars: number, percent: number } }}
@@ -135,4 +138,90 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
   }
 
   return levels.sort((a, b) => a.price - b.price);
+}
+
+/**
+ * Compute dual recommendations for when options market is closed and spot price has diverged.
+ * @param {{ costBasis: number|string, shares: number, optionsSnapshotPrice: number|string, livePrice: number|string, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
+ *   - costBasis: Entry price per share (number or numeric string; coerced internally)
+ *   - optionsSnapshotPrice: Delayed CBOE quote (15-min delayed current_price from options data feed; coerced internally)
+ *   - livePrice: Real-time price from Yahoo/Finnhub (extended hours or futures-implied; coerced internally)
+ * @returns {{ primary: object, secondary: object|null, optionsSnapshotPrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
+ *   Returned `optionsSnapshotPrice` and `livePrice` are normalized to numbers regardless of input type.
+ */
+export function computeDualRecommendation({
+  costBasis, shares,
+  optionsSnapshotPrice, livePrice,
+  kpis, gexByStrike,
+  optionsMarketOpen
+}) {
+  // Coerce to numbers so string-typed prices (e.g. from API responses) are handled correctly
+  const costBasisNum = Number(costBasis);
+  const snapshotPriceNum = Number(optionsSnapshotPrice);
+  const livePriceNum = Number(livePrice);
+
+  if (
+    !Number.isFinite(costBasisNum) || costBasisNum <= 0 ||
+    !Number.isFinite(snapshotPriceNum) || snapshotPriceNum <= 0 ||
+    !Number.isFinite(livePriceNum) || livePriceNum <= 0 ||
+    !kpis
+  ) {
+    return null;
+  }
+
+  const gapPercent = ((livePriceNum - snapshotPriceNum) / snapshotPriceNum) * 100;
+
+  // If options market is open, only compute live recommendation (no dual mode needed)
+  if (optionsMarketOpen) {
+    const liveRec = computeRecommendation({
+      costBasis: costBasisNum,
+      shares,
+      spotPrice: livePriceNum,
+      kpis,
+      gexByStrike,
+    });
+
+    if (!liveRec) {
+      return null;
+    }
+
+    return {
+      primary: liveRec,
+      secondary: null,
+      optionsSnapshotPrice: snapshotPriceNum,
+      livePrice: livePriceNum,
+      gapPercent,
+      optionsMarketOpen,
+    };
+  }
+
+  // Options market closed - compute both recommendations for dual mode
+  const optionsCloseRec = computeRecommendation({
+    costBasis: costBasisNum,
+    shares,
+    spotPrice: snapshotPriceNum,
+    kpis,
+    gexByStrike,
+  });
+
+  const liveRec = computeRecommendation({
+    costBasis: costBasisNum,
+    shares,
+    spotPrice: livePriceNum,
+    kpis,
+    gexByStrike,
+  });
+
+  if (!optionsCloseRec || !liveRec) {
+    return null;
+  }
+
+  return {
+    primary: optionsCloseRec,
+    secondary: liveRec,
+    optionsSnapshotPrice: snapshotPriceNum,
+    livePrice: livePriceNum,
+    gapPercent,
+    optionsMarketOpen,
+  };
 }

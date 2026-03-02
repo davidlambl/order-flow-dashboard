@@ -9,8 +9,9 @@ const FUNCTION_BASE = '/.netlify/functions';
  * Fetch computed market data from our serverless function.
  * Supports BYOK Tradier for real-time data; falls back to free CBOE delayed quotes.
  * @param {string} ticker - Stock symbol
+ * @param {AbortSignal|null} [signal] - Optional abort signal for cancellation
  */
-export async function fetchMarketData(ticker) {
+export async function fetchMarketData(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getMarketData?${params}`;
 
@@ -18,9 +19,12 @@ export async function fetchMarketData(ticker) {
   const tradierKey = sessionStorage.getItem('data_tradier_key');
   if (tradierKey) headers['x-tradier-key'] = tradierKey;
 
+  const options = { headers };
+  if (signal) options.signal = signal;
+
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, options);
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
@@ -117,8 +121,9 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
 /**
  * Fetch enriched ticker context from Finnhub (news, earnings, analyst, technicals, fundamentals).
  * @param {string} ticker - Stock symbol
+ * @param {AbortSignal|null} [signal] - Optional abort signal for cancellation
  */
-export async function fetchTickerContext(ticker) {
+export async function fetchTickerContext(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getTickerContext?${params}`;
 
@@ -126,9 +131,12 @@ export async function fetchTickerContext(ticker) {
   const finnhubKey = sessionStorage.getItem('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
+  const options = { headers };
+  if (signal) options.signal = signal;
+
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, options);
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
@@ -158,6 +166,37 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
       throw new Error(err.error || 'Access token required');
     }
     throw new Error(err.error || `Models API error: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Fetches real-time stock quote via Netlify function.
+ * Uses Yahoo Finance (including extended hours and futures-implied pricing where available) and falls back to Finnhub.
+ * @param {string} ticker - Stock symbol
+ * @param {AbortSignal|null} [signal] - Optional abort signal for request cancellation
+ * @returns {Promise<Object>} Quote data with source indicator (yahoo-extended, futures-implied, yahoo-regular, or finnhub)
+ */
+export async function fetchLiveQuote(ticker, signal = null) {
+  const params = new URLSearchParams({ ticker });
+  const url = `${FUNCTION_BASE}/getLiveQuote?${params}`;
+
+  const headers = {};
+  const finnhubKey = sessionStorage.getItem('data_finnhub_key');
+  if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
+
+  const options = { headers };
+  if (signal) options.signal = signal;
+
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (networkErr) {
+    throw new Error(`Network error: ${networkErr.message}`);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Live quote error: ${res.status}`);
   }
   return res.json();
 }

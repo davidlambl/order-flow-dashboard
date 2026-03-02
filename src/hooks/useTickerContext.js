@@ -48,7 +48,7 @@ export function useTickerContext(ticker) {
     setError(null);
 
     try {
-      const data = await fetchTickerContext(symbol);
+      const data = await fetchTickerContext(symbol, controller.signal);
       if (controller.signal.aborted) return;
       setCache(symbol, data);
       setContext(data);

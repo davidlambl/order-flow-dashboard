@@ -7,17 +7,58 @@ import { generateMockData } from '../lib/mockData';
 
 const MARKET_OPEN_MIN = 570;  // 9:30 ET
 const MARKET_CLOSE_MIN = 960; // 16:00 ET
+const OPTIONS_CLOSE_MIN = 975; // 16:15 ET
+
+/**
+ * Get current ET market time info (minutes since midnight, weekday).
+ * Returns null if unable to parse.
+ */
+function getMarketTime() {
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false,
+        weekday: 'short',
+      }).formatToParts(new Date()).map(({ type, value }) => [type, value])
+    );
+
+    const weekday = parts.weekday;
+    const hour = parseInt(parts.hour, 10);
+    const minute = parseInt(parts.minute, 10);
+
+    if (typeof weekday !== 'string' || weekday.length === 0 ||
+        !Number.isFinite(hour) || !Number.isFinite(minute)) {
+      console.error('Failed to parse market time parts:', parts);
+      return null;
+    }
+
+    const mins = hour * 60 + minute;
+    if (!Number.isFinite(mins)) {
+      console.error('Computed invalid minutes for market time:', { hour, minute, mins });
+      return null;
+    }
+    return { weekday, mins };
+  } catch (err) {
+    console.error('Failed to parse market time:', err);
+    return null;
+  }
+}
 
 function isMarketOpen() {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      hour: 'numeric', minute: 'numeric', hour12: false, weekday: 'short',
-    }).formatToParts(new Date()).map(({ type, value }) => [type, value])
-  );
-  if (parts.weekday === 'Sat' || parts.weekday === 'Sun') return false;
-  const mins = parseInt(parts.hour) * 60 + parseInt(parts.minute);
-  return mins >= MARKET_OPEN_MIN && mins < MARKET_CLOSE_MIN;
+  const time = getMarketTime();
+  if (!time) return false;
+  if (time.weekday === 'Sat' || time.weekday === 'Sun') return false;
+  return time.mins >= MARKET_OPEN_MIN && time.mins < MARKET_CLOSE_MIN;
+}
+
+function isOptionsMarketOpen() {
+  const time = getMarketTime();
+  if (!time) return false;
+  if (time.weekday === 'Sat' || time.weekday === 'Sun') return false;
+  return time.mins >= MARKET_OPEN_MIN && time.mins < OPTIONS_CLOSE_MIN;
 }
 
 function getRefreshSecs(provider) {
@@ -32,6 +73,7 @@ export function useMarketData(ticker) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [marketOpen, setMarketOpen] = useState(isMarketOpen);
+  const [optionsMarketOpen, setOptionsMarketOpen] = useState(isOptionsMarketOpen);
   const [timerEpoch, setTimerEpoch] = useState(0);
   const abortRef = useRef(null);
   const timerRef = useRef(null);
@@ -47,7 +89,7 @@ export function useMarketData(ticker) {
     }
 
     try {
-      const result = await fetchMarketData(symbol);
+      const result = await fetchMarketData(symbol, controller.signal);
       if (controller.signal.aborted) return;
 
       setData({
@@ -89,7 +131,10 @@ export function useMarketData(ticker) {
 
   // Re-evaluate market hours every 30s
   useEffect(() => {
-    const check = () => setMarketOpen(isMarketOpen());
+    const check = () => {
+      setMarketOpen(isMarketOpen());
+      setOptionsMarketOpen(isOptionsMarketOpen());
+    };
     const id = setInterval(check, 30_000);
     return () => clearInterval(id);
   }, []);
@@ -99,7 +144,7 @@ export function useMarketData(ticker) {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
 
-    const active = autoRefresh && marketOpen && !usingMock && !!ticker && data != null;
+    const active = autoRefresh && optionsMarketOpen && !usingMock && !!ticker && data != null;
     if (!active) {
       setSecondsLeft(0);
       return;
@@ -120,7 +165,7 @@ export function useMarketData(ticker) {
     }, 1000);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [autoRefresh, marketOpen, usingMock, ticker, data?.provider, fetchAll, timerEpoch]);
+  }, [autoRefresh, optionsMarketOpen, usingMock, ticker, data?.provider, fetchAll, timerEpoch]);
 
   const refresh = useCallback(() => {
     if (ticker) {
@@ -135,6 +180,6 @@ export function useMarketData(ticker) {
 
   return {
     data, loading, error, usingMock, refresh,
-    autoRefresh, secondsLeft, marketOpen, toggleAutoRefresh,
+    autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh,
   };
 }

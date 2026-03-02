@@ -8,7 +8,7 @@ import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import { getChatHistory, setChatHistory, getPreference, setPreference } from '../lib/store';
 import { getAISettings } from './AppSettings';
-import { computeRecommendation } from '../lib/recommend';
+import { computeRecommendation, computeDualRecommendation, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 
 /**
  * Serializes the current dashboard state into a plain-text context block
@@ -35,13 +35,23 @@ function buildFlowTrend(flowHistory) {
   return `\n5-SESSION TREND: ${consec} consecutive ${dir} session${consec > 1 ? 's' : ''}. Cumulative delta over window: ${formatDollar(delta)}.`;
 }
 
-function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext, marketOpen) {
+function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext, marketOpen, optionsMarketOpen, liveQuote) {
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
     iv30, totalOptionsCount, priceChange, priceChangePct, provider, delay } = data;
   const k = kpis || {};
   const now = new Date().toISOString();
+  
+  const spotPriceNum = Number(spotPrice);
+  const livePriceNum = Number(liveQuote?.current);
+  const costBasisNum = Number(costBasis);
+  const showDual = liveQuote != null &&
+    Number.isFinite(spotPriceNum) && spotPriceNum > 0 &&
+    Number.isFinite(livePriceNum) && livePriceNum > 0 &&
+    Number.isFinite(costBasisNum) && costBasisNum > 0 &&
+    !optionsMarketOpen &&
+    Math.abs(((livePriceNum - spotPriceNum) / spotPriceNum) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
 
   let staleness = '';
   if (lastUpdated) {
@@ -59,17 +69,34 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
     : '';
 
   let positionBlock = '';
-  if (costBasis && spotPrice) {
-    const pnlPct = ((spotPrice - costBasis) / costBasis * 100).toFixed(2);
-    const pnlDollars = shares ? (spotPrice - costBasis) * shares : null;
-    const notional = shares ? spotPrice * shares : null;
-    positionBlock = `
+  if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+    const pnlPct = ((spotPriceNum - costBasisNum) / costBasisNum * 100).toFixed(2);
+    const pnlDollars = shares ? (spotPriceNum - costBasisNum) * shares : null;
+    const notional = shares ? spotPriceNum * shares : null;
+    
+    if (showDual) {
+      const livePnlPct = ((livePriceNum - costBasisNum) / costBasisNum * 100).toFixed(2);
+      const livePnlDollars = shares ? (livePriceNum - costBasisNum) * shares : null;
+      const gapPctNum = ((livePriceNum - spotPriceNum) / spotPriceNum) * 100;
+      const gapPct = Math.abs(gapPctNum).toFixed(1);
+      positionBlock = `
 USER POSITION:
-  Cost Basis: ${formatPrice(costBasis)}
+  Cost Basis: ${formatPrice(costBasisNum)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
-  Current Spot: ${formatPrice(spotPrice)}
+  Options Snapshot (delayed): ${formatPrice(spotPriceNum)}
+  Live Price (Overnight): ${formatPrice(livePriceNum)} (${gapPctNum >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
+  Unrealized P&L (at Snapshot): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
+  Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Snapshot): ~${formatDollar(notional)}` : ''}
+`;
+    } else {
+      positionBlock = `
+USER POSITION:
+  Cost Basis: ${formatPrice(costBasisNum)}
+  Shares: ${shares ? shares.toLocaleString() : 'not specified'}
+  Current Spot: ${formatPrice(spotPriceNum)}
   Unrealized P&L: ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure: ~${formatDollar(notional)}` : ''}
 `;
+    }
   }
 
   const dpLevel = k.darkPoolPct > 0.4 ? 'Elevated (>40%)' : k.darkPoolPct < 0.3 ? 'Low (<30%)' : 'Normal range';
@@ -105,29 +132,84 @@ USER POSITION:
   const flowNote = '\nNote: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting institutional flow.';
 
   let signalBlock = '';
-  const rec = computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
-  if (rec) {
-    signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+  
+  if (showDual) {
+    const dualRec = computeDualRecommendation({
+      costBasis,
+      shares,
+      optionsSnapshotPrice: spotPrice,
+      livePrice: liveQuote.current,
+      kpis,
+      gexByStrike,
+      optionsMarketOpen: optionsMarketOpen || false,
+    });
+    
+    if (dualRec && dualRec.primary) {
+      const timeStr = lastUpdated ? new Date(lastUpdated).toLocaleString('en-US', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric', 
+        hour: 'numeric', 
+        minute: '2-digit', 
+        hour12: true 
+      }) : '';
+      
+      const timeClause = timeStr ? ` (snapshot as of ${timeStr}, may be delayed)` : '';
+
+      signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+
+  Recommendation #1 (Options Snapshot): ${dualRec.primary.signal} (${dualRec.primary.confidence} confidence)
+${dualRec.primary.reasons.map((r) => `    • ${r}`).join('\n')}
+    ⚠ Note: This recommendation is based on a delayed options quote snapshot${timeClause}, not the official options close price.
+           Options market is currently closed; this signal will refresh after the next options snapshot when trading resumes.`;
+
+      if (dualRec.secondary) {
+        signalBlock += `
+
+  Scenario #2 (If Live Price Holds): ${dualRec.secondary.signal} (${dualRec.secondary.confidence} confidence)
+${dualRec.secondary.reasons.map((r) => `    • ${r}`).join('\n')}
+    ⚠ Note: This is a hypothetical adjustment based on the current live price. The actual recommendation
+           will depend on how options traders react when the options market next opens.`;
+      }
+    } else {
+      // Fallback to single recommendation if dual computation fails
+      if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+        const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+        if (rec) {
+          signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+  Recommendation: ${rec.signal} (${rec.confidence} confidence)
+${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
+        }
+      }
+    }
+  } else {
+    if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+      const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+      if (rec) {
+        signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
 ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
-    // Add staleness caveat
-    if (lastUpdated) {
-      const diffMs = Date.now() - new Date(lastUpdated).getTime();
-      const diffMinutes = diffMs / (1000 * 60);
-      const isStale = marketOpen ? diffMinutes > 60 : diffMinutes > 240;
-      
-      if (isStale) {
-        const d = new Date(lastUpdated);
-        const timeStr = d.toLocaleString('en-US', { 
-          weekday: 'short', 
-          month: 'short', 
-          day: 'numeric', 
-          hour: 'numeric', 
-          minute: '2-digit', 
-          hour12: true 
-        });
-        signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+        // Add staleness caveat
+        if (lastUpdated) {
+          const diffMs = Date.now() - new Date(lastUpdated).getTime();
+          const diffMinutes = diffMs / (1000 * 60);
+          // Use optionsMarketOpen since options data updates until 4:15 PM ET
+          const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
+          
+          if (isStale) {
+            const d = new Date(lastUpdated);
+            const timeStr = d.toLocaleString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric', 
+              hour: 'numeric', 
+              minute: '2-digit', 
+              hour12: true 
+            });
+            signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+          }
+        }
       }
     }
   }
@@ -524,7 +606,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
   );
 }
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen }) {
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen, liveQuote }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
   const skipSaveRef = useRef(false);
@@ -623,7 +705,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setSending(true);
 
     try {
-      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen);
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
       const apiMessages = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
@@ -651,7 +733,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, costBasis, shares, tickerContext, onStreamChunk, flushChunks]);
+  }, [messages, sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -757,7 +839,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
       {/* Context Inspector */}
       {showContext && (() => {
-        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen);
+        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
         return (
           <div className="flex-1 overflow-y-auto border-b border-[var(--color-border-subtle)]">
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">

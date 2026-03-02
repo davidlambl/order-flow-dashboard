@@ -13,6 +13,7 @@ import PremiumGate from './components/PremiumGate';
 import AppSettings from './components/AppSettings';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
+import { useLiveQuote } from './hooks/useLiveQuote';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
 import { getPosition, setPosition as storeSetPosition, getPreference, setPreference } from './lib/store';
 
@@ -27,8 +28,9 @@ export default function App() {
   const [costBasis, setCostBasis] = useState(null);
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
-  const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, toggleAutoRefresh } = useMarketData(ticker);
+  const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
+  const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const n = getPreference('sidebarWidth');
@@ -100,6 +102,11 @@ export default function App() {
     setTicker(newTicker);
   }, []);
 
+  const handleRefresh = useCallback(() => {
+    refresh();
+    refreshLiveQuote();
+  }, [refresh, refreshLiveQuote]);
+
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -110,7 +117,7 @@ export default function App() {
       <Header
         ticker={ticker}
         onTickerChange={handleTickerChange}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         loading={loading}
         usingMock={usingMock}
         data={data}
@@ -122,7 +129,7 @@ export default function App() {
         earnings={tickerContext?.earnings}
         autoRefresh={autoRefresh}
         secondsLeft={secondsLeft}
-        marketOpen={marketOpen}
+        optionsMarketOpen={optionsMarketOpen}
         onToggleAutoRefresh={toggleAutoRefresh}
       />
 
@@ -177,6 +184,8 @@ export default function App() {
                 loading={loading}
                 lastUpdated={data?.lastUpdated}
                 marketOpen={marketOpen}
+                optionsMarketOpen={optionsMarketOpen}
+                liveQuote={liveQuote}
               />
             </PremiumGate>
           </CollapsibleSection>
@@ -250,6 +259,8 @@ export default function App() {
             onOpenSettings={openSettings}
             tickerContext={tickerContext}
             marketOpen={marketOpen}
+            optionsMarketOpen={optionsMarketOpen}
+            liveQuote={liveQuote}
           />
         </aside>
       </div>

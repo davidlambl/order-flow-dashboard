@@ -1,13 +1,25 @@
 // src/components/PositionAnalysis.jsx
 import { useMemo } from 'react';
-import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react';
-import { computeRecommendation, extractPriceLevels } from '../lib/recommend';
+import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight, AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
+import { computeRecommendation, computeDualRecommendation, extractPriceLevels, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 import { formatDollar, formatPrice } from '../lib/format';
 
 const SIGNAL_STYLES = {
-  BUY: { color: 'var(--color-bull)', bg: 'var(--color-bull-bg)', border: 'var(--color-bull)' },
-  HOLD: { color: 'var(--color-warn)', bg: 'var(--color-warn-bg)', border: 'var(--color-warn)' },
-  SELL: { color: 'var(--color-bear)', bg: 'var(--color-bear-bg)', border: 'var(--color-bear)' },
+  BUY: {
+    color: 'var(--color-bull)',
+    bg: 'var(--color-bull-bg)',
+    borderMuted: 'var(--color-bull-border-muted)',
+  },
+  HOLD: {
+    color: 'var(--color-warn)',
+    bg: 'var(--color-warn-bg)',
+    borderMuted: 'var(--color-warn-border-muted)',
+  },
+  SELL: {
+    color: 'var(--color-bear)',
+    bg: 'var(--color-bear-bg)',
+    borderMuted: 'var(--color-bear-border-muted)',
+  },
 };
 
 function PriceLevelBar({ levels }) {
@@ -68,7 +80,7 @@ function PriceLevelBar({ levels }) {
   );
 }
 
-function RecommendationBadge({ rec, isStale, lastUpdated }) {
+function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, hasWarning }) {
   if (!rec) return null;
   const style = SIGNAL_STYLES[rec.signal];
 
@@ -82,26 +94,43 @@ function RecommendationBadge({ rec, isStale, lastUpdated }) {
     if (diffHours < 24) {
       timeAgo = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     } else {
-      timeAgo = d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+      timeAgo = d.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
     }
   }
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
-        style={{ backgroundColor: style.bg, borderColor: `${style.border}33` }}
-      >
-        {rec.signal === 'BUY' ? <TrendingUp size={16} style={{ color: style.color }} /> :
-         rec.signal === 'SELL' ? <TrendingDown size={16} style={{ color: style.color }} /> :
-         <Minus size={16} style={{ color: style.color }} />}
-        <span className="text-lg font-bold tracking-tight" style={{ color: style.color }}>
-          {rec.signal}
+    <div className={`flex flex-col gap-1.5 ${isSecondary ? 'items-start' : 'items-end'}`}>
+      {label && (
+        <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+          {label}
         </span>
+      )}
+      <div className="flex items-center gap-2">
+        {hasWarning && (
+          <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
+        )}
+        <div
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isSecondary ? 'border-dashed' : ''}`}
+          style={{ 
+            backgroundColor: style.bg, 
+            borderColor: style.borderMuted 
+          }}
+        >
+          {rec.signal === 'BUY' ? <TrendingUp size={16} style={{ color: style.color }} /> :
+           rec.signal === 'SELL' ? <TrendingDown size={16} style={{ color: style.color }} /> :
+           <Minus size={16} style={{ color: style.color }} />}
+          <span className={`${isSecondary ? 'text-base' : 'text-lg'} font-bold tracking-tight`} style={{ color: style.color }}>
+            {rec.signal}
+          </span>
+        </div>
       </div>
       <span
         className="text-[10px] font-medium px-2 py-0.5 rounded-full border"
-        style={{ color: style.color, backgroundColor: style.bg, borderColor: `${style.border}33` }}
+        style={{ 
+          color: style.color, 
+          backgroundColor: style.bg, 
+          borderColor: style.borderMuted 
+        }}
       >
         {rec.confidence} confidence
       </span>
@@ -114,34 +143,72 @@ function RecommendationBadge({ rec, isStale, lastUpdated }) {
   );
 }
 
-export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen }) {
+export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
+  // Normalize inputs once so all downstream logic (showDual, hasBasis, P&L) uses consistent numeric values
+  const costBasisNum = Number(costBasis);
+  const spotNum = Number(spotPrice);
+  const liveNum = Number(liveQuote?.current);
+
+  const showDual = useMemo(() => {
+    if (!liveQuote || !kpis) return false;
+    if (optionsMarketOpen) return false;
+    if (!Number.isFinite(costBasisNum) || costBasisNum <= 0) return false;
+    if (!Number.isFinite(spotNum) || spotNum <= 0) return false;
+    if (!Number.isFinite(liveNum) || liveNum <= 0) return false;
+    // Only show dual display when the gap exceeds the threshold
+    const gapPct = Math.abs(((liveNum - spotNum) / spotNum) * 100);
+    return gapPct >= GAP_DUAL_REC_THRESHOLD_PCT;
+  }, [liveQuote, costBasisNum, spotNum, liveNum, kpis, optionsMarketOpen]);
+
+  const dualRec = useMemo(() => {
+    if (!showDual) return null;
+    return computeDualRecommendation({
+      costBasis: costBasisNum,
+      shares,
+      optionsSnapshotPrice: spotNum,
+      livePrice: liveNum,
+      kpis,
+      gexByStrike,
+      optionsMarketOpen: optionsMarketOpen || false,
+    });
+  }, [showDual, costBasisNum, shares, spotNum, liveNum, kpis, gexByStrike, optionsMarketOpen]);
+
   const rec = useMemo(() => {
-    if (!costBasis || !spotPrice) return null;
-    return computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
-  }, [costBasis, shares, spotPrice, kpis, gexByStrike]);
+    if (showDual && dualRec) return null;
+    if (!Number.isFinite(costBasisNum) || costBasisNum <= 0 || !Number.isFinite(spotNum) || spotNum <= 0) return null;
+    return computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotNum, kpis, gexByStrike });
+  }, [showDual, dualRec, costBasisNum, shares, spotNum, kpis, gexByStrike]);
 
   const levels = useMemo(() => {
-    if (!costBasis || !spotPrice) return [];
-    return extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike });
-  }, [costBasis, spotPrice, kpis, gexByStrike]);
+    if (!Number.isFinite(costBasisNum) || costBasisNum <= 0 || !Number.isFinite(spotNum) || spotNum <= 0) return [];
+    return extractPriceLevels({ costBasis: costBasisNum, spotPrice: spotNum, kpis, gexByStrike });
+  }, [costBasisNum, spotNum, kpis, gexByStrike]);
 
   const isStale = useMemo(() => {
     if (!lastUpdated) return false;
     const diffMs = Date.now() - new Date(lastUpdated).getTime();
     const diffMinutes = diffMs / (1000 * 60);
     
-    if (marketOpen) {
+    // Use optionsMarketOpen since options data updates until 4:15 PM ET
+    if (optionsMarketOpen || marketOpen) {
       return diffMinutes > 60;
     } else {
       return diffMinutes > 240;
     }
-  }, [lastUpdated, marketOpen]);
+  }, [lastUpdated, optionsMarketOpen, marketOpen]);
 
-  const hasBasis = costBasis != null && costBasis > 0;
+  const hasBasis = Number.isFinite(costBasisNum) && costBasisNum > 0;
   const hasShares = shares != null && shares > 0;
-  const pnlPct = hasBasis && spotPrice ? ((spotPrice - costBasis) / costBasis) * 100 : null;
-  const pnlDollars = hasBasis && hasShares && spotPrice ? (spotPrice - costBasis) * shares : null;
+  const hasSpotPrice = Number.isFinite(spotNum) && spotNum > 0;
+  const hasLiveQuote = Number.isFinite(liveNum) && liveNum > 0;
+  
+  const pnlPct = hasBasis && hasSpotPrice ? ((spotNum - costBasisNum) / costBasisNum) * 100 : null;
+  const pnlDollars = hasBasis && hasShares && hasSpotPrice ? (spotNum - costBasisNum) * shares : null;
   const pnlUp = (pnlPct || 0) >= 0;
+
+  const livePnlPct = hasBasis && hasLiveQuote ? ((liveNum - costBasisNum) / costBasisNum) * 100 : null;
+  const livePnlDollars = hasBasis && hasShares && hasLiveQuote ? (liveNum - costBasisNum) * shares : null;
+  const livePnlUp = (livePnlPct || 0) >= 0;
 
   const handleCostChange = (e) => {
     const val = e.target.value === '' ? null : parseFloat(e.target.value);
@@ -159,7 +226,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   return (
     <div>
-      {/* Header row: title + inputs + P&L + recommendation */}
+      {/* Header row: title + inputs + prices + recommendations */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: Title + inputs */}
         <div className="flex flex-col gap-3">
@@ -199,8 +266,8 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           </div>
         </div>
 
-        {/* Center: P&L */}
-        {hasBasis && spotPrice && (
+        {/* Center: P&L (single or dual) */}
+        {hasBasis && hasSpotPrice && !showDual && (
           <div className="flex flex-col items-center gap-0.5">
             <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
               Unrealized P&L
@@ -222,15 +289,173 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           </div>
         )}
 
-        {/* Right: Recommendation */}
-        <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} />
+        {/* Right: Recommendation (single) */}
+        {!showDual && (
+          <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} hasWarning={isStale} />
+        )}
       </div>
 
-      {/* Price levels chart */}
-      {levels.length >= 2 && <PriceLevelBar levels={levels} />}
+      {/* Dual Price Display when options market closed and gap > 0.5% */}
+      {showDual && dualRec && (
+        <div className="mt-4 space-y-4">
+          {/* Market Status Warning */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn)]/20">
+            <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
+            <span className="text-xs text-[var(--color-warn)] font-medium">
+              Options market closed — price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since last close
+            </span>
+          </div>
 
-      {/* Reasons */}
-      {rec && (
+          {/* Price Comparison */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Options Snapshot Price (delayed CBOE) */}
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                  Options Snapshot (delayed)
+                </span>
+                <span className="text-sm font-mono tabular-nums text-[var(--color-text-secondary)]">
+                  {formatPrice(dualRec.optionsSnapshotPrice)}
+                </span>
+              </div>
+              {hasBasis && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--color-text-muted)]">
+                    Unrealized P&L
+                  </span>
+                  <div className="flex flex-col items-end">
+                    <span
+                      className="text-base font-bold tabular-nums font-mono"
+                      style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                    >
+                      {pnlUp ? '+' : ''}{pnlPct?.toFixed(2)}%
+                    </span>
+                    {pnlDollars != null && (
+                      <span
+                        className="text-xs tabular-nums font-mono"
+                        style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                      >
+                        {pnlUp ? '+' : ''}{formatDollar(pnlDollars)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Live Price */}
+            <div className="flex flex-col gap-2 p-3 rounded-lg border-2 border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-[var(--color-text-primary)] uppercase tracking-wider">
+                    Price (Live)
+                  </span>
+                  {liveQuote?.source && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono">
+                      {liveQuote.source === 'yahoo-extended' ? 'Extended Hours' : 
+                       liveQuote.source === 'futures-implied' ? 'Futures-Implied' :
+                       liveQuote.source === 'yahoo-regular' ? 'Yahoo' : 'Finnhub'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {dualRec.gapPercent < 0 ? (
+                    <ArrowDown size={12} className="text-[var(--color-bear)]" />
+                  ) : (
+                    <ArrowUp size={12} className="text-[var(--color-bull)]" />
+                  )}
+                  <span className="text-sm font-mono tabular-nums text-[var(--color-text-primary)] font-bold">
+                    {formatPrice(dualRec.livePrice)}
+                  </span>
+                  <span
+                    className="text-xs font-mono tabular-nums"
+                    style={{ color: dualRec.gapPercent < 0 ? 'var(--color-bear)' : 'var(--color-bull)' }}
+                  >
+                    ({dualRec.gapPercent > 0 ? '+' : ''}{dualRec.gapPercent.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+              {hasBasis && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--color-text-muted)]">
+                    Unrealized P&L
+                  </span>
+                  <div className="flex flex-col items-end">
+                    <span
+                      className="text-base font-bold tabular-nums font-mono"
+                      style={{ color: livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                    >
+                      {livePnlUp ? '+' : ''}{livePnlPct?.toFixed(2)}%
+                    </span>
+                    {livePnlDollars != null && (
+                      <span
+                        className="text-xs tabular-nums font-mono"
+                        style={{ color: livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                      >
+                        {livePnlUp ? '+' : ''}{formatDollar(livePnlDollars)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dual Recommendations */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Primary: Based on Options Data */}
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
+              <RecommendationBadge
+                rec={dualRec.primary}
+                isStale={isStale}
+                lastUpdated={lastUpdated}
+                label="Options Snapshot (delayed)"
+                hasWarning={true}
+              />
+              {dualRec.primary && (
+                <div className="mt-2 space-y-1">
+                  {dualRec.primary.reasons.slice(0, 3).map((reason, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                      <ChevronRight size={10} className="shrink-0 mt-0.5 text-[var(--color-text-muted)]" />
+                      <span>{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Secondary: If Live Price Holds */}
+            {dualRec.secondary && (
+              <div className="flex flex-col gap-2 p-3 rounded-lg border border-dashed border-[var(--color-accent)]/40 bg-[var(--color-accent)]/5">
+                <RecommendationBadge
+                  rec={dualRec.secondary}
+                  label="If Live Price Holds"
+                  isSecondary={true}
+                />
+                {dualRec.secondary && (
+                  <div className="mt-2 space-y-1">
+                    {dualRec.secondary.reasons.slice(0, 3).map((reason, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                        <ChevronRight size={10} className="shrink-0 mt-0.5 text-[var(--color-text-muted)]" />
+                        <span>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 text-[10px] text-[var(--color-text-muted)] italic">
+                  Options positioning unknown until market reopens
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Price levels chart */}
+      {!showDual && levels.length >= 2 && <PriceLevelBar levels={levels} />}
+
+      {/* Reasons (single mode only) */}
+      {!showDual && rec && (
         <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
             {rec.reasons.map((reason, i) => (
