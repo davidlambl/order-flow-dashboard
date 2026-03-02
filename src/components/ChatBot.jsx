@@ -43,8 +43,13 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
   const k = kpis || {};
   const now = new Date().toISOString();
   
-  const showDual = liveQuote && spotPrice && !optionsMarketOpen &&
-    Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
+  const spotPriceNum = Number(spotPrice);
+  const livePriceNum = Number(liveQuote?.current);
+  const showDual = liveQuote != null &&
+    Number.isFinite(spotPriceNum) && spotPriceNum > 0 &&
+    Number.isFinite(livePriceNum) && livePriceNum > 0 &&
+    !optionsMarketOpen &&
+    Math.abs(((livePriceNum - spotPriceNum) / spotPriceNum) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
 
   let staleness = '';
   if (lastUpdated) {
@@ -163,6 +168,14 @@ ${dualRec.primary.reasons.map((r) => `    • ${r}`).join('\n')}
 ${dualRec.secondary.reasons.map((r) => `    • ${r}`).join('\n')}
     ⚠ Note: This is a hypothetical adjustment based on the current live price. The actual recommendation
            will depend on how options traders react when the options market next opens.`;
+      }
+    } else {
+      // Fallback to single recommendation if dual computation fails
+      const rec = computeRecommendation({ costBasis, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+      if (rec) {
+        signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+  Recommendation: ${rec.signal} (${rec.confidence} confidence)
+${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       }
     }
   } else {

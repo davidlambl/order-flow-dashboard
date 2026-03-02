@@ -145,10 +145,14 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
 
 export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
   const showDual = useMemo(() => {
-    if (!liveQuote || !spotPrice || !costBasis || !kpis) return false;
+    if (!liveQuote || !costBasis || !kpis) return false;
     if (optionsMarketOpen) return false;
+    const spotNum = Number(spotPrice);
+    const liveNum = Number(liveQuote.current);
+    if (!Number.isFinite(spotNum) || spotNum <= 0) return false;
+    if (!Number.isFinite(liveNum) || liveNum <= 0) return false;
     // Only show dual display when the gap exceeds the threshold
-    const gapPct = Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100);
+    const gapPct = Math.abs(((liveNum - spotNum) / spotNum) * 100);
     return gapPct >= GAP_DUAL_REC_THRESHOLD_PCT;
   }, [liveQuote, spotPrice, costBasis, kpis, optionsMarketOpen]);
 
