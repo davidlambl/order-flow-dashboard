@@ -191,13 +191,15 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   const hasBasis = costBasis != null && costBasis > 0;
   const hasShares = shares != null && shares > 0;
+  const hasSpotPrice = spotPrice != null && Number.isFinite(spotPrice);
+  const hasLiveQuote = liveQuote?.current != null && Number.isFinite(liveQuote.current);
   
-  const pnlPct = hasBasis && spotPrice ? ((spotPrice - costBasis) / costBasis) * 100 : null;
-  const pnlDollars = hasBasis && hasShares && spotPrice ? (spotPrice - costBasis) * shares : null;
+  const pnlPct = hasBasis && hasSpotPrice ? ((spotPrice - costBasis) / costBasis) * 100 : null;
+  const pnlDollars = hasBasis && hasShares && hasSpotPrice ? (spotPrice - costBasis) * shares : null;
   const pnlUp = (pnlPct || 0) >= 0;
 
-  const livePnlPct = hasBasis && liveQuote?.current ? ((liveQuote.current - costBasis) / costBasis) * 100 : null;
-  const livePnlDollars = hasBasis && hasShares && liveQuote?.current ? (liveQuote.current - costBasis) * shares : null;
+  const livePnlPct = hasBasis && hasLiveQuote ? ((liveQuote.current - costBasis) / costBasis) * 100 : null;
+  const livePnlDollars = hasBasis && hasShares && hasLiveQuote ? (liveQuote.current - costBasis) * shares : null;
   const livePnlUp = (livePnlPct || 0) >= 0;
 
   const handleCostChange = (e) => {
