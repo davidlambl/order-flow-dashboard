@@ -43,8 +43,15 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
   const k = kpis || {};
   const now = new Date().toISOString();
   
-  const showDual = liveQuote && spotPrice && !optionsMarketOpen &&
-    Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
+  const spotPriceNum = Number(spotPrice);
+  const livePriceNum = Number(liveQuote?.current);
+  const costBasisNum = Number(costBasis);
+  const showDual = liveQuote != null &&
+    Number.isFinite(spotPriceNum) && spotPriceNum > 0 &&
+    Number.isFinite(livePriceNum) && livePriceNum > 0 &&
+    Number.isFinite(costBasisNum) && costBasisNum > 0 &&
+    !optionsMarketOpen &&
+    Math.abs(((livePriceNum - spotPriceNum) / spotPriceNum) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
 
   let staleness = '';
   if (lastUpdated) {
@@ -62,31 +69,31 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
     : '';
 
   let positionBlock = '';
-  if (costBasis && spotPrice) {
-    const pnlPct = ((spotPrice - costBasis) / costBasis * 100).toFixed(2);
-    const pnlDollars = shares ? (spotPrice - costBasis) * shares : null;
-    const notional = shares ? spotPrice * shares : null;
+  if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+    const pnlPct = ((spotPriceNum - costBasisNum) / costBasisNum * 100).toFixed(2);
+    const pnlDollars = shares ? (spotPriceNum - costBasisNum) * shares : null;
+    const notional = shares ? spotPriceNum * shares : null;
     
     if (showDual) {
-      const livePnlPct = ((liveQuote.current - costBasis) / costBasis * 100).toFixed(2);
-      const livePnlDollars = shares ? (liveQuote.current - costBasis) * shares : null;
-      const gapPctNum = ((liveQuote.current - spotPrice) / spotPrice) * 100;
+      const livePnlPct = ((livePriceNum - costBasisNum) / costBasisNum * 100).toFixed(2);
+      const livePnlDollars = shares ? (livePriceNum - costBasisNum) * shares : null;
+      const gapPctNum = ((livePriceNum - spotPriceNum) / spotPriceNum) * 100;
       const gapPct = Math.abs(gapPctNum).toFixed(1);
       positionBlock = `
 USER POSITION:
-  Cost Basis: ${formatPrice(costBasis)}
+  Cost Basis: ${formatPrice(costBasisNum)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
-  Options Snapshot (delayed): ${formatPrice(spotPrice)}
-  Live Price (Overnight): ${formatPrice(liveQuote.current)} (${gapPctNum >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
+  Options Snapshot (delayed): ${formatPrice(spotPriceNum)}
+  Live Price (Overnight): ${formatPrice(livePriceNum)} (${gapPctNum >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
   Unrealized P&L (at Snapshot): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
   Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Snapshot): ~${formatDollar(notional)}` : ''}
 `;
     } else {
       positionBlock = `
 USER POSITION:
-  Cost Basis: ${formatPrice(costBasis)}
+  Cost Basis: ${formatPrice(costBasisNum)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
-  Current Spot: ${formatPrice(spotPrice)}
+  Current Spot: ${formatPrice(spotPriceNum)}
   Unrealized P&L: ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure: ~${formatDollar(notional)}` : ''}
 `;
     }
@@ -164,32 +171,44 @@ ${dualRec.secondary.reasons.map((r) => `    • ${r}`).join('\n')}
     ⚠ Note: This is a hypothetical adjustment based on the current live price. The actual recommendation
            will depend on how options traders react when the options market next opens.`;
       }
+    } else {
+      // Fallback to single recommendation if dual computation fails
+      if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+        const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+        if (rec) {
+          signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+  Recommendation: ${rec.signal} (${rec.confidence} confidence)
+${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
+        }
+      }
     }
   } else {
-    const rec = computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
-    if (rec) {
-      signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+    if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+      const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+      if (rec) {
+        signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
 ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
-      // Add staleness caveat
-      if (lastUpdated) {
-        const diffMs = Date.now() - new Date(lastUpdated).getTime();
-        const diffMinutes = diffMs / (1000 * 60);
-        // Use optionsMarketOpen since options data updates until 4:15 PM ET
-        const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
-        
-        if (isStale) {
-          const d = new Date(lastUpdated);
-          const timeStr = d.toLocaleString('en-US', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric', 
-            hour: 'numeric', 
-            minute: '2-digit', 
-            hour12: true 
-          });
-          signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+        // Add staleness caveat
+        if (lastUpdated) {
+          const diffMs = Date.now() - new Date(lastUpdated).getTime();
+          const diffMinutes = diffMs / (1000 * 60);
+          // Use optionsMarketOpen since options data updates until 4:15 PM ET
+          const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
+          
+          if (isStale) {
+            const d = new Date(lastUpdated);
+            const timeStr = d.toLocaleString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric', 
+              hour: 'numeric', 
+              minute: '2-digit', 
+              hour12: true 
+            });
+            signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+          }
         }
       }
     }
