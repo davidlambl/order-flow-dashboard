@@ -9,28 +9,44 @@ const MARKET_OPEN_MIN = 570;  // 9:30 ET
 const MARKET_CLOSE_MIN = 960; // 16:00 ET
 const OPTIONS_CLOSE_MIN = 975; // 16:15 ET
 
+/**
+ * Get current ET market time info (minutes since midnight, weekday).
+ * Returns null if unable to parse.
+ */
+function getMarketTime() {
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false,
+        weekday: 'short',
+      }).formatToParts(new Date()).map(({ type, value }) => [type, value])
+    );
+    
+    const weekday = parts.weekday;
+    const mins = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
+    
+    return { weekday, mins };
+  } catch (err) {
+    console.error('Failed to parse market time:', err);
+    return null;
+  }
+}
+
 function isMarketOpen() {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      hour: 'numeric', minute: 'numeric', hour12: false, weekday: 'short',
-    }).formatToParts(new Date()).map(({ type, value }) => [type, value])
-  );
-  if (parts.weekday === 'Sat' || parts.weekday === 'Sun') return false;
-  const mins = parseInt(parts.hour) * 60 + parseInt(parts.minute);
-  return mins >= MARKET_OPEN_MIN && mins < MARKET_CLOSE_MIN;
+  const time = getMarketTime();
+  if (!time) return false;
+  if (time.weekday === 'Sat' || time.weekday === 'Sun') return false;
+  return time.mins >= MARKET_OPEN_MIN && time.mins < MARKET_CLOSE_MIN;
 }
 
 function isOptionsMarketOpen() {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      hour: 'numeric', minute: 'numeric', hour12: false, weekday: 'short',
-    }).formatToParts(new Date()).map(({ type, value }) => [type, value])
-  );
-  if (parts.weekday === 'Sat' || parts.weekday === 'Sun') return false;
-  const mins = parseInt(parts.hour) * 60 + parseInt(parts.minute);
-  return mins >= MARKET_OPEN_MIN && mins < OPTIONS_CLOSE_MIN;
+  const time = getMarketTime();
+  if (!time) return false;
+  if (time.weekday === 'Sat' || time.weekday === 'Sun') return false;
+  return time.mins >= MARKET_OPEN_MIN && time.mins < OPTIONS_CLOSE_MIN;
 }
 
 function getRefreshSecs(provider) {
