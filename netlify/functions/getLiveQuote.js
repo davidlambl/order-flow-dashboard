@@ -44,35 +44,63 @@ async function fetchYahooQuote(ticker) {
   }
   
   const meta = result.meta;
-  const currentPrice = meta.regularMarketPrice;
-  const previousClose = meta.chartPreviousClose || meta.previousClose;
+  const timestamps = result.timestamp || [];
+  const closes = result.indicators?.quote?.[0]?.close || [];
   
-  // Check for extended hours pricing
-  let extendedPrice = null;
-  let extendedTime = null;
+  // Get the most recent non-null price from the time series
+  let currentPrice = meta.regularMarketPrice;
+  let currentTimestamp = meta.regularMarketTime;
+  let source = 'yahoo-regular';
   
-  if (meta.postMarketPrice && meta.postMarketTime) {
-    extendedPrice = meta.postMarketPrice;
-    extendedTime = meta.postMarketTime;
-  } else if (meta.preMarketPrice && meta.preMarketTime) {
-    extendedPrice = meta.preMarketPrice;
-    extendedTime = meta.preMarketTime;
+  // Look for the most recent valid price in the time series (includes extended hours)
+  for (let i = timestamps.length - 1; i >= 0; i--) {
+    if (closes[i] != null && !isNaN(closes[i])) {
+      currentPrice = closes[i];
+      currentTimestamp = timestamps[i];
+      
+      // Check if this is extended hours (outside 9:30 AM - 4:00 PM ET)
+      const date = new Date(currentTimestamp * 1000);
+      const etHour = date.toLocaleString('en-US', { 
+        timeZone: 'America/New_York', 
+        hour: 'numeric', 
+        minute: 'numeric',
+        hour12: false 
+      });
+      const [hour, minute] = etHour.split(':').map(Number);
+      const minutesSinceMidnight = hour * 60 + minute;
+      const isExtendedHours = minutesSinceMidnight < 570 || minutesSinceMidnight >= 960; // Before 9:30 AM or after 4:00 PM ET
+      
+      source = isExtendedHours ? 'yahoo-extended' : 'yahoo-regular';
+      break;
+    }
   }
   
-  // Use extended hours price if available and recent (within last 5 minutes)
-  const now = Math.floor(Date.now() / 1000);
-  const useExtended = extendedPrice && extendedTime && (now - extendedTime < 300);
+  // Fallback to meta fields if available
+  if (meta.postMarketPrice && meta.postMarketTime) {
+    const now = Math.floor(Date.now() / 1000);
+    if (now - meta.postMarketTime < 300) { // Within last 5 minutes
+      currentPrice = meta.postMarketPrice;
+      currentTimestamp = meta.postMarketTime;
+      source = 'yahoo-extended';
+    }
+  } else if (meta.preMarketPrice && meta.preMarketTime) {
+    const now = Math.floor(Date.now() / 1000);
+    if (now - meta.preMarketTime < 300) { // Within last 5 minutes
+      currentPrice = meta.preMarketPrice;
+      currentTimestamp = meta.preMarketTime;
+      source = 'yahoo-extended';
+    }
+  }
   
-  const current = useExtended ? extendedPrice : currentPrice;
-  const timestamp = useExtended ? extendedTime * 1000 : meta.regularMarketTime * 1000;
+  const previousClose = meta.chartPreviousClose || meta.previousClose;
   
   return {
     ticker,
-    current,
+    current: currentPrice,
     previousClose,
-    changePercent: previousClose ? ((current - previousClose) / previousClose) * 100 : null,
-    timestamp,
-    source: useExtended ? 'yahoo-extended' : 'yahoo-regular',
+    changePercent: previousClose ? ((currentPrice - previousClose) / previousClose) * 100 : null,
+    timestamp: currentTimestamp * 1000,
+    source,
   };
 }
 
