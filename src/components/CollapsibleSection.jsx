@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { getPreference, setPreference } from '../lib/store';
 
-export default function CollapsibleSection({ id, title, icon: Icon, badge, defaultOpen = true, children }) {
+export default function CollapsibleSection({ id, title, icon: Icon, badge, defaultOpen = true, noPadding = false, children }) {
   const [open, setOpen] = useState(() => {
     const saved = getPreference(`section_${id}`);
     return saved != null ? saved : defaultOpen;
@@ -25,21 +25,21 @@ export default function CollapsibleSection({ id, title, icon: Icon, badge, defau
   });
 
   return (
-    <div>
+    <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] fade-in">
       <button
         onClick={toggle}
-        className="flex items-center gap-2 w-full py-1.5 text-left group"
+        className="flex items-center gap-2 w-full px-4 py-3 text-left group"
       >
         {open
-          ? <ChevronDown size={12} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)] transition-colors" />
-          : <ChevronRight size={12} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)] transition-colors" />}
-        {Icon && <Icon size={12} className="text-[var(--color-accent)] opacity-60" />}
-        <span className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider group-hover:text-[var(--color-text-secondary)] transition-colors">
+          ? <ChevronDown size={14} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)] transition-colors" />
+          : <ChevronRight size={14} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)] transition-colors" />}
+        {Icon && <Icon size={14} className="text-[var(--color-accent)]" />}
+        <span className="text-sm font-semibold text-[var(--color-text-primary)] group-hover:text-[var(--color-text-secondary)] transition-colors">
           {title}
         </span>
         {badge}
       </button>
-      {open && children}
+      {open && (noPadding ? children : <div className="px-4 pb-4">{children}</div>)}
     </div>
   );
 }

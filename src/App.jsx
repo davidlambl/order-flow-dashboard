@@ -185,8 +185,8 @@ export default function App() {
           </PremiumGate>
 
           {/* Charts */}
-          <CollapsibleSection id="charts" title="Charts" icon={BarChart2}>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <CollapsibleSection id="charts" title="Charts" icon={BarChart2} noPadding>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4">
               <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} technicals={tickerContext?.technicals} />
               <FlowChart data={data?.flowHistory} loading={loading} />
             </div>

@@ -142,12 +142,12 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
   if (loading) return null;
 
   return (
-    <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 fade-in">
+    <div>
       {/* Header row: title + inputs + P&L + recommendation */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: Title + inputs */}
         <div className="flex flex-col gap-3">
-          <div>
+          <div className="hidden">
             <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
               Position Analysis
             </h3>
