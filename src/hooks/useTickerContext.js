@@ -1,11 +1,11 @@
 // src/hooks/useTickerContext.js
 // Fetches enriched ticker context from Finnhub via our Netlify function.
-// Caches results client-side for 15 minutes per ticker.
+// Caches results client-side for 1 minute per ticker to ensure liveQuote freshness.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchTickerContext } from '../lib/api';
 
-const CACHE_TTL = 15 * 60 * 1000;
+const CACHE_TTL = 1 * 60 * 1000;
 const cache = new Map();
 
 function getCached(ticker) {
