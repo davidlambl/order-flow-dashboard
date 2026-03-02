@@ -7,7 +7,6 @@
 //
 // BYOK: accepts x-finnhub-key header for Finnhub fallback, falls back to FINNHUB_API_KEY env var.
 
-const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 // Allowed ticker format: 1-10 uppercase letters/digits, optional dot/hyphen
@@ -20,6 +19,14 @@ const CORS = {
   'Cache-Control': 'private, max-age=60',
   'Vary': 'x-finnhub-key',
 };
+
+/**
+ * Check whether a value is a usable finite number.
+ * Normalizes to Number first, then checks Number.isFinite.
+ */
+function isFiniteNum(v) {
+  return v != null && Number.isFinite(Number(v));
+}
 
 /**
  * Nasdaq-100 constituent tickers (high correlation with NQ futures).
@@ -80,23 +87,25 @@ async function fetchNasdaqFutures() {
   const meta = result.meta;
   
   // Get current futures price (trades nearly 24/7)
-  let currentPrice = meta.regularMarketPrice;
+  let currentPrice = Number(meta.regularMarketPrice);
   
   // Check for the most recent price in time series
   const timestamps = result.timestamp || [];
   const closes = result.indicators?.quote?.[0]?.close || [];
   
   for (let i = timestamps.length - 1; i >= 0; i--) {
-    if (closes[i] != null && !isNaN(closes[i])) {
-      currentPrice = closes[i];
+    if (isFiniteNum(closes[i])) {
+      currentPrice = Number(closes[i]);
       break;
     }
   }
   
   // Previous close (typically Friday 4 PM ET close for weekend gaps)
-  const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
+  const previousClose = Number(
+    meta.chartPreviousClose ?? meta.previousClose ?? meta.regularMarketPreviousClose
+  );
   
-  if (!currentPrice || !previousClose) {
+  if (!Number.isFinite(currentPrice) || !Number.isFinite(previousClose) || previousClose === 0) {
     throw new Error('Futures data incomplete');
   }
   
@@ -122,6 +131,9 @@ async function fetchNasdaqFutures() {
  * the actual after-hours or pre-market candles still appear in the 1-minute
  * time series if includePrePost=true was requested.
  *
+ * Skips extraction when `now` falls inside the regular trading session to avoid
+ * returning a stale pre-market candle during market hours.
+ *
  * Returns { price, timestamp, session } or null if no extended-hours candle is found.
  *   session: 'post' | 'pre'
  */
@@ -137,27 +149,35 @@ function extractExtendedHoursPrice(result) {
 
   const now = Math.floor(Date.now() / 1000);
 
-  // Determine which extended session we're in (or most recently completed)
-  // Post-market: 4:00 PM \u2013 8:00 PM ET  |  Pre-market: 4:00 AM \u2013 9:30 AM ET
+  // Regular session boundaries \u2014 skip extraction if we're inside regular hours
+  const regStart = tradingPeriods.regular?.start;
+  const regEnd   = tradingPeriods.regular?.end;
+  if (regStart && regEnd && now >= regStart && now < regEnd) {
+    return null;
+  }
+
+  // Post-market: 4:00 PM \u2013 8:00 PM ET
   const postStart = tradingPeriods.post?.start;
   const postEnd   = tradingPeriods.post?.end;
+
+  // Pre-market: 4:00 AM \u2013 9:30 AM ET
   const preStart  = tradingPeriods.pre?.start;
   const preEnd    = tradingPeriods.pre?.end;
 
   // Try post-market first (more common: user checks after close)
-  if (postStart && postEnd && now >= postStart) {
+  if (postStart && postEnd && now >= postStart && now <= postEnd) {
     for (let i = timestamps.length - 1; i >= 0; i--) {
-      if (timestamps[i] >= postStart && timestamps[i] <= postEnd && closes[i] != null && !isNaN(closes[i])) {
-        return { price: closes[i], timestamp: timestamps[i], session: 'post' };
+      if (timestamps[i] >= postStart && timestamps[i] <= postEnd && isFiniteNum(closes[i])) {
+        return { price: Number(closes[i]), timestamp: timestamps[i], session: 'post' };
       }
     }
   }
 
   // Try pre-market
-  if (preStart && preEnd && now >= preStart) {
+  if (preStart && preEnd && now >= preStart && now <= preEnd) {
     for (let i = timestamps.length - 1; i >= 0; i--) {
-      if (timestamps[i] >= preStart && timestamps[i] <= preEnd && closes[i] != null && !isNaN(closes[i])) {
-        return { price: closes[i], timestamp: timestamps[i], session: 'pre' };
+      if (timestamps[i] >= preStart && timestamps[i] <= preEnd && isFiniteNum(closes[i])) {
+        return { price: Number(closes[i]), timestamp: timestamps[i], session: 'pre' };
       }
     }
   }
@@ -197,15 +217,15 @@ async function fetchYahooQuote(ticker) {
   let source = 'yahoo-regular';
   
   // 1. Check for post-market (after-hours) price from meta fields
-  if (meta.postMarketPrice && meta.postMarketTime) {
-    currentPrice = meta.postMarketPrice;
-    currentTimestamp = meta.postMarketTime;
+  if (isFiniteNum(meta.postMarketPrice) && isFiniteNum(meta.postMarketTime)) {
+    currentPrice = Number(meta.postMarketPrice);
+    currentTimestamp = Number(meta.postMarketTime);
     source = 'yahoo-extended';
   }
   // 2. Check for pre-market price from meta fields
-  else if (meta.preMarketPrice && meta.preMarketTime) {
-    currentPrice = meta.preMarketPrice;
-    currentTimestamp = meta.preMarketTime;
+  else if (isFiniteNum(meta.preMarketPrice) && isFiniteNum(meta.preMarketTime)) {
+    currentPrice = Number(meta.preMarketPrice);
+    currentTimestamp = Number(meta.preMarketTime);
     source = 'yahoo-extended';
   }
   // 3. Extract extended-hours price from time series candles
@@ -219,40 +239,61 @@ async function fetchYahooQuote(ticker) {
     }
   }
   // 4. Fall back to regular market price
-  if (!currentPrice && meta.regularMarketPrice && meta.regularMarketTime) {
-    currentPrice = meta.regularMarketPrice;
-    currentTimestamp = meta.regularMarketTime;
+  if (!isFiniteNum(currentPrice) && isFiniteNum(meta.regularMarketPrice) && isFiniteNum(meta.regularMarketTime)) {
+    currentPrice = Number(meta.regularMarketPrice);
+    currentTimestamp = Number(meta.regularMarketTime);
     source = 'yahoo-regular';
   }
   
-  const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
+  const previousClose = Number(
+    meta.chartPreviousClose ?? meta.previousClose ?? meta.regularMarketPreviousClose
+  );
   
-  if (!currentPrice) {
+  if (!Number.isFinite(currentPrice)) {
     throw new Error('Yahoo Finance: No valid price found');
   }
   
   const quote = {
     ticker,
     current: currentPrice,
-    previousClose,
-    changePercent: previousClose ? ((currentPrice - previousClose) / previousClose) * 100 : null,
+    previousClose: Number.isFinite(previousClose) ? previousClose : null,
+    changePercent: Number.isFinite(previousClose) && previousClose !== 0
+      ? ((currentPrice - previousClose) / previousClose) * 100
+      : null,
     timestamp: currentTimestamp * 1000,
     source,
   };
   
   // If only regular price and ticker is Nasdaq-100 constituent, fetch futures for context.
   // Only apply when US equity market is closed to avoid overriding actual traded prices.
-  if (source === 'yahoo-regular' && previousClose && NASDAQ_100_CONSTITUENTS.has(ticker)) {
+  if (source === 'yahoo-regular' && Number.isFinite(previousClose) && previousClose !== 0 && NASDAQ_100_CONSTITUENTS.has(ticker)) {
     // Check if US equity market is currently open (9:30 AM - 4:00 PM ET weekdays)
     const isUSMarketOpen = (() => {
       try {
         const now = new Date();
-        const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
-        const [, timePart] = etStr.split(', ');
-        const [h, m] = timePart.split(':').map(Number);
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          hour: '2-digit',
+          minute: '2-digit',
+          weekday: 'short',
+          hour12: false,
+        });
+        const parts = formatter.formatToParts(now);
+        const partMap = {};
+        for (const p of parts) {
+          if (p.type === 'hour' || p.type === 'minute' || p.type === 'weekday') {
+            partMap[p.type] = p.value;
+          }
+        }
+        const h = Number(partMap.hour);
+        const m = Number(partMap.minute);
+        if (Number.isNaN(h) || Number.isNaN(m) || !partMap.weekday) {
+          return false;
+        }
         const mins = h * 60 + m;
-        const day = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })).getDay();
-        return day >= 1 && day <= 5 && mins >= 570 && mins < 960;
+        // US weekdays in 'en-US' short form: Mon, Tue, Wed, Thu, Fri
+        const isWeekday = partMap.weekday !== 'Sat' && partMap.weekday !== 'Sun';
+        return isWeekday && mins >= 570 && mins < 960;
       } catch { return false; }
     })();
 
