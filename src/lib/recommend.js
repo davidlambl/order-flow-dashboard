@@ -143,6 +143,8 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
 /**
  * Compute dual recommendations for when options market is closed and spot price has diverged.
  * @param {{ costBasis: number, shares: number, cboeClosePrice: number, livePrice: number, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
+ *   - cboeClosePrice: Delayed CBOE quote (15-min delayed current_price, not official close)
+ *   - livePrice: Real-time price from Yahoo/Finnhub (extended hours or futures-implied)
  * @returns {{ primary: object, secondary: object|null, cboeClosePrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
  */
 export function computeDualRecommendation({

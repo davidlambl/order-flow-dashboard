@@ -283,11 +283,11 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
           {/* Price Comparison */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* CBOE Close Price */}
+            {/* Options Snapshot Price (delayed CBOE) */}
             <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-                  Price (CBOE Close)
+                  Options Snapshot (delayed)
                 </span>
                 <span className="text-sm font-mono tabular-nums text-[var(--color-text-secondary)]">
                   {formatPrice(dualRec.cboeClosePrice)}

@@ -75,10 +75,10 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
 USER POSITION:
   Cost Basis: ${formatPrice(costBasis)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
-  CBOE Close (Options Data): ${formatPrice(spotPrice)}
+  Options Snapshot (delayed): ${formatPrice(spotPrice)}
   Live Price (Overnight): ${formatPrice(liveQuote.current)} (${gapPct >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
-  Unrealized P&L (Close): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
-  Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Close): ~${formatDollar(notional)}` : ''}
+  Unrealized P&L (at Snapshot): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
+  Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Snapshot): ~${formatDollar(notional)}` : ''}
 `;
     } else {
       positionBlock = `
