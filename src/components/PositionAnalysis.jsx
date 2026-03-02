@@ -27,58 +27,43 @@ function PriceLevelBar({ levels }) {
 
   const positioned = levels
     .map((l) => ({ ...l, pct: Math.max(5, Math.min(95, toPercent(l.price))) }))
-    .sort((a, b) => a.pct - b.pct);
-
-  const MIN_GAP = 20;
-  let lastTopPct = -Infinity;
-  for (const item of positioned) {
-    if (item.pct - lastTopPct < MIN_GAP) {
-      item.below = true;
-    } else {
-      item.below = false;
-      lastTopPct = item.pct;
-    }
-  }
-
-  const barY = 40;
+    .sort((a, b) => a.price - b.price);
 
   return (
-    <div className="relative mt-2 mb-1" style={{ height: 88 }}>
-      <div className="absolute left-0 right-0 h-px bg-[var(--color-border)]" style={{ top: barY }} />
-      {positioned.map((level) => {
-        if (level.below) {
-          return (
-            <div
-              key={level.label}
-              className="absolute flex flex-col items-center -translate-x-1/2"
-              style={{ left: `${level.pct}%`, top: barY - 16 }}
-            >
-              <div className="w-0.5 h-4 rounded-full" style={{ backgroundColor: level.color }} />
-              <span className="text-[8px] sm:text-[9px] font-mono tabular-nums whitespace-nowrap mt-0.5" style={{ color: level.color }}>
-                {formatPrice(level.price)}
-              </span>
-              <span className="text-[7px] sm:text-[8px] font-semibold whitespace-nowrap" style={{ color: level.color }}>
-                {level.label}
-              </span>
-            </div>
-          );
-        }
-        return (
+    <div className="mt-3 mb-2 space-y-2">
+      {/* Bar with tick marks only */}
+      <div className="relative h-6">
+        <div className="absolute left-0 right-0 h-px bg-[var(--color-border)]" style={{ top: 12 }} />
+        {positioned.map((level) => (
           <div
             key={level.label}
-            className="absolute flex flex-col items-center -translate-x-1/2"
-            style={{ left: `${level.pct}%`, top: 0 }}
-          >
-            <span className="text-[7px] sm:text-[8px] font-semibold whitespace-nowrap mb-0.5" style={{ color: level.color }}>
+            className="absolute w-0.5 h-4 rounded-full -translate-x-1/2"
+            style={{
+              left: `${level.pct}%`,
+              top: 8,
+              backgroundColor: level.color,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Legend grid */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+        {positioned.map((level) => (
+          <div key={level.label} className="flex items-center gap-1.5">
+            <div
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: level.color }}
+            />
+            <span className="text-[10px] font-semibold whitespace-nowrap" style={{ color: level.color }}>
               {level.label}
             </span>
-            <span className="text-[8px] sm:text-[9px] font-mono tabular-nums whitespace-nowrap mb-1" style={{ color: level.color }}>
+            <span className="text-[10px] font-mono tabular-nums" style={{ color: level.color }}>
               {formatPrice(level.price)}
             </span>
-            <div className="w-0.5 h-4 rounded-full" style={{ backgroundColor: level.color }} />
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
