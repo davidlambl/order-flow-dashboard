@@ -23,7 +23,9 @@ const CORS = {
 /**
  * Nasdaq-100 constituent tickers (high correlation with NQ futures).
  * Only these tickers should use futures-implied pricing.
- * Source: Major Nasdaq-100 components as of 2026.
+ * Source: https://en.wikipedia.org/wiki/Nasdaq-100 (last updated: 2026-01)
+ * NOTE: The Nasdaq-100 reconstitutes annually (typically December). Update this list
+ * when constituents change — reference https://www.nasdaq.com/market-activity/quotes/nasdaq-ndx-index
  */
 const NASDAQ_100_CONSTITUENTS = new Set([
   'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'COST',

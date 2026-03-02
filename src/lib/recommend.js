@@ -153,7 +153,12 @@ export function computeDualRecommendation({
   kpis, gexByStrike,
   optionsMarketOpen
 }) {
-  if (!costBasis || !optionsSnapshotPrice || !livePrice || !kpis) {
+  if (
+    costBasis == null || !Number.isFinite(costBasis) ||
+    optionsSnapshotPrice == null || !Number.isFinite(optionsSnapshotPrice) ||
+    livePrice == null || !Number.isFinite(livePrice) ||
+    !kpis
+  ) {
     return null;
   }
 
