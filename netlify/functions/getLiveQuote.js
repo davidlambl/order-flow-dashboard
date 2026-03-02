@@ -7,7 +7,6 @@
 //
 // BYOK: accepts x-finnhub-key header for Finnhub fallback, falls back to FINNHUB_API_KEY env var.
 
-const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 // Allowed ticker format: 1-10 uppercase letters/digits, optional dot/hyphen
@@ -96,7 +95,13 @@ async function fetchNasdaqFutures() {
   // Previous close (typically Friday 4 PM ET close for weekend gaps)
   const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
   
-  if (!currentPrice || !previousClose) {
+  if (
+    currentPrice == null ||
+    previousClose == null ||
+    !Number.isFinite(currentPrice) ||
+    !Number.isFinite(previousClose) ||
+    previousClose === 0
+  ) {
     throw new Error('Futures data incomplete');
   }
   
@@ -148,19 +153,19 @@ async function fetchYahooQuote(ticker) {
   let source = 'yahoo-regular';
   
   // 1. Check for post-market (after-hours) price
-  if (meta.postMarketPrice && meta.postMarketTime) {
+  if (meta.postMarketPrice != null && Number.isFinite(meta.postMarketPrice) && meta.postMarketTime != null) {
     currentPrice = meta.postMarketPrice;
     currentTimestamp = meta.postMarketTime;
     source = 'yahoo-extended';
   }
   // 2. Check for pre-market price
-  else if (meta.preMarketPrice && meta.preMarketTime) {
+  else if (meta.preMarketPrice != null && Number.isFinite(meta.preMarketPrice) && meta.preMarketTime != null) {
     currentPrice = meta.preMarketPrice;
     currentTimestamp = meta.preMarketTime;
     source = 'yahoo-extended';
   }
   // 3. Fall back to regular market price
-  else if (meta.regularMarketPrice && meta.regularMarketTime) {
+  else if (meta.regularMarketPrice != null && Number.isFinite(meta.regularMarketPrice) && meta.regularMarketTime != null) {
     currentPrice = meta.regularMarketPrice;
     currentTimestamp = meta.regularMarketTime;
     source = 'yahoo-regular';
@@ -168,7 +173,7 @@ async function fetchYahooQuote(ticker) {
   
   const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
   
-  if (!currentPrice) {
+  if (currentPrice == null || !Number.isFinite(currentPrice)) {
     throw new Error('Yahoo Finance: No valid price found');
   }
   

@@ -30,7 +30,7 @@ export default function App() {
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
   const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
-  const { quote: liveQuote } = useLiveQuote(ticker);
+  const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const n = getPreference('sidebarWidth');
@@ -102,6 +102,11 @@ export default function App() {
     setTicker(newTicker);
   }, []);
 
+  const handleRefresh = useCallback(() => {
+    refresh();
+    refreshLiveQuote();
+  }, [refresh, refreshLiveQuote]);
+
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -112,7 +117,7 @@ export default function App() {
       <Header
         ticker={ticker}
         onTickerChange={handleTickerChange}
-        onRefresh={refresh}
+        onRefresh={handleRefresh}
         loading={loading}
         usingMock={usingMock}
         data={data}
