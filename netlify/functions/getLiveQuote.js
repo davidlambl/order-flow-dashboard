@@ -7,6 +7,9 @@
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
+// Allowed ticker format: 1-10 uppercase letters/digits, optional dot/hyphen
+const TICKER_REGEX = /^[A-Z0-9][A-Z0-9.\-]{0,9}$/;
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, x-finnhub-key, Authorization',
@@ -15,10 +18,20 @@ const CORS = {
   'Vary': 'x-finnhub-key',
 };
 
-async function finnhubGet(path, token) {
-  const sep = path.includes('?') ? '&' : '?';
-  const url = `${FINNHUB_BASE}${path}${sep}token=${token}`;
-  const res = await fetch(url);
+async function finnhubGet(path, params, token) {
+  const url = new URL(`${FINNHUB_BASE}${path}`);
+  
+  // Add query params
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.append(key, value);
+    }
+  }
+  
+  // Add token
+  url.searchParams.append('token', token);
+  
+  const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Finnhub ${path}: ${res.status}`);
   return res.json();
 }
@@ -29,9 +42,18 @@ export default async (req) => {
   }
 
   const url = new URL(req.url);
-  const ticker = (url.searchParams.get('ticker') || '').toUpperCase();
+  const ticker = (url.searchParams.get('ticker') || '').toUpperCase().trim();
+  
   if (!ticker) {
     return new Response(JSON.stringify({ error: 'Missing ticker' }), {
+      status: 400,
+      headers: { ...CORS, 'Content-Type': 'application/json' },
+    });
+  }
+  
+  // Validate ticker format to prevent injection attacks
+  if (!TICKER_REGEX.test(ticker)) {
+    return new Response(JSON.stringify({ error: 'Invalid ticker format' }), {
       status: 400,
       headers: { ...CORS, 'Content-Type': 'application/json' },
     });
@@ -46,7 +68,7 @@ export default async (req) => {
   }
 
   try {
-    const q = await finnhubGet(`/quote?symbol=${ticker}`, finnhubKey);
+    const q = await finnhubGet('/quote', { symbol: ticker }, finnhubKey);
     
     let liveQuote = null;
     if (q && q.c != null) {
