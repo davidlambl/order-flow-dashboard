@@ -19,9 +19,12 @@ export async function fetchMarketData(ticker, signal = null) {
   const tradierKey = sessionStorage.getItem('data_tradier_key');
   if (tradierKey) headers['x-tradier-key'] = tradierKey;
 
+  const options = { headers };
+  if (signal) options.signal = signal;
+
   let res;
   try {
-    res = await fetch(url, { headers, signal });
+    res = await fetch(url, options);
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
@@ -128,9 +131,12 @@ export async function fetchTickerContext(ticker, signal = null) {
   const finnhubKey = sessionStorage.getItem('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
+  const options = { headers };
+  if (signal) options.signal = signal;
+
   let res;
   try {
-    res = await fetch(url, { headers, signal });
+    res = await fetch(url, options);
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
@@ -175,9 +181,12 @@ export async function fetchLiveQuote(ticker, signal = null) {
   const finnhubKey = sessionStorage.getItem('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
+  const options = { headers };
+  if (signal) options.signal = signal;
+
   let res;
   try {
-    res = await fetch(url, { headers, signal });
+    res = await fetch(url, options);
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
