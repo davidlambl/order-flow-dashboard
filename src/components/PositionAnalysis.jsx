@@ -8,19 +8,16 @@ const SIGNAL_STYLES = {
   BUY: {
     color: 'var(--color-bull)',
     bg: 'var(--color-bull-bg)',
-    border: 'var(--color-bull)',
     borderMuted: 'var(--color-bull-border-muted)',
   },
   HOLD: {
     color: 'var(--color-warn)',
     bg: 'var(--color-warn-bg)',
-    border: 'var(--color-warn)',
     borderMuted: 'var(--color-warn-border-muted)',
   },
   SELL: {
     color: 'var(--color-bear)',
     bg: 'var(--color-bear-bg)',
-    border: 'var(--color-bear)',
     borderMuted: 'var(--color-bear-border-muted)',
   },
 };
