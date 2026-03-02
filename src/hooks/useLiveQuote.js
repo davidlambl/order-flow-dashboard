@@ -1,6 +1,8 @@
 // src/hooks/useLiveQuote.js
-// Fetches real-time stock quotes from Finnhub.
+// Fetches real-time stock quotes via fetchLiveQuote (Yahoo Finance primary, Finnhub fallback).
 // Caches results client-side for 1 minute per ticker for freshness.
+// Extended-hours support and source fields (yahoo-extended, futures-implied, finnhub) depend on
+// the underlying data provider and ticker eligibility (e.g., Nasdaq-100 constituents).
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchLiveQuote } from '../lib/api';
