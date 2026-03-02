@@ -74,10 +74,8 @@ export function useLiveQuote(ticker) {
       console.warn('Live quote fetch failed:', err.message);
       setError(err.message);
     } finally {
-      if (!controller.signal.aborted) {
-        loadingRef.current = false;
-        if (!background) setLoading(false);
-      }
+      loadingRef.current = false;
+      if (!background) setLoading(false);
     }
   }, []);
 
