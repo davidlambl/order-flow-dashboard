@@ -13,6 +13,7 @@ import PremiumGate from './components/PremiumGate';
 import AppSettings from './components/AppSettings';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
+import { useLiveQuote } from './hooks/useLiveQuote';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
 import { getPosition, setPosition as storeSetPosition, getPreference, setPreference } from './lib/store';
 
@@ -29,6 +30,7 @@ export default function App() {
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
   const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
+  const { quote: liveQuote } = useLiveQuote(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const n = getPreference('sidebarWidth');
@@ -178,7 +180,7 @@ export default function App() {
                 lastUpdated={data?.lastUpdated}
                 marketOpen={marketOpen}
                 optionsMarketOpen={optionsMarketOpen}
-                liveQuote={tickerContext?.liveQuote}
+                liveQuote={liveQuote}
               />
             </PremiumGate>
           </CollapsibleSection>
@@ -253,6 +255,7 @@ export default function App() {
             tickerContext={tickerContext}
             marketOpen={marketOpen}
             optionsMarketOpen={optionsMarketOpen}
+            liveQuote={liveQuote}
           />
         </aside>
       </div>

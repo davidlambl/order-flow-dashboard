@@ -1,11 +1,10 @@
-// src/hooks/useTickerContext.js
-// Fetches enriched ticker context from Finnhub via our Netlify function.
-// Caches results client-side for 15 minutes per ticker.
+// src/hooks/useLiveQuote.js
+// Fetches real-time stock quotes from Finnhub.
+// Caches results client-side for 1 minute per ticker for freshness.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchTickerContext } from '../lib/api';
 
-const CACHE_TTL = 15 * 60 * 1000;
+const CACHE_TTL = 1 * 60 * 1000;
 const cache = new Map();
 
 function getCached(ticker) {
@@ -22,8 +21,14 @@ function setCache(ticker, data) {
   cache.set(ticker, { data, ts: Date.now() });
 }
 
-export function useTickerContext(ticker) {
-  const [context, setContext] = useState(() => getCached(ticker));
+async function fetchLiveQuote(ticker) {
+  const res = await fetch(`/.netlify/functions/getLiveQuote?ticker=${ticker}`);
+  if (!res.ok) throw new Error(`Live quote fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export function useLiveQuote(ticker) {
+  const [quote, setQuote] = useState(() => getCached(ticker));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
@@ -34,7 +39,7 @@ export function useTickerContext(ticker) {
     if (!force) {
       const hit = getCached(symbol);
       if (hit) {
-        setContext(hit);
+        setQuote(hit);
         setError(null);
         return;
       }
@@ -48,13 +53,13 @@ export function useTickerContext(ticker) {
     setError(null);
 
     try {
-      const data = await fetchTickerContext(symbol);
+      const data = await fetchLiveQuote(symbol);
       if (controller.signal.aborted) return;
       setCache(symbol, data);
-      setContext(data);
+      setQuote(data);
     } catch (err) {
       if (controller.signal.aborted) return;
-      console.warn('Ticker context fetch failed:', err.message);
+      console.warn('Live quote fetch failed:', err.message);
       setError(err.message);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
@@ -80,5 +85,5 @@ export function useTickerContext(ticker) {
     load(ticker, true);
   }, [ticker, load]);
 
-  return { context, loading, error, refresh };
+  return { quote, loading, error, refresh };
 }

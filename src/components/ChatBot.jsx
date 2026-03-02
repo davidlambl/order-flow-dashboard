@@ -35,7 +35,7 @@ function buildFlowTrend(flowHistory) {
   return `\n5-SESSION TREND: ${consec} consecutive ${dir} session${consec > 1 ? 's' : ''}. Cumulative delta over window: ${formatDollar(delta)}.`;
 }
 
-function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext, marketOpen, optionsMarketOpen) {
+function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext, marketOpen, optionsMarketOpen, liveQuote) {
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
@@ -43,7 +43,6 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
   const k = kpis || {};
   const now = new Date().toISOString();
   
-  const liveQuote = tickerCtx?.liveQuote;
   const showDual = liveQuote && spotPrice && !optionsMarketOpen && 
     Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
 
@@ -586,7 +585,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
   );
 }
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen }) {
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen, liveQuote }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
   const skipSaveRef = useRef(false);
@@ -685,7 +684,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setSending(true);
 
     try {
-      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen);
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
       const apiMessages = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
@@ -819,7 +818,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
       {/* Context Inspector */}
       {showContext && (() => {
-        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen);
+        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
         return (
           <div className="flex-1 overflow-y-auto border-b border-[var(--color-border-subtle)]">
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">
