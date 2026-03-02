@@ -70,13 +70,14 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
     if (showDual) {
       const livePnlPct = ((liveQuote.current - costBasis) / costBasis * 100).toFixed(2);
       const livePnlDollars = shares ? (liveQuote.current - costBasis) * shares : null;
-      const gapPct = ((liveQuote.current - spotPrice) / spotPrice * 100).toFixed(1);
+      const gapPctNum = ((liveQuote.current - spotPrice) / spotPrice) * 100;
+      const gapPct = Math.abs(gapPctNum).toFixed(1);
       positionBlock = `
 USER POSITION:
   Cost Basis: ${formatPrice(costBasis)}
   Shares: ${shares ? shares.toLocaleString() : 'not specified'}
   Options Snapshot (delayed): ${formatPrice(spotPrice)}
-  Live Price (Overnight): ${formatPrice(liveQuote.current)} (${gapPct >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
+  Live Price (Overnight): ${formatPrice(liveQuote.current)} (${gapPctNum >= 0 ? '↑ +' : '↓ '}${gapPct}% gap)
   Unrealized P&L (at Snapshot): ${pnlPct >= 0 ? '+' : ''}${pnlPct}%${pnlDollars != null ? ` (${formatDollar(pnlDollars)})` : ''}
   Unrealized P&L (Live): ${livePnlPct >= 0 ? '+' : ''}${livePnlPct}%${livePnlDollars != null ? ` (${formatDollar(livePnlDollars)})` : ''}${notional != null ? `\n  Notional Exposure (at Snapshot): ~${formatDollar(notional)}` : ''}
 `;
