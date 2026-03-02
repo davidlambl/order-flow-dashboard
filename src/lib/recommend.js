@@ -136,3 +136,38 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
 
   return levels.sort((a, b) => a.price - b.price);
 }
+
+/**
+ * Compute dual recommendations for when options market is closed and spot price has diverged.
+ * @param {{ costBasis: number, shares: number, cboeClosePrice: number, livePrice: number, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
+ * @returns {{ primary: object, secondary: object|null, cboeClosePrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean }}
+ */
+export function computeDualRecommendation({
+  costBasis, shares,
+  cboeClosePrice, livePrice,
+  kpis, gexByStrike,
+  optionsMarketOpen
+}) {
+  if (!cboeClosePrice || !livePrice) {
+    return null;
+  }
+
+  const fridayRec = computeRecommendation({
+    costBasis, shares, spotPrice: cboeClosePrice, kpis, gexByStrike
+  });
+
+  const liveRec = computeRecommendation({
+    costBasis, shares, spotPrice: livePrice, kpis, gexByStrike
+  });
+
+  const gapPercent = ((livePrice - cboeClosePrice) / cboeClosePrice) * 100;
+
+  return {
+    primary: optionsMarketOpen ? liveRec : fridayRec,
+    secondary: optionsMarketOpen ? null : liveRec,
+    cboeClosePrice,
+    livePrice,
+    gapPercent,
+    optionsMarketOpen,
+  };
+}

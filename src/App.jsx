@@ -27,7 +27,7 @@ export default function App() {
   const [costBasis, setCostBasis] = useState(null);
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
-  const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, toggleAutoRefresh } = useMarketData(ticker);
+  const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -177,6 +177,8 @@ export default function App() {
                 loading={loading}
                 lastUpdated={data?.lastUpdated}
                 marketOpen={marketOpen}
+                optionsMarketOpen={optionsMarketOpen}
+                liveQuote={tickerContext?.liveQuote}
               />
             </PremiumGate>
           </CollapsibleSection>
@@ -250,6 +252,7 @@ export default function App() {
             onOpenSettings={openSettings}
             tickerContext={tickerContext}
             marketOpen={marketOpen}
+            optionsMarketOpen={optionsMarketOpen}
           />
         </aside>
       </div>

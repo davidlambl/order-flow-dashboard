@@ -94,7 +94,7 @@ export default async (req) => {
 
   const [
     newsRes, earningsRes, recRes, ptRes, metricsRes, candleRes,
-    generalNewsRes, ...quoteResults
+    generalNewsRes, tickerQuoteRes, ...quoteResults
   ] = await Promise.allSettled([
     finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
     finnhubGet(`/calendar/earnings?symbol=${ticker}&from=${earningsFrom.toISOString().slice(0, 10)}&to=${earningsTo.toISOString().slice(0, 10)}`, finnhubKey),
@@ -103,6 +103,7 @@ export default async (req) => {
     finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
     finnhubGet(`/stock/candle?symbol=${ticker}&resolution=D&from=${oneYearAgo}&to=${nowUnix}`, finnhubKey),
     finnhubGet('/news?category=general', finnhubKey),
+    finnhubGet(`/quote?symbol=${ticker}`, finnhubKey),
     ...MARKET_SYMBOLS.map((sym) => finnhubGet(`/quote?symbol=${sym}`, finnhubKey)),
   ]);
 
@@ -232,10 +233,22 @@ export default async (req) => {
     }
   });
 
+  let liveQuote = null;
+  if (tickerQuoteRes.status === 'fulfilled' && tickerQuoteRes.value && tickerQuoteRes.value.c) {
+    const q = tickerQuoteRes.value;
+    liveQuote = {
+      current: q.c,
+      previousClose: q.pc ?? null,
+      changePercent: q.pc ? ((q.c - q.pc) / q.pc) * 100 : 0,
+      timestamp: q.t ? q.t * 1000 : Date.now(),
+    };
+  }
+
   const body = {
     ticker, news, earnings, analysts, technicals, fundamentals,
     marketNews,
     marketQuotes: Object.keys(marketQuotes).length > 0 ? marketQuotes : null,
+    liveQuote,
   };
 
   return new Response(JSON.stringify(body), {

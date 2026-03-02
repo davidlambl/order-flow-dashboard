@@ -1,7 +1,7 @@
 // src/components/PositionAnalysis.jsx
 import { useMemo } from 'react';
-import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react';
-import { computeRecommendation, extractPriceLevels } from '../lib/recommend';
+import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight, AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
+import { computeRecommendation, computeDualRecommendation, extractPriceLevels } from '../lib/recommend';
 import { formatDollar, formatPrice } from '../lib/format';
 
 const SIGNAL_STYLES = {
@@ -68,7 +68,7 @@ function PriceLevelBar({ levels }) {
   );
 }
 
-function RecommendationBadge({ rec, isStale, lastUpdated }) {
+function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, hasWarning }) {
   if (!rec) return null;
   const style = SIGNAL_STYLES[rec.signal];
 
@@ -87,17 +87,27 @@ function RecommendationBadge({ rec, isStale, lastUpdated }) {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <div
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
-        style={{ backgroundColor: style.bg, borderColor: `${style.border}33` }}
-      >
-        {rec.signal === 'BUY' ? <TrendingUp size={16} style={{ color: style.color }} /> :
-         rec.signal === 'SELL' ? <TrendingDown size={16} style={{ color: style.color }} /> :
-         <Minus size={16} style={{ color: style.color }} />}
-        <span className="text-lg font-bold tracking-tight" style={{ color: style.color }}>
-          {rec.signal}
+    <div className={`flex flex-col gap-1.5 ${isSecondary ? 'items-start' : 'items-end'}`}>
+      {label && (
+        <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+          {label}
         </span>
+      )}
+      <div className="flex items-center gap-2">
+        {hasWarning && (
+          <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
+        )}
+        <div
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${isSecondary ? 'border-dashed' : 'border'}`}
+          style={{ backgroundColor: style.bg, borderColor: `${style.border}33` }}
+        >
+          {rec.signal === 'BUY' ? <TrendingUp size={16} style={{ color: style.color }} /> :
+           rec.signal === 'SELL' ? <TrendingDown size={16} style={{ color: style.color }} /> :
+           <Minus size={16} style={{ color: style.color }} />}
+          <span className={`${isSecondary ? 'text-base' : 'text-lg'} font-bold tracking-tight`} style={{ color: style.color }}>
+            {rec.signal}
+          </span>
+        </div>
       </div>
       <span
         className="text-[10px] font-medium px-2 py-0.5 rounded-full border"
@@ -114,11 +124,31 @@ function RecommendationBadge({ rec, isStale, lastUpdated }) {
   );
 }
 
-export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen }) {
+export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
+  const showDual = useMemo(() => {
+    if (!liveQuote || !spotPrice || !optionsMarketOpen) return false;
+    const gapPercent = Math.abs(((liveQuote.current - spotPrice) / spotPrice) * 100);
+    return !optionsMarketOpen && gapPercent >= 0.5;
+  }, [liveQuote, spotPrice, optionsMarketOpen]);
+
+  const dualRec = useMemo(() => {
+    if (!showDual || !costBasis || !liveQuote) return null;
+    return computeDualRecommendation({
+      costBasis,
+      shares,
+      cboeClosePrice: spotPrice,
+      livePrice: liveQuote.current,
+      kpis,
+      gexByStrike,
+      optionsMarketOpen: optionsMarketOpen || false,
+    });
+  }, [showDual, costBasis, shares, spotPrice, liveQuote, kpis, gexByStrike, optionsMarketOpen]);
+
   const rec = useMemo(() => {
+    if (showDual && dualRec) return null;
     if (!costBasis || !spotPrice) return null;
     return computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
-  }, [costBasis, shares, spotPrice, kpis, gexByStrike]);
+  }, [showDual, dualRec, costBasis, shares, spotPrice, kpis, gexByStrike]);
 
   const levels = useMemo(() => {
     if (!costBasis || !spotPrice) return [];
@@ -139,9 +169,14 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   const hasBasis = costBasis != null && costBasis > 0;
   const hasShares = shares != null && shares > 0;
+  
   const pnlPct = hasBasis && spotPrice ? ((spotPrice - costBasis) / costBasis) * 100 : null;
   const pnlDollars = hasBasis && hasShares && spotPrice ? (spotPrice - costBasis) * shares : null;
   const pnlUp = (pnlPct || 0) >= 0;
+
+  const livePnlPct = hasBasis && liveQuote?.current ? ((liveQuote.current - costBasis) / costBasis) * 100 : null;
+  const livePnlDollars = hasBasis && hasShares && liveQuote?.current ? (liveQuote.current - costBasis) * shares : null;
+  const livePnlUp = (livePnlPct || 0) >= 0;
 
   const handleCostChange = (e) => {
     const val = e.target.value === '' ? null : parseFloat(e.target.value);
@@ -159,7 +194,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   return (
     <div>
-      {/* Header row: title + inputs + P&L + recommendation */}
+      {/* Header row: title + inputs + prices + recommendations */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         {/* Left: Title + inputs */}
         <div className="flex flex-col gap-3">
@@ -199,8 +234,8 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           </div>
         </div>
 
-        {/* Center: P&L */}
-        {hasBasis && spotPrice && (
+        {/* Center: P&L (single or dual) */}
+        {hasBasis && spotPrice && !showDual && (
           <div className="flex flex-col items-center gap-0.5">
             <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
               Unrealized P&L
@@ -222,15 +257,164 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           </div>
         )}
 
-        {/* Right: Recommendation */}
-        <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} />
+        {/* Right: Recommendation (single) */}
+        {!showDual && (
+          <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} hasWarning={isStale} />
+        )}
       </div>
 
-      {/* Price levels chart */}
-      {levels.length >= 2 && <PriceLevelBar levels={levels} />}
+      {/* Dual Price Display when options market closed and gap > 0.5% */}
+      {showDual && dualRec && (
+        <div className="mt-4 space-y-4">
+          {/* Market Status Warning */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn)]/20">
+            <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
+            <span className="text-xs text-[var(--color-warn)] font-medium">
+              Options market closed until 9:30 AM ET — overnight price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}%
+            </span>
+          </div>
 
-      {/* Reasons */}
-      {rec && (
+          {/* Price Comparison */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* CBOE Close Price */}
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
+                  Price (CBOE Close)
+                </span>
+                <span className="text-sm font-mono tabular-nums text-[var(--color-text-secondary)]">
+                  {formatPrice(dualRec.cboeClosePrice)}
+                </span>
+              </div>
+              {hasBasis && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--color-text-muted)]">
+                    Unrealized P&L
+                  </span>
+                  <div className="flex flex-col items-end">
+                    <span
+                      className="text-base font-bold tabular-nums font-mono"
+                      style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                    >
+                      {pnlUp ? '+' : ''}{pnlPct?.toFixed(2)}%
+                    </span>
+                    {pnlDollars != null && (
+                      <span
+                        className="text-xs tabular-nums font-mono"
+                        style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                      >
+                        {pnlUp ? '+' : ''}{formatDollar(pnlDollars)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Live Price */}
+            <div className="flex flex-col gap-2 p-3 rounded-lg border-2 border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--color-text-primary)] uppercase tracking-wider">
+                  Price (Live)
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {dualRec.gapPercent < 0 ? (
+                    <ArrowDown size={12} className="text-[var(--color-bear)]" />
+                  ) : (
+                    <ArrowUp size={12} className="text-[var(--color-bull)]" />
+                  )}
+                  <span className="text-sm font-mono tabular-nums text-[var(--color-text-primary)] font-bold">
+                    {formatPrice(dualRec.livePrice)}
+                  </span>
+                  <span
+                    className="text-xs font-mono tabular-nums"
+                    style={{ color: dualRec.gapPercent < 0 ? 'var(--color-bear)' : 'var(--color-bull)' }}
+                  >
+                    ({dualRec.gapPercent > 0 ? '+' : ''}{dualRec.gapPercent.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+              {hasBasis && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[var(--color-text-muted)]">
+                    Unrealized P&L
+                  </span>
+                  <div className="flex flex-col items-end">
+                    <span
+                      className="text-base font-bold tabular-nums font-mono"
+                      style={{ color: livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                    >
+                      {livePnlUp ? '+' : ''}{livePnlPct?.toFixed(2)}%
+                    </span>
+                    {livePnlDollars != null && (
+                      <span
+                        className="text-xs tabular-nums font-mono"
+                        style={{ color: livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                      >
+                        {livePnlUp ? '+' : ''}{formatDollar(livePnlDollars)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dual Recommendations */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Primary: Based on Options Data */}
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
+              <RecommendationBadge
+                rec={dualRec.primary}
+                isStale={isStale}
+                lastUpdated={lastUpdated}
+                label="Based on Friday Options"
+                hasWarning={true}
+              />
+              {dualRec.primary && (
+                <div className="mt-2 space-y-1">
+                  {dualRec.primary.reasons.slice(0, 3).map((reason, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                      <ChevronRight size={10} className="shrink-0 mt-0.5 text-[var(--color-text-muted)]" />
+                      <span>{reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Secondary: If Live Price Holds */}
+            {dualRec.secondary && (
+              <div className="flex flex-col gap-2 p-3 rounded-lg border border-dashed border-[var(--color-accent)]/40 bg-[var(--color-accent)]/5">
+                <RecommendationBadge
+                  rec={dualRec.secondary}
+                  label="If Live Price Holds"
+                  isSecondary={true}
+                />
+                {dualRec.secondary && (
+                  <div className="mt-2 space-y-1">
+                    {dualRec.secondary.reasons.slice(0, 3).map((reason, i) => (
+                      <div key={i} className="flex items-start gap-1.5 text-xs text-[var(--color-text-secondary)]">
+                        <ChevronRight size={10} className="shrink-0 mt-0.5 text-[var(--color-text-muted)]" />
+                        <span>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 text-[10px] text-[var(--color-text-muted)] italic">
+                  Options positioning unknown until market opens at 9:30 AM ET
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Price levels chart */}
+      {!showDual && levels.length >= 2 && <PriceLevelBar levels={levels} />}
+
+      {/* Reasons (single mode only) */}
+      {!showDual && rec && (
         <div className="mt-3 pt-3 border-t border-[var(--color-border-subtle)]">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
             {rec.reasons.map((reason, i) => (
