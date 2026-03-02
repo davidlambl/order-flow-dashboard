@@ -146,12 +146,14 @@ USER POSITION:
         minute: '2-digit', 
         hour12: true 
       }) : '';
+      
+      const timeClause = timeStr ? ` (last updated at ${timeStr})` : '';
 
       signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
 
   Recommendation #1 (Options Close Snapshot): ${dualRec.primary.signal} (${dualRec.primary.confidence} confidence)
 ${dualRec.primary.reasons.map((r) => `    • ${r}`).join('\n')}
-    ⚠ Note: This recommendation is based on options data from ${timeStr} (last options close).
+    ⚠ Note: This recommendation is based on options data from the last options close${timeClause}.
            Options market is currently closed. This signal will update when options trading resumes.`;
 
       if (dualRec.secondary) {
