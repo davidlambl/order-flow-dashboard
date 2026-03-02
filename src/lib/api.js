@@ -9,7 +9,7 @@ const FUNCTION_BASE = '/.netlify/functions';
  * Fetch computed market data from our serverless function.
  * Supports BYOK Tradier for real-time data; falls back to free CBOE delayed quotes.
  * @param {string} ticker - Stock symbol
- * @param {AbortSignal} signal - Optional abort signal for cancellation
+ * @param {AbortSignal|null} [signal] - Optional abort signal for cancellation
  */
 export async function fetchMarketData(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
@@ -121,7 +121,7 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
 /**
  * Fetch enriched ticker context from Finnhub (news, earnings, analyst, technicals, fundamentals).
  * @param {string} ticker - Stock symbol
- * @param {AbortSignal} signal - Optional abort signal for cancellation
+ * @param {AbortSignal|null} [signal] - Optional abort signal for cancellation
  */
 export async function fetchTickerContext(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
@@ -174,7 +174,7 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
  * Fetches real-time stock quote via Netlify function.
  * Uses Yahoo Finance (including extended hours and futures-implied pricing where available) and falls back to Finnhub.
  * @param {string} ticker - Stock symbol
- * @param {AbortSignal|null} signal - Optional abort signal for request cancellation
+ * @param {AbortSignal|null} [signal] - Optional abort signal for request cancellation
  * @returns {Promise<Object>} Quote data with source indicator (yahoo-extended, futures-implied, yahoo-regular, or finnhub)
  */
 export async function fetchLiveQuote(ticker, signal = null) {

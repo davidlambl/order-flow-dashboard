@@ -188,11 +188,25 @@ async function fetchYahooQuote(ticker) {
     const isUSMarketOpen = (() => {
       try {
         const now = new Date();
-        const etStr = now.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: false });
-        const [, timePart] = etStr.split(', ');
-        const [h, m] = timePart.split(':').map(Number);
-        const mins = h * 60 + m;
-        const day = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })).getDay();
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'America/New_York',
+          hour12: false,
+          weekday: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const parts = formatter.formatToParts(now);
+        let weekdayStr = null, hour = null, minute = null;
+        for (const part of parts) {
+          if (part.type === 'weekday') weekdayStr = part.value;
+          else if (part.type === 'hour') hour = Number(part.value);
+          else if (part.type === 'minute') minute = Number(part.value);
+        }
+        if (weekdayStr == null || hour == null || Number.isNaN(hour) || minute == null || Number.isNaN(minute)) return false;
+        const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+        const day = weekdayMap[weekdayStr];
+        if (day === undefined) return false;
+        const mins = hour * 60 + minute;
         return day >= 1 && day <= 5 && mins >= 570 && mins < 960;
       } catch { return false; }
     })();
