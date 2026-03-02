@@ -78,6 +78,14 @@ export function useLiveQuote(ticker) {
     return () => { if (abortRef.current) abortRef.current.abort(); };
   }, [ticker, load]);
 
+  // Periodic refresh: re-fetch every CACHE_TTL ms so the quote never goes stale
+  // while the app is open (e.g. left running overnight).
+  useEffect(() => {
+    if (!ticker) return;
+    const id = setInterval(() => load(ticker, true), CACHE_TTL);
+    return () => clearInterval(id);
+  }, [ticker, load]);
+
   useEffect(() => {
     const handler = () => {
       cache.delete(ticker);
