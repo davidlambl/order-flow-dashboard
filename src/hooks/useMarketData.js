@@ -116,7 +116,7 @@ export function useMarketData(ticker) {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
 
-    const active = autoRefresh && marketOpen && !usingMock && !!ticker && data != null;
+    const active = autoRefresh && optionsMarketOpen && !usingMock && !!ticker && data != null;
     if (!active) {
       setSecondsLeft(0);
       return;
@@ -137,7 +137,7 @@ export function useMarketData(ticker) {
     }, 1000);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [autoRefresh, marketOpen, usingMock, ticker, data?.provider, fetchAll, timerEpoch]);
+  }, [autoRefresh, optionsMarketOpen, usingMock, ticker, data?.provider, fetchAll, timerEpoch]);
 
   const refresh = useCallback(() => {
     if (ticker) {
