@@ -24,10 +24,22 @@ function getMarketTime() {
         weekday: 'short',
       }).formatToParts(new Date()).map(({ type, value }) => [type, value])
     );
-    
+
     const weekday = parts.weekday;
-    const mins = parseInt(parts.hour, 10) * 60 + parseInt(parts.minute, 10);
-    
+    const hour = parseInt(parts.hour, 10);
+    const minute = parseInt(parts.minute, 10);
+
+    if (typeof weekday !== 'string' || weekday.length === 0 ||
+        !Number.isFinite(hour) || !Number.isFinite(minute)) {
+      console.error('Failed to parse market time parts:', parts);
+      return null;
+    }
+
+    const mins = hour * 60 + minute;
+    if (!Number.isFinite(mins)) {
+      console.error('Computed invalid minutes for market time:', { hour, minute, mins });
+      return null;
+    }
     return { weekday, mins };
   } catch (err) {
     console.error('Failed to parse market time:', err);
