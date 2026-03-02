@@ -77,7 +77,7 @@ export function useMarketData(ticker) {
     }
 
     try {
-      const result = await fetchMarketData(symbol);
+      const result = await fetchMarketData(symbol, controller.signal);
       if (controller.signal.aborted) return;
 
       setData({

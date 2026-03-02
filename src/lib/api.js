@@ -9,8 +9,9 @@ const FUNCTION_BASE = '/.netlify/functions';
  * Fetch computed market data from our serverless function.
  * Supports BYOK Tradier for real-time data; falls back to free CBOE delayed quotes.
  * @param {string} ticker - Stock symbol
+ * @param {AbortSignal} signal - Optional abort signal for cancellation
  */
-export async function fetchMarketData(ticker) {
+export async function fetchMarketData(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getMarketData?${params}`;
 
@@ -20,7 +21,7 @@ export async function fetchMarketData(ticker) {
 
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, { headers, signal });
   } catch (networkErr) {
     throw new Error(`Network error: ${networkErr.message}`);
   }
