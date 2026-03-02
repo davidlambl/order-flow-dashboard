@@ -173,8 +173,13 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
  * Yahoo-style price display.
  * Always visible \u2014 shows closing price + after-hours drift when market is closed,
  * or the live price during market hours.
+ *
+ * dataProvider: 'tradier' | 'tradier-sandbox' | 'cboe' | undefined
+ * When CBOE (delayed), labels clearly indicate the price is ~15min stale.
  */
-function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen }) {
+function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider }) {
+  const isDelayed = !dataProvider || dataProvider === 'cboe' || dataProvider === 'tradier-sandbox';
+  const closeLabelText = isDelayed ? 'CBOE ~15min delayed' : 'At close';
   const spotNum = Number(spotPrice);
   const hasSpot = Number.isFinite(spotNum) && spotNum > 0;
   const q = liveQuote || {};
@@ -203,6 +208,11 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen }) {
             style={{ color: priceUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
           >
             {priceUp ? '+' : ''}{changePct.toFixed(2)}%
+          </span>
+        )}
+        {isDelayed && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-warn-bg)] text-[var(--color-warn)] font-medium">
+            ~15min delayed
           </span>
         )}
         <span className="text-xs text-[var(--color-text-muted)]">
@@ -237,8 +247,8 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen }) {
             {closeUp ? '+' : ''}{closeChangePct.toFixed(2)}%
           </span>
         )}
-        <span className="text-xs text-[var(--color-text-muted)]">
-          At close
+        <span className={`text-xs ${isDelayed ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]'}`}>
+          {closeLabelText}
         </span>
       </div>
 
@@ -267,7 +277,7 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen }) {
   );
 }
 
-export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
+export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote, dataProvider }) {
   // Normalize inputs once so all downstream logic (showDual, hasBasis, P&L) uses consistent numeric values
   const costBasisNum = Number(costBasis);
   const spotNum = Number(spotPrice);
@@ -355,6 +365,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
         spotPrice={spotPrice}
         liveQuote={liveQuote}
         optionsMarketOpen={optionsMarketOpen}
+        dataProvider={dataProvider}
       />
 
       {/* Header row: inputs + P&L + recommendation */}

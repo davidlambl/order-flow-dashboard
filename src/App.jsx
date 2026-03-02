@@ -186,6 +186,7 @@ export default function App() {
                 marketOpen={marketOpen}
                 optionsMarketOpen={optionsMarketOpen}
                 liveQuote={liveQuote}
+                dataProvider={data?.provider}
               />
             </PremiumGate>
           </CollapsibleSection>
