@@ -154,9 +154,9 @@ export function computeDualRecommendation({
   optionsMarketOpen
 }) {
   if (
-    costBasis == null || !Number.isFinite(costBasis) ||
+    costBasis == null || !Number.isFinite(costBasis) || costBasis <= 0 ||
     optionsSnapshotPrice == null || !Number.isFinite(optionsSnapshotPrice) || optionsSnapshotPrice <= 0 ||
-    livePrice == null || !Number.isFinite(livePrice) ||
+    livePrice == null || !Number.isFinite(livePrice) || livePrice <= 0 ||
     !kpis
   ) {
     return null;
