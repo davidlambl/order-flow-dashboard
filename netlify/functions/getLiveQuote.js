@@ -1,10 +1,13 @@
 // netlify/functions/getLiveQuote.js
 //
-// Lightweight endpoint for fetching real-time stock quotes from Finnhub.
+// Lightweight endpoint for fetching real-time stock quotes with extended hours support.
+// Uses Yahoo Finance for accurate overnight/pre-market/after-hours pricing.
+// Falls back to Finnhub if Yahoo Finance is unavailable.
 // Short cache TTL (60 seconds) to ensure fresh price data for gap detection.
 //
-// BYOK: accepts x-finnhub-key header, falls back to FINNHUB_API_KEY env var.
+// BYOK: accepts x-finnhub-key header for Finnhub fallback, falls back to FINNHUB_API_KEY env var.
 
+const YAHOO_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 // Allowed ticker format: 1-10 uppercase letters/digits, optional dot/hyphen
@@ -18,22 +21,86 @@ const CORS = {
   'Vary': 'x-finnhub-key',
 };
 
-async function finnhubGet(path, params, token) {
-  const url = new URL(`${FINNHUB_BASE}${path}`);
+/**
+ * Fetch live quote from Yahoo Finance (includes extended hours).
+ */
+async function fetchYahooQuote(ticker) {
+  const url = `${YAHOO_BASE}/${ticker}?interval=1m&range=1d&includePrePost=true`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0',
+    },
+  });
   
-  // Add query params
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.append(key, value);
-    }
+  if (!res.ok) {
+    throw new Error(`Yahoo Finance: ${res.status}`);
   }
   
-  // Add token
-  url.searchParams.append('token', token);
+  const data = await res.json();
+  const result = data?.chart?.result?.[0];
+  
+  if (!result) {
+    throw new Error('Yahoo Finance: No data returned');
+  }
+  
+  const meta = result.meta;
+  const currentPrice = meta.regularMarketPrice;
+  const previousClose = meta.chartPreviousClose || meta.previousClose;
+  
+  // Check for extended hours pricing
+  let extendedPrice = null;
+  let extendedTime = null;
+  
+  if (meta.postMarketPrice && meta.postMarketTime) {
+    extendedPrice = meta.postMarketPrice;
+    extendedTime = meta.postMarketTime;
+  } else if (meta.preMarketPrice && meta.preMarketTime) {
+    extendedPrice = meta.preMarketPrice;
+    extendedTime = meta.preMarketTime;
+  }
+  
+  // Use extended hours price if available and recent (within last 5 minutes)
+  const now = Math.floor(Date.now() / 1000);
+  const useExtended = extendedPrice && extendedTime && (now - extendedTime < 300);
+  
+  const current = useExtended ? extendedPrice : currentPrice;
+  const timestamp = useExtended ? extendedTime * 1000 : meta.regularMarketTime * 1000;
+  
+  return {
+    ticker,
+    current,
+    previousClose,
+    changePercent: previousClose ? ((current - previousClose) / previousClose) * 100 : null,
+    timestamp,
+    source: useExtended ? 'yahoo-extended' : 'yahoo-regular',
+  };
+}
+
+/**
+ * Fetch live quote from Finnhub (fallback, regular hours only).
+ */
+async function fetchFinnhubQuote(ticker, finnhubKey) {
+  const url = new URL(`${FINNHUB_BASE}/quote`);
+  url.searchParams.append('symbol', ticker);
+  url.searchParams.append('token', finnhubKey);
   
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error(`Finnhub ${path}: ${res.status}`);
-  return res.json();
+  if (!res.ok) throw new Error(`Finnhub: ${res.status}`);
+  
+  const q = await res.json();
+  
+  if (!q || q.c == null) {
+    throw new Error('Finnhub: No data returned');
+  }
+  
+  return {
+    ticker,
+    current: q.c,
+    previousClose: q.pc ?? null,
+    changePercent: q.pc != null ? ((q.c - q.pc) / q.pc) * 100 : null,
+    timestamp: q.t ? q.t * 1000 : Date.now(),
+    source: 'finnhub',
+  };
 }
 
 export default async (req) => {
@@ -60,31 +127,30 @@ export default async (req) => {
   }
 
   const finnhubKey = req.headers.get('x-finnhub-key') || process.env.FINNHUB_API_KEY || '';
-  if (!finnhubKey) {
-    return new Response(
-      JSON.stringify({ error: 'No Finnhub API key configured. Add one in Settings or set FINNHUB_API_KEY env var.' }),
-      { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } },
-    );
-  }
 
   try {
-    const q = await finnhubGet('/quote', { symbol: ticker }, finnhubKey);
-    
-    let liveQuote = null;
-    if (q && q.c != null) {
-      liveQuote = {
-        ticker,
-        current: q.c,
-        previousClose: q.pc ?? null,
-        changePercent: q.pc != null ? ((q.c - q.pc) / q.pc) * 100 : null,
-        timestamp: q.t ? q.t * 1000 : Date.now(),
-      };
+    // Try Yahoo Finance first (includes extended hours)
+    try {
+      const quote = await fetchYahooQuote(ticker);
+      return new Response(JSON.stringify(quote), {
+        status: 200,
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    } catch (yahooErr) {
+      console.warn('Yahoo Finance failed, falling back to Finnhub:', yahooErr.message);
+      
+      // Fallback to Finnhub if available
+      if (finnhubKey) {
+        const quote = await fetchFinnhubQuote(ticker, finnhubKey);
+        return new Response(JSON.stringify(quote), {
+          status: 200,
+          headers: { ...CORS, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      // No fallback available
+      throw new Error(`Yahoo Finance failed and no Finnhub key configured: ${yahooErr.message}`);
     }
-
-    return new Response(JSON.stringify(liveQuote), {
-      status: 200,
-      headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
   } catch (err) {
     return new Response(
       JSON.stringify({ error: err.message }),

@@ -321,9 +321,17 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
             {/* Live Price */}
             <div className="flex flex-col gap-2 p-3 rounded-lg border-2 border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-[var(--color-text-primary)] uppercase tracking-wider">
-                  Price (Live)
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-[var(--color-text-primary)] uppercase tracking-wider">
+                    Price (Live)
+                  </span>
+                  {liveQuote?.source && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono">
+                      {liveQuote.source === 'yahoo-extended' ? 'Extended Hours' : 
+                       liveQuote.source === 'yahoo-regular' ? 'Yahoo' : 'Finnhub'}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5">
                   {dualRec.gapPercent < 0 ? (
                     <ArrowDown size={12} className="text-[var(--color-bear)]" />
