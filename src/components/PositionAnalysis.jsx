@@ -401,7 +401,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                 rec={dualRec.primary}
                 isStale={isStale}
                 lastUpdated={lastUpdated}
-                label="Options Close Snapshot"
+                label="Options Snapshot (delayed)"
                 hasWarning={true}
               />
               {dualRec.primary && (
