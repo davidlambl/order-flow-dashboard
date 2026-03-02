@@ -3,6 +3,7 @@
 // Caches results client-side for 1 minute per ticker for freshness.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { fetchLiveQuote } from '../lib/api';
 
 const CACHE_TTL = 1 * 60 * 1000;
 const cache = new Map();
@@ -19,12 +20,6 @@ function getCached(ticker) {
 
 function setCache(ticker, data) {
   cache.set(ticker, { data, ts: Date.now() });
-}
-
-async function fetchLiveQuote(ticker) {
-  const res = await fetch(`/.netlify/functions/getLiveQuote?ticker=${ticker}`);
-  if (!res.ok) throw new Error(`Live quote fetch failed: ${res.status}`);
-  return res.json();
 }
 
 export function useLiveQuote(ticker) {

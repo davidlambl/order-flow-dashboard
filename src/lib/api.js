@@ -161,3 +161,27 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
   }
   return res.json();
 }
+
+/**
+ * Fetches real-time stock quote from Finnhub (lightweight endpoint).
+ */
+export async function fetchLiveQuote(ticker) {
+  const params = new URLSearchParams({ ticker });
+  const url = `${FUNCTION_BASE}/getLiveQuote?${params}`;
+
+  const headers = {};
+  const finnhubKey = sessionStorage.getItem('data_finnhub_key');
+  if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
+
+  let res;
+  try {
+    res = await fetch(url, { headers });
+  } catch (networkErr) {
+    throw new Error(`Network error: ${networkErr.message}`);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `Live quote error: ${res.status}`);
+  }
+  return res.json();
+}
