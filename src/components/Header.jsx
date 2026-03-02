@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, marketOpen, onToggleAutoRefresh }) {
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -96,20 +96,20 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             type="button"
             onClick={onToggleAutoRefresh}
             className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-lg border text-[10px] font-semibold tabular-nums transition-all ${
-              autoRefresh && marketOpen && !usingMock
+              autoRefresh && optionsMarketOpen && !usingMock
                 ? 'border-[var(--color-bull)]/30 text-[var(--color-bull)]'
                 : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:border-[var(--color-text-muted)]'
             }`}
             title={
               usingMock ? 'Auto-refresh disabled for demo data'
-              : !marketOpen
-                ? 'Market closed (Mon\u2013Fri 9:30a\u20134p ET) \u2014 resumes at open'
+              : !optionsMarketOpen
+                ? 'Options market closed (Mon\u2013Fri 9:30a\u20134:15p ET) \u2014 resumes at open'
               : autoRefresh
                 ? `Auto-refreshing every ${data?.provider === 'tradier' ? '30' : '60'}s \u2014 click to pause`
-                : 'Enable auto-refresh during market hours'
+                : 'Enable auto-refresh during options trading hours'
             }
           >
-            {autoRefresh && marketOpen && !usingMock && secondsLeft > 0 ? (
+            {autoRefresh && optionsMarketOpen && !usingMock && secondsLeft > 0 ? (
               <>
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-bull)] opacity-75" />
@@ -117,7 +117,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
                 </span>
                 <span className="hidden xs:inline">{secondsLeft}s</span>
               </>
-            ) : autoRefresh && !marketOpen ? (
+            ) : autoRefresh && !optionsMarketOpen ? (
               <span className="hidden xs:inline">Mkt Closed</span>
             ) : (
               'Auto'

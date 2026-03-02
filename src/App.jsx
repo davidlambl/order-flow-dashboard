@@ -124,7 +124,7 @@ export default function App() {
         earnings={tickerContext?.earnings}
         autoRefresh={autoRefresh}
         secondsLeft={secondsLeft}
-        marketOpen={marketOpen}
+        optionsMarketOpen={optionsMarketOpen}
         onToggleAutoRefresh={toggleAutoRefresh}
       />
 
