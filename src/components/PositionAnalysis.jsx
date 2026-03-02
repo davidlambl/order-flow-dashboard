@@ -5,9 +5,24 @@ import { computeRecommendation, computeDualRecommendation, extractPriceLevels, G
 import { formatDollar, formatPrice } from '../lib/format';
 
 const SIGNAL_STYLES = {
-  BUY: { color: 'var(--color-bull)', bg: 'var(--color-bull-bg)', border: 'var(--color-bull)', borderMuted: 'rgba(34, 197, 94, 0.2)' },
-  HOLD: { color: 'var(--color-warn)', bg: 'var(--color-warn-bg)', border: 'var(--color-warn)', borderMuted: 'rgba(245, 158, 11, 0.2)' },
-  SELL: { color: 'var(--color-bear)', bg: 'var(--color-bear-bg)', border: 'var(--color-bear)', borderMuted: 'rgba(239, 68, 68, 0.2)' },
+  BUY: {
+    color: 'var(--color-bull)',
+    bg: 'var(--color-bull-bg)',
+    border: 'var(--color-bull)',
+    borderMuted: 'color-mix(in srgb, var(--color-bull) 20%, transparent)',
+  },
+  HOLD: {
+    color: 'var(--color-warn)',
+    bg: 'var(--color-warn-bg)',
+    border: 'var(--color-warn)',
+    borderMuted: 'color-mix(in srgb, var(--color-warn) 20%, transparent)',
+  },
+  SELL: {
+    color: 'var(--color-bear)',
+    bg: 'var(--color-bear-bg)',
+    border: 'var(--color-bear)',
+    borderMuted: 'color-mix(in srgb, var(--color-bear) 20%, transparent)',
+  },
 };
 
 function PriceLevelBar({ levels }) {
