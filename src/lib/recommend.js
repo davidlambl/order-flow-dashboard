@@ -155,7 +155,7 @@ export function computeDualRecommendation({
 }) {
   if (
     costBasis == null || !Number.isFinite(costBasis) ||
-    optionsSnapshotPrice == null || !Number.isFinite(optionsSnapshotPrice) ||
+    optionsSnapshotPrice == null || !Number.isFinite(optionsSnapshotPrice) || optionsSnapshotPrice <= 0 ||
     livePrice == null || !Number.isFinite(livePrice) ||
     !kpis
   ) {
