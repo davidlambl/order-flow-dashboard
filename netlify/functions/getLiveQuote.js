@@ -22,6 +22,24 @@ const CORS = {
 };
 
 /**
+ * Nasdaq-100 constituent tickers (high correlation with NQ futures).
+ * Only these tickers should use futures-implied pricing.
+ * Source: Major Nasdaq-100 components as of 2026.
+ */
+const NASDAQ_100_CONSTITUENTS = new Set([
+  'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'COST',
+  'NFLX', 'AMD', 'ADBE', 'CSCO', 'PEP', 'TMUS', 'CMCSA', 'INTC', 'INTU', 'TXN',
+  'QCOM', 'AMGN', 'HON', 'AMAT', 'SBUX', 'ISRG', 'BKNG', 'PANW', 'ADP', 'VRTX',
+  'GILD', 'ADI', 'MU', 'LRCX', 'REGN', 'MELI', 'MDLZ', 'KLAC', 'SNPS', 'CDNS',
+  'PYPL', 'MAR', 'MRVL', 'ORLY', 'CTAS', 'ADSK', 'ABNB', 'NXPI', 'WDAY', 'FTNT',
+  'DASH', 'MNST', 'CPRT', 'AEP', 'PAYX', 'ROST', 'ODFL', 'FAST', 'EA', 'DXCM',
+  'VRSK', 'BKR', 'XEL', 'GEHC', 'CTSH', 'KDP', 'IDXX', 'CSGP', 'ANSS', 'DDOG',
+  'ON', 'ZS', 'TTWO', 'BIIB', 'ILMN', 'CDW', 'GFS', 'WBD', 'MDB', 'MRNA',
+  'CRWD', 'TEAM', 'PCAR', 'DLTR', 'FANG', 'LULU', 'CHTR', 'ENPH', 'ALGN', 'SMCI',
+  'CEG', 'ARM', 'CCEP', 'HOOD', 'MSTR', 'COIN', 'APP', 'SNOW', 'TOST', 'PLTR'
+]);
+
+/**
  * Fetch Nasdaq-100 futures data to calculate overnight implied prices.
  */
 async function fetchNasdaqFutures() {
@@ -79,6 +97,7 @@ async function fetchNasdaqFutures() {
 
 /**
  * Fetch live quote from Yahoo Finance (includes extended hours).
+ * Returns both actual quote and optional futures data for context.
  */
 async function fetchYahooQuote(ticker) {
   // Use query2 endpoint which has more reliable extended hours data
@@ -128,35 +147,11 @@ async function fetchYahooQuote(ticker) {
   
   const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
   
-  // If we only have regular market price, check if we should use futures-implied pricing
-  if (source === 'yahoo-regular' && previousClose) {
-    try {
-      // Fetch Nasdaq-100 futures to calculate implied overnight price
-      const futures = await fetchNasdaqFutures();
-      
-      // Check if futures have moved significantly (>0.1%) - indicates active trading
-      if (Math.abs(futures.changePercent) > 0.1) {
-        // Calculate implied stock price based on futures movement
-        const impliedPrice = previousClose * (1 + futures.changePercent / 100);
-        
-        // Use implied price if it differs meaningfully from close
-        if (Math.abs(impliedPrice - currentPrice) / currentPrice > 0.001) { // 0.1% threshold
-          currentPrice = impliedPrice;
-          currentTimestamp = Math.floor(Date.now() / 1000);
-          source = 'futures-implied';
-        }
-      }
-    } catch (futuresErr) {
-      // Futures fetch failed, continue with regular price
-      console.warn('Futures fetch failed:', futuresErr.message);
-    }
-  }
-  
   if (!currentPrice) {
     throw new Error('Yahoo Finance: No valid price found');
   }
   
-  return {
+  const quote = {
     ticker,
     current: currentPrice,
     previousClose,
@@ -164,6 +159,39 @@ async function fetchYahooQuote(ticker) {
     timestamp: currentTimestamp * 1000,
     source,
   };
+  
+  // If only regular price and ticker is Nasdaq-100 constituent, fetch futures for context
+  if (source === 'yahoo-regular' && previousClose && NASDAQ_100_CONSTITUENTS.has(ticker)) {
+    try {
+      const futures = await fetchNasdaqFutures();
+      
+      // Only include futures if they've moved meaningfully (>0.1%)
+      if (Math.abs(futures.changePercent) > 0.1) {
+        const impliedPrice = previousClose * (1 + futures.changePercent / 100);
+        
+        // Add futures context to the response (don't override actual price)
+        quote.futuresContext = {
+          nqChangePercent: futures.changePercent,
+          impliedPrice: impliedPrice,
+          nqCurrent: futures.current,
+          nqPreviousClose: futures.previousClose,
+        };
+        
+        // Only use implied price if it differs meaningfully AND there's no actual extended hours data
+        if (Math.abs(impliedPrice - currentPrice) / currentPrice > 0.001) {
+          quote.current = impliedPrice;
+          quote.timestamp = Date.now();
+          quote.source = 'futures-implied';
+          quote.changePercent = ((impliedPrice - previousClose) / previousClose) * 100;
+        }
+      }
+    } catch (futuresErr) {
+      // Futures fetch failed, continue with regular price only
+      console.warn('Futures fetch failed:', futuresErr.message);
+    }
+  }
+  
+  return quote;
 }
 
 /**
