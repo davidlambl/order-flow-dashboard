@@ -173,38 +173,42 @@ ${dualRec.secondary.reasons.map((r) => `    • ${r}`).join('\n')}
       }
     } else {
       // Fallback to single recommendation if dual computation fails
+      if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
+        const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+        if (rec) {
+          signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
+  Recommendation: ${rec.signal} (${rec.confidence} confidence)
+${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
+        }
+      }
+    }
+  } else {
+    if (Number.isFinite(costBasisNum) && costBasisNum > 0 && Number.isFinite(spotPriceNum) && spotPriceNum > 0) {
       const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
       if (rec) {
         signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
 ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
-      }
-    }
-  } else {
-    const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
-    if (rec) {
-      signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
-  Recommendation: ${rec.signal} (${rec.confidence} confidence)
-${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
-      // Add staleness caveat
-      if (lastUpdated) {
-        const diffMs = Date.now() - new Date(lastUpdated).getTime();
-        const diffMinutes = diffMs / (1000 * 60);
-        // Use optionsMarketOpen since options data updates until 4:15 PM ET
-        const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
-        
-        if (isStale) {
-          const d = new Date(lastUpdated);
-          const timeStr = d.toLocaleString('en-US', { 
-            weekday: 'short', 
-            month: 'short', 
-            day: 'numeric', 
-            hour: 'numeric', 
-            minute: '2-digit', 
-            hour12: true 
-          });
-          signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+        // Add staleness caveat
+        if (lastUpdated) {
+          const diffMs = Date.now() - new Date(lastUpdated).getTime();
+          const diffMinutes = diffMs / (1000 * 60);
+          // Use optionsMarketOpen since options data updates until 4:15 PM ET
+          const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
+          
+          if (isStale) {
+            const d = new Date(lastUpdated);
+            const timeStr = d.toLocaleString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric', 
+              hour: 'numeric', 
+              minute: '2-digit', 
+              hour12: true 
+            });
+            signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+          }
         }
       }
     }
