@@ -35,7 +35,7 @@ function buildFlowTrend(flowHistory) {
   return `\n5-SESSION TREND: ${consec} consecutive ${dir} session${consec > 1 ? 's' : ''}. Cumulative delta over window: ${formatDollar(delta)}.`;
 }
 
-function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext) {
+function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicContext, marketOpen) {
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
@@ -110,6 +110,26 @@ USER POSITION:
     signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
 ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
+
+    // Add staleness caveat
+    if (lastUpdated) {
+      const diffMs = Date.now() - new Date(lastUpdated).getTime();
+      const diffMinutes = diffMs / (1000 * 60);
+      const isStale = marketOpen ? diffMinutes > 60 : diffMinutes > 240;
+      
+      if (isStale) {
+        const d = new Date(lastUpdated);
+        const timeStr = d.toLocaleString('en-US', { 
+          weekday: 'short', 
+          month: 'short', 
+          day: 'numeric', 
+          hour: 'numeric', 
+          minute: '2-digit', 
+          hour12: true 
+        });
+        signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
+      }
+    }
   }
 
   let painBlock = '';
@@ -504,7 +524,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
   );
 }
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext }) {
+export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
   const skipSaveRef = useRef(false);
@@ -603,7 +623,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setSending(true);
 
     try {
-      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'));
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen);
       const apiMessages = newMessages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10);
@@ -737,7 +757,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
       {/* Context Inspector */}
       {showContext && (() => {
-        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'));
+        const ctx = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen);
         return (
           <div className="flex-1 overflow-y-auto border-b border-[var(--color-border-subtle)]">
             <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">

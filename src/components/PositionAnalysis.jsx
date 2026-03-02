@@ -68,9 +68,23 @@ function PriceLevelBar({ levels }) {
   );
 }
 
-function RecommendationBadge({ rec }) {
+function RecommendationBadge({ rec, isStale, lastUpdated }) {
   if (!rec) return null;
   const style = SIGNAL_STYLES[rec.signal];
+
+  let timeAgo = '';
+  if (isStale && lastUpdated) {
+    const d = new Date(lastUpdated);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    
+    if (diffHours < 24) {
+      timeAgo = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } else {
+      timeAgo = d.toLocaleDateString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+    }
+  }
 
   return (
     <div className="flex flex-col items-end gap-1.5">
@@ -91,11 +105,16 @@ function RecommendationBadge({ rec }) {
       >
         {rec.confidence} confidence
       </span>
+      {isStale && timeAgo && (
+        <span className="text-[9px] text-[var(--color-text-muted)]">
+          Based on {timeAgo} data
+        </span>
+      )}
     </div>
   );
 }
 
-export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading }) {
+export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen }) {
   const rec = useMemo(() => {
     if (!costBasis || !spotPrice) return null;
     return computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
@@ -105,6 +124,18 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
     if (!costBasis || !spotPrice) return [];
     return extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike });
   }, [costBasis, spotPrice, kpis, gexByStrike]);
+
+  const isStale = useMemo(() => {
+    if (!lastUpdated) return false;
+    const diffMs = Date.now() - new Date(lastUpdated).getTime();
+    const diffMinutes = diffMs / (1000 * 60);
+    
+    if (marketOpen) {
+      return diffMinutes > 60;
+    } else {
+      return diffMinutes > 240;
+    }
+  }, [lastUpdated, marketOpen]);
 
   const hasBasis = costBasis != null && costBasis > 0;
   const hasShares = shares != null && shares > 0;
@@ -192,7 +223,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
         )}
 
         {/* Right: Recommendation */}
-        <RecommendationBadge rec={rec} />
+        <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} />
       </div>
 
       {/* Price levels chart */}

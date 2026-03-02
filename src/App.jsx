@@ -175,6 +175,8 @@ export default function App() {
                 kpis={data?.kpis}
                 gexByStrike={data?.gexByStrike}
                 loading={loading}
+                lastUpdated={data?.lastUpdated}
+                marketOpen={marketOpen}
               />
             </PremiumGate>
           </CollapsibleSection>
@@ -247,6 +249,7 @@ export default function App() {
             onUnlock={refreshAuth}
             onOpenSettings={openSettings}
             tickerContext={tickerContext}
+            marketOpen={marketOpen}
           />
         </aside>
       </div>
