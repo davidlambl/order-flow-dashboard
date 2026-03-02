@@ -45,9 +45,11 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
   
   const spotPriceNum = Number(spotPrice);
   const livePriceNum = Number(liveQuote?.current);
+  const costBasisNum = Number(costBasis);
   const showDual = liveQuote != null &&
     Number.isFinite(spotPriceNum) && spotPriceNum > 0 &&
     Number.isFinite(livePriceNum) && livePriceNum > 0 &&
+    Number.isFinite(costBasisNum) && costBasisNum > 0 &&
     !optionsMarketOpen &&
     Math.abs(((livePriceNum - spotPriceNum) / spotPriceNum) * 100) >= GAP_DUAL_REC_THRESHOLD_PCT;
 
@@ -171,7 +173,7 @@ ${dualRec.secondary.reasons.map((r) => `    • ${r}`).join('\n')}
       }
     } else {
       // Fallback to single recommendation if dual computation fails
-      const rec = computeRecommendation({ costBasis, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
+      const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
       if (rec) {
         signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
@@ -179,7 +181,7 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       }
     }
   } else {
-    const rec = computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike });
+    const rec = computeRecommendation({ costBasis: costBasisNum, shares, spotPrice: spotPriceNum, kpis, gexByStrike });
     if (rec) {
       signalBlock = `\n\nDASHBOARD SIGNALS (algorithmic):
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
