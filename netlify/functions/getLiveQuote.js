@@ -25,7 +25,8 @@ const CORS = {
  * Fetch live quote from Yahoo Finance (includes extended hours).
  */
 async function fetchYahooQuote(ticker) {
-  const url = `${YAHOO_BASE}/${ticker}?interval=1m&range=1d&includePrePost=true`;
+  // Use query2 endpoint which has more reliable extended hours data
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d&includePrePost=true`;
   const res = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0',
@@ -44,55 +45,51 @@ async function fetchYahooQuote(ticker) {
   }
   
   const meta = result.meta;
-  const timestamps = result.timestamp || [];
-  const closes = result.indicators?.quote?.[0]?.close || [];
   
-  // Get the most recent non-null price from the time series
-  let currentPrice = meta.regularMarketPrice;
-  let currentTimestamp = meta.regularMarketTime;
+  // Try to get current price from multiple sources in order of preference
+  let currentPrice = null;
+  let currentTimestamp = null;
   let source = 'yahoo-regular';
   
-  // Look for the most recent valid price in the time series (includes extended hours)
-  for (let i = timestamps.length - 1; i >= 0; i--) {
-    if (closes[i] != null && !isNaN(closes[i])) {
-      currentPrice = closes[i];
-      currentTimestamp = timestamps[i];
-      
-      // Check if this is extended hours (outside 9:30 AM - 4:00 PM ET)
-      const date = new Date(currentTimestamp * 1000);
-      const etHour = date.toLocaleString('en-US', { 
-        timeZone: 'America/New_York', 
-        hour: 'numeric', 
-        minute: 'numeric',
-        hour12: false 
-      });
-      const [hour, minute] = etHour.split(':').map(Number);
-      const minutesSinceMidnight = hour * 60 + minute;
-      const isExtendedHours = minutesSinceMidnight < 570 || minutesSinceMidnight >= 960; // Before 9:30 AM or after 4:00 PM ET
-      
-      source = isExtendedHours ? 'yahoo-extended' : 'yahoo-regular';
-      break;
-    }
-  }
-  
-  // Fallback to meta fields if available
+  // 1. Check for post-market (after-hours) price
   if (meta.postMarketPrice && meta.postMarketTime) {
-    const now = Math.floor(Date.now() / 1000);
-    if (now - meta.postMarketTime < 300) { // Within last 5 minutes
-      currentPrice = meta.postMarketPrice;
-      currentTimestamp = meta.postMarketTime;
-      source = 'yahoo-extended';
-    }
-  } else if (meta.preMarketPrice && meta.preMarketTime) {
-    const now = Math.floor(Date.now() / 1000);
-    if (now - meta.preMarketTime < 300) { // Within last 5 minutes
-      currentPrice = meta.preMarketPrice;
-      currentTimestamp = meta.preMarketTime;
-      source = 'yahoo-extended';
+    currentPrice = meta.postMarketPrice;
+    currentTimestamp = meta.postMarketTime;
+    source = 'yahoo-extended';
+  }
+  // 2. Check for pre-market price
+  else if (meta.preMarketPrice && meta.preMarketTime) {
+    currentPrice = meta.preMarketPrice;
+    currentTimestamp = meta.preMarketTime;
+    source = 'yahoo-extended';
+  }
+  // 3. Fall back to regular market price
+  else if (meta.regularMarketPrice && meta.regularMarketTime) {
+    currentPrice = meta.regularMarketPrice;
+    currentTimestamp = meta.regularMarketTime;
+    source = 'yahoo-regular';
+  }
+  // 4. Last resort: look at time series data
+  else {
+    const timestamps = result.timestamp || [];
+    const closes = result.indicators?.quote?.[0]?.close || [];
+    
+    // Find most recent non-null price
+    for (let i = timestamps.length - 1; i >= 0; i--) {
+      if (closes[i] != null && !isNaN(closes[i])) {
+        currentPrice = closes[i];
+        currentTimestamp = timestamps[i];
+        source = 'yahoo-regular';
+        break;
+      }
     }
   }
   
-  const previousClose = meta.chartPreviousClose || meta.previousClose;
+  if (!currentPrice) {
+    throw new Error('Yahoo Finance: No valid price found');
+  }
+  
+  const previousClose = meta.chartPreviousClose || meta.previousClose || meta.regularMarketPreviousClose;
   
   return {
     ticker,
