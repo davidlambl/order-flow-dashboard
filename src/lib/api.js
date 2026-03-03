@@ -2,6 +2,7 @@
 // Centralized API helpers — all calls route through Netlify Functions.
 
 import { getAuthHeaders, clearToken } from './auth';
+import { getPreference } from './store';
 
 const FUNCTION_BASE = '/.netlify/functions';
 
@@ -16,7 +17,7 @@ export async function fetchMarketData(ticker, signal = null) {
   const url = `${FUNCTION_BASE}/getMarketData?${params}`;
 
   const headers = {};
-  const tradierKey = sessionStorage.getItem('data_tradier_key');
+  const tradierKey = getPreference('data_tradier_key');
   if (tradierKey) headers['x-tradier-key'] = tradierKey;
 
   const options = { headers };
@@ -130,7 +131,7 @@ export async function fetchTickerContext(ticker, signal = null) {
   const url = `${FUNCTION_BASE}/getTickerContext?${params}`;
 
   const headers = {};
-  const finnhubKey = sessionStorage.getItem('data_finnhub_key');
+  const finnhubKey = getPreference('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
   const options = { headers };
@@ -184,7 +185,7 @@ export async function fetchLiveQuote(ticker, signal = null) {
   const url = `${FUNCTION_BASE}/getLiveQuote?${params}`;
 
   const headers = {};
-  const finnhubKey = sessionStorage.getItem('data_finnhub_key');
+  const finnhubKey = getPreference('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
   const options = { headers };

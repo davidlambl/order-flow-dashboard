@@ -2,7 +2,7 @@
 // Storage abstraction layer for all persistent user data.
 // Backed by localStorage today; swap backend for Supabase (or other) via setBackend().
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const POSITION_PREFIX = 'position_';
 const CHAT_PREFIX = 'chat_history_';
@@ -13,7 +13,23 @@ const PREF_MAP = {
   section_research: 'section_research',
   section_charts: 'section_charts',
   strategic_context: 'strategic_context',
+  // AI settings (v2 — migrated from sessionStorage)
+  ai_provider: 'ai_provider',
+  ai_model: 'ai_model',
+  ai_model_name: 'ai_model_name',
+  ai_key_anthropic: 'ai_key_anthropic',
+  ai_key_openai: 'ai_key_openai',
+  ai_key_gemini: 'ai_key_gemini',
+  // Data source keys (v2 — migrated from sessionStorage)
+  data_tradier_key: 'data_tradier_key',
+  data_finnhub_key: 'data_finnhub_key',
 };
+
+// Keys that contain secrets — excluded from export for security.
+const SECRET_KEYS = new Set([
+  'ai_key_anthropic', 'ai_key_openai', 'ai_key_gemini',
+  'data_tradier_key', 'data_finnhub_key',
+]);
 
 class LocalStorageBackend {
   getPosition(ticker) {
@@ -103,9 +119,10 @@ class LocalStorageBackend {
     }
   }
 
-  getAllPreferences() {
+  getAllPreferences({ includeSecrets = false } = {}) {
     const result = {};
     for (const name of Object.keys(PREF_MAP)) {
+      if (!includeSecrets && SECRET_KEYS.has(name)) continue;
       const val = this.getPreference(name);
       if (val != null) result[name] = val;
     }
@@ -149,9 +166,50 @@ export function exportAll() {
 }
 
 function migrate(data) {
-  // Future schema migrations:
-  // if (data.version < 2) { ... data.version = 2; }
+  if (data.version < 2) {
+    // v2: AI/data keys moved from sessionStorage to preferences — no import-level
+    // migration needed since old exports never contained these keys.
+    data.version = 2;
+  }
   return data;
+}
+
+/**
+ * One-time migration: move AI/data settings from sessionStorage to localStorage.
+ * Safe to call multiple times — only migrates keys that exist in sessionStorage
+ * and don't already exist in localStorage.
+ */
+export function migrateSessionToLocal() {
+  if (typeof window === 'undefined') return;
+  try {
+    const sessionKeys = [
+      'ai_provider', 'ai_model', 'ai_model_name',
+      'ai_key_anthropic', 'ai_key_openai', 'ai_key_gemini',
+      'data_tradier_key', 'data_finnhub_key',
+    ];
+    // Also migrate legacy key names from the very first version
+    const legacyMap = {
+      anthropic_api_key: 'ai_key_anthropic',
+      anthropic_model: 'ai_model',
+    };
+
+    for (const key of sessionKeys) {
+      const val = sessionStorage.getItem(key);
+      const local = backend.getPreference(key);
+      if (val != null && (local == null || local === '')) {
+        backend.setPreference(key, val);
+      }
+      sessionStorage.removeItem(key);
+    }
+    for (const [oldKey, newKey] of Object.entries(legacyMap)) {
+      const val = sessionStorage.getItem(oldKey);
+      const local = backend.getPreference(newKey);
+      if (val != null && (local == null || local === '')) {
+        backend.setPreference(newKey, val);
+      }
+      sessionStorage.removeItem(oldKey);
+    }
+  } catch { /* sessionStorage unavailable — skip migration */ }
 }
 
 export function importAll(data) {
