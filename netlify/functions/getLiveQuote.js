@@ -156,11 +156,13 @@ function extractExtendedHoursPrice(result) {
     return null;
   }
 
-  // Post-market: 4:00 PM – 8:00 PM ET
+  // Post-market session, as defined by Yahoo's meta.currentTradingPeriod.post
+  // (typically ~4:00 PM – 8:00 PM ET for US equities, but may vary on special days).
   const postStart = tradingPeriods.post?.start;
   const postEnd   = tradingPeriods.post?.end;
 
-  // Pre-market: 4:00 AM – 9:30 AM ET
+  // Pre-market session, as defined by Yahoo's meta.currentTradingPeriod.pre
+  // (typically ~4:00 AM – 9:30 AM ET for US equities, but may vary on special days).
   const preStart  = tradingPeriods.pre?.start;
   const preEnd    = tradingPeriods.pre?.end;
 

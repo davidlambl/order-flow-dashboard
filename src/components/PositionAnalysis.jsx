@@ -172,9 +172,9 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
 }
 
 /**
- * Yahoo-style price display.
- * Always visible — shows closing price + after-hours drift when market is closed,
- * or the live price during market hours.
+ * Yahoo-style price display: shows closing price + after-hours drift when
+ * market is closed, or the live price during market hours when available.
+ * NOTE: Currently rendered inside PositionAnalysis (premium-gated).
  */
 function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider }) {
   const isDelayed = !dataProvider || dataProvider === 'cboe' || dataProvider === 'tradier-sandbox';
@@ -359,7 +359,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   return (
     <div>
-      {/* Price Display — always visible */}
+      {/* Price Display */}
       <PriceDisplay
         spotPrice={spotPrice}
         liveQuote={liveQuote}
