@@ -1,6 +1,7 @@
 // src/components/StrategicContextEditor.jsx
 // Full-screen modal editor for the Strategic Context document.
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, FileText, Check } from 'lucide-react';
 import { getPreference, setPreference } from '../lib/store';
 import useAutoSave from '../hooks/useAutoSave';
@@ -43,7 +44,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
   const charCount = content.length;
   const lineCount = content ? content.split('\n').length : 0;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
 
@@ -85,6 +86,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

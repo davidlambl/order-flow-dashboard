@@ -794,8 +794,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   onClick={() => setContextEditorOpen(true)}
                   className="w-full text-left rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] p-3 hover:border-[var(--color-text-muted)] transition-colors group"
                 >
-                  <div className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words line-clamp-4">
-                    {contextPreview}
+                  <div className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words">
+                    {contextPreview.split('\n').slice(0, 4).join('\n')}{contextPreview.split('\n').length > 4 ? ' …' : ''}
                   </div>
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--color-border-subtle)]">
                     <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
