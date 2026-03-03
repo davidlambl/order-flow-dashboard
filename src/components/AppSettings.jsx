@@ -227,7 +227,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     finnhubSave.reset();
 
     loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
-  }, [isOpen, loadModelsForProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, loadModelsForProvider, aiKeySave, tradierSave, finnhubSave]);
 
   // Reload models when provider/key changes
   const currentProviderKey = keys[provider];
