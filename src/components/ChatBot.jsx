@@ -1,12 +1,13 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListPlus } from 'lucide-react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListChecks, Pencil } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
-import { getChatHistory, setChatHistory, getPreference, setPreference } from '../lib/store';
+import { getChatHistory, setChatHistory, getPreference } from '../lib/store';
+import StrategicContextEditor from './StrategicContextEditor';
 import { getAISettings } from './AppSettings';
 import { computeRecommendation, computeDualRecommendation, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 
@@ -411,23 +412,15 @@ const markdownComponents = {
   ),
 };
 
-function MessageBubble({ msg, onDelete, onAddToContext }) {
+function MessageBubble({ msg, onDelete }) {
   const [copied, setCopied] = useState(false);
-  const [saved, setSaved] = useState(false);
   const isUser = msg.role === 'user';
   const isError = msg.role === 'error';
-  const isAssistant = msg.role === 'assistant';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  };
-
-  const handleSaveToContext = () => {
-    onAddToContext?.(msg.content);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   return (
@@ -468,16 +461,6 @@ function MessageBubble({ msg, onDelete, onAddToContext }) {
           >
             {copied ? <Check size={11} className="text-[var(--color-bull)]" /> : <Copy size={11} />}
           </button>
-          {isAssistant && (
-            <button
-              onClick={handleSaveToContext}
-              className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
-              aria-label="Add to strategic context"
-              title={saved ? 'Added!' : 'Add to Strategic Context'}
-            >
-              {saved ? <Check size={11} className="text-[var(--color-bull)]" /> : <ListPlus size={11} />}
-            </button>
-          )}
           <button
             onClick={onDelete}
             className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
@@ -614,6 +597,13 @@ function ChatLockScreen({ onClose, onUnlock }) {
   );
 }
 
+const CONTEXT_UPDATE_PROMPT = `Review our conversation and suggest specific updates to my Strategic Context document (included in your data under "STRATEGIC CONTEXT"). For each suggestion:
+1. Specify the action: **ADD**, **UPDATE**, or **REMOVE**
+2. Reference the relevant section or heading in the current document (if updating/removing)
+3. Provide the exact text to add or the revised wording for updates
+
+Keep suggestions focused and actionable. Only suggest changes that are supported by our conversation. Do not rewrite the entire document.`;
+
 export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen, liveQuote }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
@@ -623,6 +613,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const [sending, setSending] = useState(false);
   const [showContext, setShowContext] = useState(false);
   const [contextCopied, setContextCopied] = useState(false);
+  const [contextEditorOpen, setContextEditorOpen] = useState(false);
   const [aiLabel, setAiLabel] = useState(() => {
     const s = getAISettings();
     return { modelName: s.modelName, provider: s.provider };
@@ -743,6 +734,45 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     }
   }, [messages, sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
 
+  const requestContextSuggestions = useCallback(async () => {
+    if (sending) return;
+
+    const userMsg = { role: 'user', content: CONTEXT_UPDATE_PROMPT };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setSending(true);
+
+    try {
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
+      const apiMessages = newMessages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10);
+
+      const settings = getAISettings();
+
+      await askLLMStream(
+        {
+          messages: apiMessages,
+          financialContext,
+          ticker: data?.ticker || 'UNKNOWN',
+          userApiKey: settings.apiKey || null,
+          model: settings.model,
+          provider: settings.provider,
+        },
+        onStreamChunk,
+      );
+      flushChunks();
+    } catch (err) {
+      flushChunks();
+      setMessages((prev) => [
+        ...prev,
+        { role: 'error', content: `Failed to get suggestions: ${err.message}` },
+      ]);
+    } finally {
+      setSending(false);
+    }
+  }, [messages, sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     sendMessage(input);
@@ -773,14 +803,6 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setMessages([]);
     setChatHistory(currentTicker, []);
   }, [currentTicker]);
-
-  const addToStrategicContext = useCallback((content) => {
-    const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-    const existing = (getPreference('strategic_context') || '').trim();
-    const header = `\n\n--- ${dateStr} (from Co-Pilot) ---`;
-    const sep = existing ? header : `--- ${dateStr} (from Co-Pilot) ---`;
-    setPreference('strategic_context', existing + sep + '\n' + content.trim());
-  }, []);
 
   if (!isOpen) return null;
 
@@ -817,6 +839,14 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
             title="View data sent to model"
           >
             <FileText size={14} />
+          </button>
+          <button
+            onClick={() => setContextEditorOpen(true)}
+            className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
+            aria-label="Edit strategic context"
+            title="Edit Strategic Context"
+          >
+            <Pencil size={14} />
           </button>
           {messages.length > 0 && (
             <button
@@ -904,7 +934,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         )}
 
         {messages.map((msg, i) => (
-          <MessageBubble key={i} msg={msg} onDelete={() => deleteMessage(i)} onAddToContext={addToStrategicContext} />
+          <MessageBubble key={i} msg={msg} onDelete={() => deleteMessage(i)} />
         ))}
 
         {sending && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
@@ -925,6 +955,17 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none leading-relaxed"
           disabled={sending}
         />
+        {messages.some((m) => m.role === 'assistant') && !sending && (
+          <button
+            type="button"
+            onClick={requestContextSuggestions}
+            className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
+            aria-label="Suggest updates to Strategic Context"
+            title="Suggest updates to Strategic Context"
+          >
+            <ListChecks size={16} />
+          </button>
+        )}
         <button
           type="submit"
           disabled={!input.trim() || sending}
@@ -934,6 +975,11 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
       </form>
+
+      <StrategicContextEditor
+        isOpen={contextEditorOpen}
+        onClose={() => setContextEditorOpen(false)}
+      />
     </div>
   );
 }
