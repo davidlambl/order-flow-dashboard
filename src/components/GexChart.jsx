@@ -196,9 +196,9 @@ export default function GexChart({ data, loading, spotPrice, costBasis, technica
             />
           )}
           <Bar dataKey="gex" radius={[3, 3, 0, 0]} maxBarSize={28}>
-            {data.map((entry, i) => (
+            {data.map((entry) => (
               <Cell
-                key={i}
+                key={entry.strike}
                 fill={entry.gex >= 0 ? 'var(--color-bull)' : 'var(--color-bear)'}
                 fillOpacity={0.8}
               />

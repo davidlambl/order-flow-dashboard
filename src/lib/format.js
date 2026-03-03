@@ -5,7 +5,7 @@
  * Format a dollar value compactly: $1.2M, -$345K, $12.5B
  */
 export function formatDollar(value) {
-  if (value == null || isNaN(value)) return '—';
+  if (value == null || !Number.isFinite(Number(value))) return '—';
   const abs = Math.abs(value);
   const sign = value < 0 ? '-' : '';
 
@@ -19,7 +19,7 @@ export function formatDollar(value) {
  * Format a dollar value with full precision and commas.
  */
 export function formatDollarFull(value) {
-  if (value == null || isNaN(value)) return '—';
+  if (value == null || !Number.isFinite(Number(value))) return '—';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -32,7 +32,7 @@ export function formatDollarFull(value) {
  * Format a percentage with one decimal.
  */
 export function formatPct(value) {
-  if (value == null || isNaN(value)) return '—';
+  if (value == null || !Number.isFinite(Number(value))) return '—';
   return `${value.toFixed(1)}%`;
 }
 
@@ -40,7 +40,7 @@ export function formatPct(value) {
  * Format a ratio to two decimals.
  */
 export function formatRatio(value) {
-  if (value == null || isNaN(value)) return '—';
+  if (value == null || !Number.isFinite(Number(value))) return '—';
   return value.toFixed(2);
 }
 
@@ -48,7 +48,7 @@ export function formatRatio(value) {
  * Format a price.
  */
 export function formatPrice(value) {
-  if (value == null || isNaN(value)) return '—';
+  if (value == null || !Number.isFinite(Number(value))) return '—';
   return `$${Number(value).toFixed(2)}`;
 }
 
@@ -56,7 +56,7 @@ export function formatPrice(value) {
  * Format large numbers compactly: 1.2M, 345K, etc.
  */
 export function formatCompact(value) {
-  if (value == null || isNaN(value)) return '—';
+  if (value == null || !Number.isFinite(Number(value))) return '—';
   const abs = Math.abs(value);
   const sign = value < 0 ? '-' : '';
   if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(1)}B`;

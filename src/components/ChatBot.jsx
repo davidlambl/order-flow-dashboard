@@ -411,7 +411,7 @@ const markdownComponents = {
   ),
 };
 
-function MessageBubble({ msg, onCopy, onDelete, onAddToContext }) {
+function MessageBubble({ msg, onDelete, onAddToContext }) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const isUser = msg.role === 'user';

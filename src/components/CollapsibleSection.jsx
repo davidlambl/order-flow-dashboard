@@ -28,6 +28,7 @@ export default function CollapsibleSection({ id, title, icon: Icon, badge, defau
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] fade-in">
       <button
         onClick={toggle}
+        aria-expanded={open}
         className="flex items-center gap-2 w-full px-4 py-3 text-left group"
       >
         {open
