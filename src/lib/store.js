@@ -195,14 +195,16 @@ export function migrateSessionToLocal() {
 
     for (const key of sessionKeys) {
       const val = sessionStorage.getItem(key);
-      if (val != null && backend.getPreference(key) == null) {
+      const local = backend.getPreference(key);
+      if (val != null && (local == null || local === '')) {
         backend.setPreference(key, val);
       }
       sessionStorage.removeItem(key);
     }
     for (const [oldKey, newKey] of Object.entries(legacyMap)) {
       const val = sessionStorage.getItem(oldKey);
-      if (val != null && backend.getPreference(newKey) == null) {
+      const local = backend.getPreference(newKey);
+      if (val != null && (local == null || local === '')) {
         backend.setPreference(newKey, val);
       }
       sessionStorage.removeItem(oldKey);

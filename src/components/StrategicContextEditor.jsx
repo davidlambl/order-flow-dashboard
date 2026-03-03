@@ -3,48 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, FileText, Check } from 'lucide-react';
 import { getPreference, setPreference } from '../lib/store';
-
-function useAutoSave(value, saveFn, delay = 1000) {
-  const [saved, setSaved] = useState(false);
-  const timeoutRef = useRef(null);
-  const fadeRef = useRef(null);
-  const initialRef = useRef(true);
-  const pendingRef = useRef(null);
-
-  useEffect(() => {
-    clearTimeout(timeoutRef.current);
-    clearTimeout(fadeRef.current);
-    if (initialRef.current) { initialRef.current = false; pendingRef.current = null; return; }
-    setSaved(false);
-    pendingRef.current = { value, saveFn };
-    timeoutRef.current = setTimeout(() => {
-      pendingRef.current = null;
-      saveFn(value);
-      setSaved(true);
-      fadeRef.current = setTimeout(() => setSaved(false), 1500);
-    }, delay);
-    return () => { clearTimeout(timeoutRef.current); clearTimeout(fadeRef.current); };
-  }, [value, saveFn, delay]);
-
-  const reset = useCallback(() => {
-    clearTimeout(timeoutRef.current);
-    clearTimeout(fadeRef.current);
-    pendingRef.current = null;
-    initialRef.current = true;
-    setSaved(false);
-  }, []);
-
-  const flush = useCallback(() => {
-    if (pendingRef.current) {
-      clearTimeout(timeoutRef.current);
-      clearTimeout(fadeRef.current);
-      pendingRef.current.saveFn(pendingRef.current.value);
-      pendingRef.current = null;
-    }
-  }, []);
-
-  return { saved, reset, flush };
-}
+import useAutoSave from '../hooks/useAutoSave';
 
 export default function StrategicContextEditor({ isOpen, onClose }) {
   const [content, setContent] = useState('');
