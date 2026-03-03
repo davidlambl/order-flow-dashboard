@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
-import { exportAll, importAll, getPreference, setPreference, migrateSessionToLocal } from '../lib/store';
+import { exportAll, importAll, getPreference, setPreference } from '../lib/store';
 import RequestAccessForm from './RequestAccessForm';
 
 const PROVIDERS = [
@@ -24,7 +24,6 @@ const TABS = [
 
 // ── Shared export: read AI settings from the store abstraction ──
 export function getAISettings() {
-  migrateSessionToLocal(); // one-time migration from sessionStorage
   const provider = getPreference('ai_provider') || 'anthropic';
   return {
     provider,
@@ -42,11 +41,12 @@ function useAutoSave(value, saveFn, delay = 600) {
   const initialRef = useRef(true);
 
   useEffect(() => {
-    // Skip initial mount — don't save the value loaded from storage
-    if (initialRef.current) { initialRef.current = false; return; }
-
+    // Clear any in-flight timers first
     clearTimeout(timeoutRef.current);
     clearTimeout(fadeRef.current);
+
+    // Skip initial mount — don't save the value loaded from storage
+    if (initialRef.current) { initialRef.current = false; return; }
     setSaved(false);
 
     timeoutRef.current = setTimeout(() => {
@@ -59,7 +59,12 @@ function useAutoSave(value, saveFn, delay = 600) {
   }, [value, saveFn, delay]);
 
   // Reset initial flag when the hook is re-mounted (modal reopen)
-  const reset = useCallback(() => { initialRef.current = true; setSaved(false); }, []);
+  const reset = useCallback(() => {
+    clearTimeout(timeoutRef.current);
+    clearTimeout(fadeRef.current);
+    initialRef.current = true;
+    setSaved(false);
+  }, []);
   return { saved, reset };
 }
 
@@ -380,6 +385,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
             </div>
             <button
               onClick={onClose}
+              aria-label="Close settings"
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
             >
               <X size={16} />

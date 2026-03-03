@@ -15,13 +15,16 @@ import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
-import { getPosition, setPosition as storeSetPosition, getPreference, setPreference } from './lib/store';
+import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal } from './lib/store';
 
 const SIDEBAR_DEFAULT = 384;
 const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 640;
 
 export default function App() {
+  // Run session→local migration exactly once at startup
+  useEffect(() => { migrateSessionToLocal(); }, []);
+
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
