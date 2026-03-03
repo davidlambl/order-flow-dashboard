@@ -181,7 +181,9 @@ export function importAll(data) {
 
   if (hasPositions) {
     for (const [ticker, pos] of Object.entries(migrated.positions)) {
-      backend.setPosition(ticker, pos);
+      if (pos != null && typeof pos === 'object' && !Array.isArray(pos)) {
+        backend.setPosition(ticker, pos);
+      }
     }
   }
   if (hasChats) {
