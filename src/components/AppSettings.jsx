@@ -2,12 +2,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
-  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive, ListPlus, RotateCcw,
+  RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive, RotateCcw, Pencil,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
 import { exportAll, importAll, getPreference, setPreference } from '../lib/store';
 import RequestAccessForm from './RequestAccessForm';
+import StrategicContextEditor from './StrategicContextEditor';
 
 const PROVIDERS = [
   { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', needsKey: false, recommended: true },
@@ -109,9 +110,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
   const [importError, setImportError] = useState('');
-  const [strategicContext, setStrategicContext] = useState('');
-  const [showChecklistModal, setShowChecklistModal] = useState(false);
-  const [checklistDraft, setChecklistDraft] = useState('');
+  const [contextEditorOpen, setContextEditorOpen] = useState(false);
+  const [contextPreview, setContextPreview] = useState('');
 
   const isPremium = hasValidToken();
   const tier = getTokenTier();
@@ -133,15 +133,10 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     window.dispatchEvent(new CustomEvent('data-source-changed'));
   }, []);
 
-  const saveStrategicContext = useCallback((val) => {
-    setPreference('strategic_context', val?.trim() || null);
-  }, []);
-
   const currentKey = keys[provider] || '';
   const aiKeySave = useAutoSave(currentKey, saveAiKey, 800);
   const tradierSave = useAutoSave(tradierKey, saveTradierKey, 800);
   const finnhubSave = useAutoSave(finnhubKey, saveFinnhubKey, 800);
-  const contextSave = useAutoSave(strategicContext, saveStrategicContext, 1000);
 
   // ── Model loading ──
   const loadModelsForProvider = useCallback(async (prov, key) => {
@@ -201,17 +196,15 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setTokenError('');
     setImportStatus(null);
     setImportError('');
-    setStrategicContext(getPreference('strategic_context') ?? '');
+    setContextPreview(getPreference('strategic_context') ?? '');
+    setContextEditorOpen(false);
     setActiveTab('ai');
     setShowRequest(false);
-    setShowChecklistModal(false);
-    setChecklistDraft('');
 
     // Reset auto-save hooks so they don't fire on the loaded values
     aiKeySave.reset();
     tradierSave.reset();
     finnhubSave.reset();
-    contextSave.reset();
 
     loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
   }, [isOpen, loadModelsForProvider]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -349,8 +342,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
         importAll(data);
         setImportStatus('success');
         setImportError('');
-        // Reload strategic context from newly imported data
-        setStrategicContext(getPreference('strategic_context') ?? '');
+        // Reload strategic context preview from newly imported data
+        setContextPreview(getPreference('strategic_context') ?? '');
       } catch (err) {
         setImportStatus('error');
         setImportError(err.message || 'Invalid file format.');
@@ -791,11 +784,15 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   Strategic Context
                 </div>
                 <div className="flex items-center gap-2">
-                  <SavedIndicator show={contextSave.saved} />
-                  {strategicContext?.trim() && (
+                  {contextPreview?.trim() && (
                     <button
                       type="button"
-                      onClick={() => { if (window.confirm('Clear all strategic context?')) setStrategicContext(''); }}
+                      onClick={() => {
+                        if (window.confirm('Clear all strategic context?')) {
+                          setPreference('strategic_context', null);
+                          setContextPreview('');
+                        }
+                      }}
                       className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
                     >
                       Clear
@@ -803,71 +800,52 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   )}
                 </div>
               </div>
-              <textarea
-                value={strategicContext}
-                onChange={(e) => setStrategicContext(e.target.value)}
-                placeholder="Paste macro, earnings, competitive, or capital-returns notes. Appended to the AI Co-Pilot context so the model can give higher-quality advice."
-                rows={4}
-                className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-y min-h-[80px]"
-              />
 
-              {showChecklistModal ? (
-                <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-surface-2)] p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-[var(--color-text-secondary)]">
-                      Add bullet points
+              {contextPreview?.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => setContextEditorOpen(true)}
+                  className="w-full text-left rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] p-3 hover:border-[var(--color-text-muted)] transition-colors group"
+                >
+                  <div className="relative overflow-hidden max-h-[120px]">
+                    <pre className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words">
+                      {contextPreview.slice(0, 600)}
+                    </pre>
+                    <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--color-surface-2)] to-transparent" />
+                  </div>
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--color-border-subtle)]">
+                    <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
+                      {contextPreview.length.toLocaleString()} characters · {contextPreview.split('\n').length} lines
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => { setShowChecklistModal(false); setChecklistDraft(''); }}
-                      className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
+                    <span className="text-[11px] text-[var(--color-accent)] group-hover:text-[var(--color-accent-hover)] flex items-center gap-1 font-medium">
+                      <Pencil size={11} /> Edit
+                    </span>
                   </div>
-                  <textarea
-                    value={checklistDraft}
-                    onChange={(e) => setChecklistDraft(e.target.value)}
-                    placeholder={"- Overnight: NQ & WTI levels to watch\n- Pre-market: AVGO print and direction\n- Earnings: Key sentences to monitor"}
-                    rows={3}
-                    autoFocus
-                    className="w-full bg-[var(--color-surface)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-y min-h-[60px]"
-                  />
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] text-[var(--color-text-muted)]">
-                      Appended with today's date as a header.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={!checklistDraft.trim()}
-                      onClick={() => {
-                        const dateHeader = `\n\n--- ${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} ---`;
-                        const sep = strategicContext?.trim() ? dateHeader : `--- ${new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} ---`;
-                        setStrategicContext((prev) => ((prev || '').trim() + sep + '\n' + checklistDraft.trim()));
-                        setChecklistDraft('');
-                        setShowChecklistModal(false);
-                      }}
-                      className="px-3 py-1.5 text-[11px] font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      Append
-                    </button>
-                  </div>
-                </div>
+                </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => setShowChecklistModal(true)}
-                  className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] transition-colors"
+                  onClick={() => setContextEditorOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-4 text-xs font-medium rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] hover:border-[var(--color-accent)]/30 transition-colors"
                 >
-                  <ListPlus size={12} />
-                  Add to Strategic Context
+                  <FileText size={14} />
+                  Add strategic context for the AI Co-Pilot
                 </button>
               )}
 
               <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
-                Optional. Exported/imported with your data. Use for macro, earnings risk, moat, capital returns, pain tolerance, or monitoring checkpoints.
+                Appended to every AI conversation. Use for macro thesis, position notes, earnings expectations, decision rules.
               </p>
             </section>
+
+            <StrategicContextEditor
+              isOpen={contextEditorOpen}
+              onClose={() => {
+                setContextEditorOpen(false);
+                // Refresh preview from store (editor auto-saved)
+                setContextPreview(getPreference('strategic_context') ?? '');
+              }}
+            />
 
             <hr className="border-[var(--color-border-subtle)]" />
 
