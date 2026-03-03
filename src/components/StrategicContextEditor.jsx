@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, FileText, Check } from 'lucide-react';
 import { getPreference, setPreference } from '../lib/store';
-import useAutoSave from '../hooks/useAutoSave';
+import { useAutoSave } from '../hooks/useAutoSave';
 
 export default function StrategicContextEditor({ isOpen, onClose }) {
   const [content, setContent] = useState('');

@@ -7,7 +7,7 @@ import {
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
 import { exportAll, importAll, getPreference, setPreference, migrateSessionToLocal } from '../lib/store';
-import useAutoSave from '../hooks/useAutoSave';
+import { useAutoSave } from '../hooks/useAutoSave';
 import RequestAccessForm from './RequestAccessForm';
 import StrategicContextEditor from './StrategicContextEditor';
 
