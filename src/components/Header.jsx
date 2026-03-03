@@ -130,10 +130,10 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-bull)] opacity-75" />
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--color-bull)]" />
                 </span>
-                <span className="hidden xs:inline">{secondsLeft}s</span>
+                {secondsLeft}s
               </>
             ) : autoRefresh && !optionsMarketOpen ? (
-              <span className="hidden xs:inline">Mkt Closed</span>
+              'Paused'
             ) : (
               'Auto'
             )}
@@ -172,7 +172,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               }}
             >
               <ShieldCheck size={10} />
-              <span className="hidden xs:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` \u00b7 ${daysLeft}d` : ''}`}</span>
+              <span className="hidden sm:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` \u00b7 ${daysLeft}d` : ''}`}</span>
             </span>
             <button
               onClick={onLogout}
