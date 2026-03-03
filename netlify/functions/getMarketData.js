@@ -345,7 +345,8 @@ export async function handler(event) {
       rawData = await fetchCBOE(ticker);
     }
 
-    const { options, spotPrice, provider, delay } = rawData;
+    const { options, spotPrice: rawSpotPrice, provider, delay } = rawData;
+    const spotPrice = Number(rawSpotPrice);
 
     if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
       return {
