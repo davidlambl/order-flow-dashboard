@@ -22,6 +22,34 @@ const SIGNAL_STYLES = {
   },
 };
 
+/**
+ * Human-readable source label for liveQuote.source.
+ */
+function quoteSourceLabel(source) {
+  if (!source) return '';
+  if (source === 'yahoo-post') return 'After Hours';
+  if (source === 'yahoo-pre') return 'Pre-Market';
+  if (source === 'yahoo-extended') return 'Extended Hours'; // legacy fallback
+  if (source === 'futures-implied') return 'Futures-Implied';
+  if (source === 'finnhub') return 'Finnhub';
+  return 'Live';
+}
+
+/**
+ * Relative time string from a millisecond timestamp, e.g. "2m ago".
+ */
+function relativeTime(ts) {
+  if (!ts) return '';
+  const diffMs = Math.max(0, Date.now() - ts);
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 10) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  return `${diffHr}h ago`;
+}
+
 function PriceLevelBar({ levels }) {
   if (levels.length < 2) return null;
 
@@ -143,7 +171,115 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
   );
 }
 
-export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote }) {
+/**
+ * Yahoo-style price display: shows a reference/spot price + after-hours drift
+ * when market is closed, or the live price during market hours when available.
+ * NOTE: spotPrice is the data provider's latest quote (CBOE delayed or Tradier
+ * real-time), not necessarily the official closing price.
+ */
+function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider }) {
+  const isDelayed = !dataProvider || dataProvider === 'cboe' || dataProvider === 'tradier-sandbox';
+  const closeLabelText = isDelayed ? 'CBOE ~15min delayed' : 'Spot';
+  const spotNum = Number(spotPrice);
+  const hasSpot = Number.isFinite(spotNum) && spotNum > 0;
+  const q = liveQuote || {};
+  const liveNum = Number(q.current);
+  const hasLive = Number.isFinite(liveNum) && liveNum > 0;
+
+  if (!hasSpot && !hasLive) return null;
+
+  const isExtended = q.source === 'yahoo-post' || q.source === 'yahoo-pre' || q.source === 'yahoo-extended' || q.source === 'futures-implied';
+  const sourceLabel = quoteSourceLabel(q.source);
+
+  // During market hours (or no extended data): show spot/live as primary price
+  if (optionsMarketOpen || !isExtended) {
+    const displayPrice = hasLive ? liveNum : spotNum;
+    const changePct = q.changePercent;
+    const priceUp = (changePct || 0) >= 0;
+
+    return (
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <span className="text-2xl font-bold font-mono tabular-nums text-[var(--color-text-primary)]">
+          {formatPrice(displayPrice)}
+        </span>
+        {changePct != null && (
+          <span
+            className="text-sm font-semibold font-mono tabular-nums"
+            style={{ color: priceUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+          >
+            {priceUp ? '+' : ''}{changePct.toFixed(2)}%
+          </span>
+        )}
+        {isDelayed && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-warn-bg)] text-[var(--color-warn)] font-medium">
+            ~15min delayed
+          </span>
+        )}
+        <span className="text-xs text-[var(--color-text-muted)]">
+          {relativeTime(q.timestamp)}
+        </span>
+      </div>
+    );
+  }
+
+  // After hours: Yahoo-style — close price primary, extended price secondary with drift
+  // If we have no spot price but do have a live extended price, show the live price as primary
+  const primaryPrice = hasSpot ? spotNum : liveNum;
+  const closePrevClose = q.previousClose;
+  const hasCloseChange = Number.isFinite(closePrevClose) && closePrevClose > 0 && hasSpot;
+  const closeChangePct = hasCloseChange ? ((spotNum - closePrevClose) / closePrevClose) * 100 : null;
+  const closeUp = (closeChangePct || 0) >= 0;
+
+  // Drift = extended price vs close price (only meaningful when we have both)
+  const drift = hasSpot && hasLive ? ((liveNum - spotNum) / spotNum) * 100 : null;
+  const driftUp = (drift || 0) >= 0;
+
+  return (
+    <div className="flex flex-col gap-1">
+      {/* Primary: Close/spot price (falls back to live price if spot unavailable) */}
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <span className="text-2xl font-bold font-mono tabular-nums text-[var(--color-text-primary)]">
+          {formatPrice(primaryPrice)}
+        </span>
+        {closeChangePct != null && (
+          <span
+            className="text-sm font-semibold font-mono tabular-nums"
+            style={{ color: closeUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+          >
+            {closeUp ? '+' : ''}{closeChangePct.toFixed(2)}%
+          </span>
+        )}
+        <span className={`text-xs ${isDelayed ? 'text-[var(--color-warn)]' : 'text-[var(--color-text-muted)]'}`}>
+          {closeLabelText}
+        </span>
+      </div>
+
+      {/* Secondary: After-hours / extended price with drift */}
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-base font-bold font-mono tabular-nums text-[var(--color-text-secondary)]">
+          {formatPrice(liveNum)}
+        </span>
+        {drift != null && (
+          <span
+            className="text-xs font-semibold font-mono tabular-nums flex items-center gap-0.5"
+            style={{ color: driftUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+          >
+            {driftUp ? <ArrowUp size={10} /> : <ArrowDown size={10} />}
+            {driftUp ? '+' : ''}{drift.toFixed(2)}%
+          </span>
+        )}
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono">
+          {sourceLabel}
+        </span>
+        <span className="text-xs text-[var(--color-text-muted)]">
+          {relativeTime(q.timestamp)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote, dataProvider }) {
   // Normalize inputs once so all downstream logic (showDual, hasBasis, P&L) uses consistent numeric values
   const costBasisNum = Number(costBasis);
   const spotNum = Number(spotPrice);
@@ -226,18 +362,18 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
   return (
     <div>
-      {/* Header row: title + inputs + prices + recommendations */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        {/* Left: Title + inputs */}
+      {/* Price Display */}
+      <PriceDisplay
+        spotPrice={spotPrice}
+        liveQuote={liveQuote}
+        optionsMarketOpen={optionsMarketOpen}
+        dataProvider={dataProvider}
+      />
+
+      {/* Header row: inputs + P&L + recommendation */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mt-4">
+        {/* Left: Inputs */}
         <div className="flex flex-col gap-3">
-          <div className="hidden">
-            <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
-              Position Analysis
-            </h3>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-              Enter your cost basis for a personalized recommendation
-            </p>
-          </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)]">
               <DollarSign size={12} className="text-[var(--color-text-muted)] shrink-0" />
@@ -306,16 +442,13 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
             </span>
           </div>
 
-          {/* Price Comparison */}
+          {/* P&L Comparison */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Options Snapshot Price (delayed CBOE) */}
+            {/* Options Snapshot P&L */}
             <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-                  Options Snapshot (delayed)
-                </span>
-                <span className="text-sm font-mono tabular-nums text-[var(--color-text-secondary)]">
-                  {formatPrice(dualRec.optionsSnapshotPrice)}
+                  P&L at Close
                 </span>
               </div>
               {hasBasis && (
@@ -343,37 +476,12 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
               )}
             </div>
 
-            {/* Live Price */}
+            {/* Live P&L */}
             <div className="flex flex-col gap-2 p-3 rounded-lg border-2 border-[var(--color-accent)]/30 bg-[var(--color-accent)]/5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-[var(--color-text-primary)] uppercase tracking-wider">
-                    Price (Live)
-                  </span>
-                  {liveQuote?.source && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono">
-                      {liveQuote.source === 'yahoo-extended' ? 'Extended Hours' : 
-                       liveQuote.source === 'futures-implied' ? 'Futures-Implied' :
-                       liveQuote.source === 'yahoo-regular' ? 'Yahoo' : 'Finnhub'}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {dualRec.gapPercent < 0 ? (
-                    <ArrowDown size={12} className="text-[var(--color-bear)]" />
-                  ) : (
-                    <ArrowUp size={12} className="text-[var(--color-bull)]" />
-                  )}
-                  <span className="text-sm font-mono tabular-nums text-[var(--color-text-primary)] font-bold">
-                    {formatPrice(dualRec.livePrice)}
-                  </span>
-                  <span
-                    className="text-xs font-mono tabular-nums"
-                    style={{ color: dualRec.gapPercent < 0 ? 'var(--color-bear)' : 'var(--color-bull)' }}
-                  >
-                    ({dualRec.gapPercent > 0 ? '+' : ''}{dualRec.gapPercent.toFixed(1)}%)
-                  </span>
-                </div>
+                <span className="text-xs font-medium text-[var(--color-text-primary)] uppercase tracking-wider">
+                  P&L (Live)
+                </span>
               </div>
               {hasBasis && (
                 <div className="flex items-center justify-between">

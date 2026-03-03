@@ -175,7 +175,7 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
  * Uses Yahoo Finance (including extended hours and futures-implied pricing where available) and falls back to Finnhub.
  * @param {string} ticker - Stock symbol
  * @param {AbortSignal|null} [signal] - Optional abort signal for request cancellation
- * @returns {Promise<Object>} Quote data with source indicator (yahoo-extended, futures-implied, yahoo-regular, or finnhub)
+ * @returns {Promise<Object>} Quote data with source indicator (yahoo-post, yahoo-pre, futures-implied, yahoo-regular, or finnhub)
  */
 export async function fetchLiveQuote(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });

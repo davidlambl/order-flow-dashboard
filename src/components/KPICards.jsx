@@ -52,15 +52,7 @@ export default function KPICards({ kpis, loading }) {
       icon: netPremBullish ? TrendingUp : TrendingDown,
       color: netPremBullish ? 'var(--color-bull)' : 'var(--color-bear)',
       bgColor: netPremBullish ? 'var(--color-bull-bg)' : 'var(--color-bear-bg)',
-      subtitle: `C: ${formatDollar(k.callPremium)} · P: ${formatDollar(k.putPremium)}`,
-    },
-    {
-      label: 'Dark Pool Vol %',
-      value: formatPct(k.darkPoolPct),
-      icon: Moon,
-      color: 'var(--color-purple)',
-      bgColor: 'var(--color-purple-bg)',
-      subtitle: k.darkPoolPct > 40 ? 'Above average' : k.darkPoolPct < 30 ? 'Below average' : 'Normal range',
+      subtitle: `C: ${formatDollar(k.callPremium)} \u00b7 P: ${formatDollar(k.putPremium)}`,
     },
     {
       label: 'Max Pain',
@@ -71,12 +63,20 @@ export default function KPICards({ kpis, loading }) {
       subtitle: 'Nearest expiry target',
     },
     {
+      label: 'Dark Pool Vol %',
+      value: formatPct(k.darkPoolPct),
+      icon: Moon,
+      color: 'var(--color-purple)',
+      bgColor: 'var(--color-purple-bg)',
+      subtitle: k.darkPoolPct > 40 ? 'Above average' : k.darkPoolPct < 30 ? 'Below average' : 'Normal range',
+    },
+    {
       label: 'Put / Call Ratio',
       value: formatRatio(k.putCallRatio),
       icon: ArrowRightLeft,
       color: k.putCallRatio > 1 ? 'var(--color-bear)' : k.putCallRatio < 0.7 ? 'var(--color-bull)' : 'var(--color-warn)',
       bgColor: k.putCallRatio > 1 ? 'var(--color-bear-bg)' : k.putCallRatio < 0.7 ? 'var(--color-bull-bg)' : 'var(--color-warn-bg)',
-      subtitle: `Vol C: ${formatCompact(k.callVolume)} · P: ${formatCompact(k.putVolume)}`,
+      subtitle: `Vol C: ${formatCompact(k.callVolume)} \u00b7 P: ${formatCompact(k.putVolume)}`,
     },
   ];
 

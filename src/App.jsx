@@ -131,6 +131,8 @@ export default function App() {
         secondsLeft={secondsLeft}
         optionsMarketOpen={optionsMarketOpen}
         onToggleAutoRefresh={toggleAutoRefresh}
+        liveQuote={liveQuote}
+        spotPrice={data?.spotPrice}
       />
 
       <div className="flex-1 flex overflow-hidden">
@@ -186,6 +188,7 @@ export default function App() {
                 marketOpen={marketOpen}
                 optionsMarketOpen={optionsMarketOpen}
                 liveQuote={liveQuote}
+                dataProvider={data?.provider}
               />
             </PremiumGate>
           </CollapsibleSection>
@@ -207,12 +210,12 @@ export default function App() {
           <div className="text-xs text-[var(--color-text-muted)] pt-2 pb-4">
             {usingMock ? (
               <span>
-                Currently showing simulated demo data. Deploy to Netlify and the CBOE data feed activates automatically — no API key needed.
+                Currently showing simulated demo data. Deploy to Netlify and the CBOE data feed activates automatically \u2014 no API key needed.
               </span>
             ) : data?.provider === 'tradier' ? (
               <span>
                 Real-time data via Tradier brokerage API. GEX, Max Pain, and P/C Ratio computed from live options chain.
-                Net Premium estimated from daily volume × mid price.
+                Net Premium estimated from daily volume \u00d7 mid price.
               </span>
             ) : data?.provider === 'tradier-sandbox' ? (
               <span>

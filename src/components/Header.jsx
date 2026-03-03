@@ -1,8 +1,9 @@
 // src/components/Header.jsx
 import { useState, useRef, useEffect } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
+import { formatPrice } from '../lib/format';
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh }) {
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh, liveQuote, spotPrice }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -26,19 +27,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
         minute: '2-digit',
         second: '2-digit',
       })
-    : '—';
-
-  const spotPrice = data?.spotPrice;
-  const priceChange = data?.priceChange;
-  const priceChangePct = data?.priceChangePct;
-  const priceUp = (priceChange || 0) >= 0;
-
-  const priceSource = data?.provider === 'tradier'
-    ? 'Tradier real-time'
-    : data?.provider === 'tradier-sandbox'
-    ? 'Tradier sandbox (delayed)'
-    : usingMock ? 'Simulated demo data'
-    : 'CBOE ~15-min delayed';
+    : '\u2014';
 
   return (
     <header className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
@@ -59,6 +48,31 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
 
       {/* Search + Price */}
       <div className="flex items-center gap-2 sm:gap-4">
+        {/* Compact price — visible to all users */}
+        {(() => {
+          const liveNum = Number(liveQuote?.current);
+          const spotNum = Number(spotPrice);
+          const price = Number.isFinite(liveNum) && liveNum > 0 ? liveNum : Number.isFinite(spotNum) && spotNum > 0 ? spotNum : null;
+          if (!price) return null;
+          const changePct = liveQuote?.changePercent;
+          const hasChange = typeof changePct === 'number' && Number.isFinite(changePct);
+          const up = hasChange ? changePct >= 0 : null;
+          return (
+            <div className="hidden sm:flex items-center gap-1.5">
+              <span className="text-sm font-bold font-mono tabular-nums text-[var(--color-text-primary)]">
+                {formatPrice(price)}
+              </span>
+              {hasChange && (
+                <span
+                  className="text-xs font-semibold font-mono tabular-nums"
+                  style={{ color: up ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                >
+                  {up ? '+' : ''}{changePct.toFixed(2)}%
+                </span>
+              )}
+            </div>
+          );
+        })()}
         <form onSubmit={handleSubmit} className="flex items-center gap-1.5 sm:gap-2">
           <div
             className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-all duration-200 ${
@@ -125,23 +139,12 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </button>
         </form>
 
-        {/* Spot price with source tooltip */}
-        {spotPrice != null && !loading && (
-          <div className="hidden lg:flex items-baseline gap-2 tabular-nums" title={priceSource}>
-            <span className="text-base font-bold font-mono text-[var(--color-text-primary)]">
-              ${spotPrice.toFixed(2)}
-            </span>
-            <span
-              className={`text-xs font-semibold font-mono ${priceUp ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'}`}
-            >
-              {priceUp ? '+' : ''}{priceChange?.toFixed(2)} ({priceUp ? '+' : ''}{priceChangePct?.toFixed(2)}%)
-            </span>
-          </div>
-        )}
-
         {/* Earnings badge */}
         {earnings?.date && (() => {
-          const daysTo = Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000);
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const target = new Date(earnings.date + 'T00:00:00');
+          const daysTo = Math.round((target - today) / 86_400_000);
           if (daysTo < 0 || daysTo > 7) return null;
           return (
             <span
@@ -168,7 +171,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               }}
             >
               <ShieldCheck size={10} />
-              <span className="hidden xs:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` · ${daysLeft}d` : ''}`}</span>
+              <span className="hidden xs:inline">{tokenTier === 'pro' ? 'PRO' : `TRIAL${daysLeft ? ` \u00b7 ${daysLeft}d` : ''}`}</span>
             </span>
             <button
               onClick={onLogout}
@@ -180,7 +183,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </div>
         )}
         <span className="hidden md:inline tabular-nums">{timeStr}</span>
-        <div className="flex items-center gap-1 sm:gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} — ${data?.delay || 'delayed'}`}>
+        <div className="flex items-center gap-1 sm:gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} \u2014 ${data?.delay || 'delayed'}`}>
           {usingMock ? (
             <>
               <WifiOff size={12} className="text-[var(--color-warn)]" />

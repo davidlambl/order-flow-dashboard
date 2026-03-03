@@ -90,7 +90,12 @@ function EarningsCard({ earnings, loading }) {
   }
 
   const daysTo = earnings.date
-    ? Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000)
+    ? (() => {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const target = new Date(earnings.date + 'T00:00:00'); // local midnight
+        return Math.round((target - today) / 86_400_000);
+      })()
     : null;
 
   const isImminent = daysTo != null && daysTo >= 0 && daysTo <= 7;
