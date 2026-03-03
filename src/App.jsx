@@ -131,6 +131,8 @@ export default function App() {
         secondsLeft={secondsLeft}
         optionsMarketOpen={optionsMarketOpen}
         onToggleAutoRefresh={toggleAutoRefresh}
+        liveQuote={liveQuote}
+        spotPrice={data?.spotPrice}
       />
 
       <div className="flex-1 flex overflow-hidden">

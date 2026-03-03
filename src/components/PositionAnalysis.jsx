@@ -172,13 +172,14 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
 }
 
 /**
- * Yahoo-style price display: shows closing price + after-hours drift when
- * market is closed, or the live price during market hours when available.
- * NOTE: Currently rendered inside PositionAnalysis (premium-gated).
+ * Yahoo-style price display: shows a reference/spot price + after-hours drift
+ * when market is closed, or the live price during market hours when available.
+ * NOTE: spotPrice is the data provider's latest quote (CBOE delayed or Tradier
+ * real-time), not necessarily the official closing price.
  */
 function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider }) {
   const isDelayed = !dataProvider || dataProvider === 'cboe' || dataProvider === 'tradier-sandbox';
-  const closeLabelText = isDelayed ? 'CBOE ~15min delayed' : 'At close';
+  const closeLabelText = isDelayed ? 'CBOE ~15min delayed' : 'Spot';
   const spotNum = Number(spotPrice);
   const hasSpot = Number.isFinite(spotNum) && spotNum > 0;
   const q = liveQuote || {};

@@ -1,8 +1,9 @@
 // src/components/Header.jsx
 import { useState, useRef, useEffect } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
+import { formatPrice } from '../lib/format';
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh }) {
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh, liveQuote, spotPrice }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -45,8 +46,33 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
         </div>
       </div>
 
-      {/* Search */}
+      {/* Search + Price */}
       <div className="flex items-center gap-2 sm:gap-4">
+        {/* Compact price — visible to all users */}
+        {(() => {
+          const liveNum = Number(liveQuote?.current);
+          const spotNum = Number(spotPrice);
+          const price = Number.isFinite(liveNum) && liveNum > 0 ? liveNum : Number.isFinite(spotNum) && spotNum > 0 ? spotNum : null;
+          if (!price) return null;
+          const changePct = liveQuote?.changePercent;
+          const hasChange = typeof changePct === 'number' && Number.isFinite(changePct);
+          const up = hasChange ? changePct >= 0 : null;
+          return (
+            <div className="hidden sm:flex items-center gap-1.5">
+              <span className="text-sm font-bold font-mono tabular-nums text-[var(--color-text-primary)]">
+                {formatPrice(price)}
+              </span>
+              {hasChange && (
+                <span
+                  className="text-xs font-semibold font-mono tabular-nums"
+                  style={{ color: up ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                >
+                  {up ? '+' : ''}{changePct.toFixed(2)}%
+                </span>
+              )}
+            </div>
+          );
+        })()}
         <form onSubmit={handleSubmit} className="flex items-center gap-1.5 sm:gap-2">
           <div
             className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-all duration-200 ${
