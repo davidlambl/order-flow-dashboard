@@ -109,6 +109,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           <button
             type="button"
             onClick={onToggleAutoRefresh}
+            aria-label={autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
             className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-lg border text-[10px] font-semibold tabular-nums transition-all ${
               autoRefresh && optionsMarketOpen && !usingMock
                 ? 'border-[var(--color-bull)]/30 text-[var(--color-bull)]'

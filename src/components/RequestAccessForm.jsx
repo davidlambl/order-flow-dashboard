@@ -1,8 +1,6 @@
 // src/components/RequestAccessForm.jsx
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { Send, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-
-const COOLDOWN_MS = 60_000;
 
 export default function RequestAccessForm({ compact }) {
   const [name, setName] = useState('');
@@ -10,7 +8,6 @@ export default function RequestAccessForm({ compact }) {
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
-  const cooldownRef = useRef(null);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -42,7 +39,6 @@ export default function RequestAccessForm({ compact }) {
       }
 
       setStatus('sent');
-      cooldownRef.current = Date.now();
     } catch (err) {
       setStatus('error');
       setError(

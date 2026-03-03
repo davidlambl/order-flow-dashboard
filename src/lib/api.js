@@ -63,14 +63,16 @@ function parseSSELine(jsonStr, provider) {
  * Stream a message to the AI co-pilot with financial context.
  * Supports Anthropic, OpenAI, and Gemini streaming formats.
  */
-export async function askLLMStream({ messages, financialContext, ticker, userApiKey, model, provider }, onChunk) {
-  const res = await fetch(`${FUNCTION_BASE}/askLLM`, {
+export async function askLLMStream({ messages, financialContext, ticker, userApiKey, model, provider }, onChunk, signal = null) {
+  const options = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       messages, financialContext, ticker, userApiKey, model, provider, stream: true,
     }),
-  });
+  };
+  if (signal) options.signal = signal;
+  const res = await fetch(`${FUNCTION_BASE}/askLLM`, options);
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));

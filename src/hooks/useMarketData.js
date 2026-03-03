@@ -102,7 +102,7 @@ export function useMarketData(ticker) {
         iv30: result.iv30,
         kpis: result.kpis,
         gexByStrike: result.gexByStrike || [],
-        flowHistory: generateMockData(symbol).flowHistory,
+        flowHistory: result.flowHistory || [],
         lastUpdated: result.lastUpdated,
         totalOptionsCount: result.totalOptionsCount,
       });

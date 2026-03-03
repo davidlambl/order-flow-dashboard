@@ -205,9 +205,7 @@ export default async (req) => {
       debtToEquity: m.totalDebtToEquityQuarterly ?? null,
       freeCashFlowTTM: m.freeCashFlowTTM ?? null,
       revenuePerShareTTM: m.revenuePerShareTTM ?? null,
-      fiftyDayMA: m['10DayAverageTradingVolume'] ? undefined : undefined,
     };
-    delete fundamentals.fiftyDayMA;
   }
 
   const marketNews = generalNewsRes.status === 'fulfilled'

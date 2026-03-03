@@ -1,4 +1,5 @@
 // src/components/FlowChart.jsx
+import { useId } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
@@ -26,6 +27,7 @@ function CustomTooltip({ active, payload }) {
 }
 
 export default function FlowChart({ data, loading }) {
+  const gradId = useId();
   if (loading) {
     return (
       <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
@@ -66,11 +68,11 @@ export default function FlowChart({ data, loading }) {
       <ResponsiveContainer width="100%" height={280}>
         <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
           <defs>
-            <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`cumGrad${gradId}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.2} />
               <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
             </linearGradient>
-            <linearGradient id="netGrad" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={`netGrad${gradId}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--color-bull)" stopOpacity={0.15} />
               <stop offset="95%" stopColor="var(--color-bull)" stopOpacity={0} />
             </linearGradient>
@@ -104,7 +106,7 @@ export default function FlowChart({ data, loading }) {
             type="monotone"
             dataKey="cumPremium"
             stroke="var(--color-accent)"
-            fill="url(#cumGrad)"
+            fill={`url(#cumGrad${gradId})`}
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: 'var(--color-accent)', strokeWidth: 0 }}
@@ -113,7 +115,7 @@ export default function FlowChart({ data, loading }) {
             type="monotone"
             dataKey="netPremium"
             stroke="var(--color-bull)"
-            fill="url(#netGrad)"
+            fill={`url(#netGrad${gradId})`}
             strokeWidth={1.5}
             dot={false}
             activeDot={{ r: 3, fill: 'var(--color-bull)', strokeWidth: 0 }}

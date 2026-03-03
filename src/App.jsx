@@ -40,6 +40,8 @@ export default function App() {
   const sidebarWRef = useRef(sidebarWidth);
   useEffect(() => { sidebarWRef.current = sidebarWidth; }, [sidebarWidth]);
 
+  const dragCleanupRef = useRef(null);
+
   const handleResizeStart = useCallback((e) => {
     e.preventDefault();
     setIsResizing(true);
@@ -50,11 +52,19 @@ export default function App() {
       const delta = startX - ev.clientX;
       setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + delta)));
     };
-    const onUp = () => {
+    const cleanup = () => {
       setIsResizing(false);
       setPreference('sidebarWidth', sidebarWRef.current);
       document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      document.removeEventListener('mouseup', cleanup);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      dragCleanupRef.current = null;
+    };
+
+    dragCleanupRef.current = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', cleanup);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
@@ -62,16 +72,27 @@ export default function App() {
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    document.addEventListener('mouseup', cleanup);
   }, []);
+
+  useEffect(() => {
+    return () => { if (dragCleanupRef.current) dragCleanupRef.current(); };
+  }, []);
+
+  const [tokenTier, setTokenTier] = useState(() => getTokenTier());
+  const [daysLeft, setDaysLeft] = useState(() => daysRemaining());
 
   const refreshAuth = useCallback(() => {
     setIsPremium(hasValidToken());
+    setTokenTier(getTokenTier());
+    setDaysLeft(daysRemaining());
   }, []);
 
   const handleLogout = useCallback(() => {
     clearToken();
     setIsPremium(false);
+    setTokenTier(null);
+    setDaysLeft(null);
   }, []);
 
   useEffect(() => {
@@ -122,8 +143,8 @@ export default function App() {
         usingMock={usingMock}
         data={data}
         isPremium={isPremium}
-        tokenTier={getTokenTier()}
-        daysLeft={daysRemaining()}
+        tokenTier={tokenTier}
+        daysLeft={daysLeft}
         onLogout={handleLogout}
         onOpenSettings={openSettings}
         earnings={tickerContext?.earnings}

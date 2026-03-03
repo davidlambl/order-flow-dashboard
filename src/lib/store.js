@@ -162,19 +162,36 @@ export function importAll(data) {
   }
 
   const migrated = migrate(data);
+
+  // Validate importable sections before clearing to avoid data loss on malformed input
+  const hasPositions = migrated.positions != null &&
+                       !Array.isArray(migrated.positions) &&
+                       typeof migrated.positions === 'object';
+  const hasChats = migrated.chatHistories != null &&
+                   !Array.isArray(migrated.chatHistories) &&
+                   typeof migrated.chatHistories === 'object';
+  const hasPrefs = migrated.preferences != null &&
+                   !Array.isArray(migrated.preferences) &&
+                   typeof migrated.preferences === 'object';
+  if (!hasPositions && !hasChats && !hasPrefs) {
+    throw new Error('Import data contains no valid sections.');
+  }
+
   backend.clearAll();
 
-  if (migrated.positions && typeof migrated.positions === 'object') {
+  if (hasPositions) {
     for (const [ticker, pos] of Object.entries(migrated.positions)) {
-      backend.setPosition(ticker, pos);
+      if (pos != null && typeof pos === 'object' && !Array.isArray(pos)) {
+        backend.setPosition(ticker, pos);
+      }
     }
   }
-  if (migrated.chatHistories && typeof migrated.chatHistories === 'object') {
+  if (hasChats) {
     for (const [ticker, msgs] of Object.entries(migrated.chatHistories)) {
       if (Array.isArray(msgs)) backend.setChatHistory(ticker, msgs);
     }
   }
-  if (migrated.preferences && typeof migrated.preferences === 'object') {
+  if (hasPrefs) {
     for (const [key, val] of Object.entries(migrated.preferences)) {
       backend.setPreference(key, val);
     }
