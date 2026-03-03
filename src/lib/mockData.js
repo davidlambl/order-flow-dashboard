@@ -49,7 +49,11 @@ export function generateMockData(ticker = 'AVGO') {
 
   return {
     ticker,
-    price: basePrice,
+    spotPrice: basePrice,
+    priceChange: 0,
+    priceChangePct: 0,
+    provider: 'mock',
+    delay: 'simulated',
     kpis: {
       netPremium,
       callPremium,

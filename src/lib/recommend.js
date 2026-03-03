@@ -32,10 +32,10 @@ export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexB
     reasons.push(`Near breakeven (${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)`);
   } else if (pnlPercent > -15) {
     scores.push(1);
-    reasons.push(`Down ${pnlPercent.toFixed(1)}% — potential recovery zone`);
+    reasons.push(`Down ${Math.abs(pnlPercent).toFixed(1)}% — potential recovery zone`);
   } else {
     scores.push(-1);
-    reasons.push(`Down ${pnlPercent.toFixed(1)}% — significant loss, reassess thesis`);
+    reasons.push(`Down ${Math.abs(pnlPercent).toFixed(1)}% — significant loss, reassess thesis`);
   }
 
   // Factor 2: Max pain magnet
@@ -106,7 +106,6 @@ export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexB
   const sum = scores.reduce((a, b) => a + b, 0);
   const signal = sum >= 2 ? 'BUY' : sum <= -2 ? 'SELL' : 'HOLD';
 
-  const absScores = scores.map(Math.abs);
   const dissents = scores.filter((s) => (sum >= 0 && s < 0) || (sum < 0 && s > 0)).length;
   const confidence = dissents === 0 ? 'HIGH' : dissents <= 1 ? 'MEDIUM' : 'LOW';
 

@@ -32,7 +32,7 @@ async function fetchCBOE(ticker) {
   return {
     provider: 'cboe',
     delay: '15-min delayed',
-    spotPrice: data.current_price || 0,
+    spotPrice: data.current_price ?? 0,
     priceChange: data.price_change || 0,
     priceChangePct: data.price_change_percent || 0,
     iv30: data.iv30 || 0,
@@ -105,6 +105,9 @@ async function fetchTradier(ticker, apiKey) {
       },
     }
   );
+  if (!quoteRes.ok) {
+    throw new Error(`Tradier quote fetch failed: ${quoteRes.status}`);
+  }
   const quoteData = await quoteRes.json();
   const quote = quoteData?.quotes?.quote || {};
 
@@ -151,7 +154,7 @@ async function fetchTradier(ticker, apiKey) {
   return {
     provider: isSandbox ? 'tradier-sandbox' : 'tradier',
     delay: isSandbox ? 'sandbox (delayed)' : 'real-time',
-    spotPrice: quote.last || quote.close || 0,
+    spotPrice: quote.last ?? quote.close ?? 0,
     priceChange: quote.change || 0,
     priceChangePct: quote.change_percentage || 0,
     iv30: 0, // Tradier doesn't provide a single IV30 metric

@@ -99,7 +99,7 @@ USER POSITION:
     }
   }
 
-  const dpLevel = k.darkPoolPct > 0.4 ? 'Elevated (>40%)' : k.darkPoolPct < 0.3 ? 'Low (<30%)' : 'Normal range';
+  const dpLevel = k.darkPoolPct > 40 ? 'Elevated (>40%)' : k.darkPoolPct < 30 ? 'Low (<30%)' : 'Normal range';
   const maxPainDist = k.maxPain && spotPrice
     ? ` — Spot is $${Math.abs(spotPrice - k.maxPain).toFixed(2)} ${spotPrice < k.maxPain ? 'below' : 'above'}`
     : '';
@@ -219,12 +219,15 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
     const dailyPct = (iv30 / Math.sqrt(252)).toFixed(1);
     const threeDayPct = (iv30 * Math.sqrt(3 / 252)).toFixed(1);
     const expectedMove3d = (spotPrice * (iv30 / 100) * Math.sqrt(3 / 252)).toFixed(2);
-    const pnl310 = (310 - costBasis) * shares;
-    const pnl300 = (300 - costBasis) * shares;
-    const pnl280 = (280 - costBasis) * shares;
+    const levelUp10 = Math.round(spotPrice * 1.10 * 100) / 100;
+    const levelUp5  = Math.round(spotPrice * 1.05 * 100) / 100;
+    const levelDn5  = Math.round(spotPrice * 0.95 * 100) / 100;
+    const pnlUp10 = (levelUp10 - costBasis) * shares;
+    const pnlUp5  = (levelUp5  - costBasis) * shares;
+    const pnlDn5  = (levelDn5  - costBasis) * shares;
     painBlock = `\n\nPAIN TOLERANCE (estimated):
   Expected move (1d, IV30): ±${dailyPct}% | Through 3 days: ±${threeDayPct}% (≈ ±$${expectedMove3d}/share)
-  Unrealized P&L at key levels: $310 = ${formatDollar(pnl310)}, $300 = ${formatDollar(pnl300)}, $280 = ${formatDollar(pnl280)}`;
+  Unrealized P&L at key levels: +10% ($${levelUp10}) = ${formatDollar(pnlUp10)}, +5% ($${levelUp5}) = ${formatDollar(pnlUp5)}, -5% ($${levelDn5}) = ${formatDollar(pnlDn5)}`;
   }
 
   let enriched = '';

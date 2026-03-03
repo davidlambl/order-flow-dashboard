@@ -47,7 +47,7 @@ export default async (req) => {
       valid: true,
       tier: decoded.tier || 'pro',
       sub: decoded.sub || null,
-      expiresAt: new Date(decoded.exp * 1000).toISOString(),
+      expiresAt: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : null,
     });
   } catch (err) {
     const message = err.name === 'TokenExpiredError'

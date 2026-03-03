@@ -326,7 +326,7 @@ function MarketIndicesStrip({ quotes }) {
           >
             <span className="text-[10px] font-semibold text-[var(--color-text-secondary)]">{sym}</span>
             <span className="text-[10px] font-medium tabular-nums text-[var(--color-text-primary)]">
-              {sym === 'VIX' ? q.price.toFixed(2) : `$${q.price.toFixed(2)}`}
+              {q.price != null ? (sym === 'VIX' ? q.price.toFixed(2) : `$${q.price.toFixed(2)}`) : '—'}
             </span>
             <span className={`text-[9px] font-medium tabular-nums ${positive ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'}`}>
               {positive ? '+' : ''}{(q.changePct || 0).toFixed(2)}%

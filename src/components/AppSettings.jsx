@@ -139,7 +139,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   useEffect(() => {
     if (!isOpen) return;
     loadModelsForProvider(provider, keys[provider]);
-  }, [provider]);
+  }, [isOpen, provider, keys, loadModelsForProvider]);
 
   const testKey = useCallback(async () => {
     const key = keys[provider]?.trim();

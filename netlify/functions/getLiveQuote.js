@@ -267,7 +267,7 @@ async function fetchYahooQuote(ticker) {
     changePercent: Number.isFinite(previousClose) && previousClose !== 0
       ? ((currentPrice - previousClose) / previousClose) * 100
       : null,
-    timestamp: currentTimestamp * 1000,
+    timestamp: currentTimestamp != null ? currentTimestamp * 1000 : null,
     source,
   };
   
@@ -359,7 +359,7 @@ async function fetchFinnhubQuote(ticker, finnhubKey) {
     ticker,
     current: q.c,
     previousClose: q.pc ?? null,
-    changePercent: q.pc != null ? ((q.c - q.pc) / q.pc) * 100 : null,
+    changePercent: q.pc != null && Number.isFinite(q.pc) && q.pc !== 0 ? ((q.c - q.pc) / q.pc) * 100 : null,
     timestamp: q.t ? q.t * 1000 : Date.now(),
     source: 'finnhub',
   };

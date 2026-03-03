@@ -47,7 +47,11 @@ ANALYSIS GUIDELINES:
 
 // ─── Provider-specific request builders ──────────────────────────────────────
 
-const MAX_OUTPUT_TOKENS = 16384;
+function getMaxOutputTokens(model) {
+  if (/^gpt-3\.5/.test(model)) return 4096;
+  if (/^gpt-4(?!o|-turbo)/.test(model)) return 8192;
+  return 16384;
+}
 
 async function callAnthropic(apiKey, model, messages, systemPrompt, stream) {
   return fetch('https://api.anthropic.com/v1/messages', {
@@ -59,7 +63,7 @@ async function callAnthropic(apiKey, model, messages, systemPrompt, stream) {
     },
     body: JSON.stringify({
       model: model || 'claude-sonnet-4-20250514',
-      max_tokens: MAX_OUTPUT_TOKENS,
+      max_tokens: getMaxOutputTokens(model),
       system: systemPrompt,
       stream: Boolean(stream),
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -82,7 +86,7 @@ async function callOpenAI(apiKey, model, messages, systemPrompt, stream) {
     body: JSON.stringify({
       model: model || 'gpt-4o',
       stream: Boolean(stream),
-      ...(isReasoning ? { max_completion_tokens: MAX_OUTPUT_TOKENS } : { max_tokens: MAX_OUTPUT_TOKENS }),
+      ...(isReasoning ? { max_completion_tokens: getMaxOutputTokens(model) } : { max_tokens: getMaxOutputTokens(model) }),
       messages: allMessages,
     }),
   });
@@ -102,7 +106,7 @@ async function callGemini(apiKey, model, messages, systemPrompt, stream) {
     body: JSON.stringify({
       contents,
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+      generationConfig: { maxOutputTokens: getMaxOutputTokens(model) },
     }),
   });
 }
@@ -144,8 +148,9 @@ export default async (req) => {
     provider: requestedProvider, stream: useStream,
   } = payload;
 
+  const hasUserKey = typeof userApiKey === 'string' && userApiKey.trim().length > 0;
   const tokenSecret = process.env.TOKEN_SECRET;
-  if (tokenSecret && !userApiKey) {
+  if (tokenSecret && !hasUserKey) {
     const auth = req.headers.get('authorization') || '';
     const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
     if (!bearer) {
