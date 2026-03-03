@@ -215,16 +215,16 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
   }
 
   let painBlock = '';
-  if (costBasis != null && shares != null && spotPrice != null && iv30 != null) {
+  if (Number.isFinite(costBasisNum) && costBasisNum > 0 && shares != null && Number.isFinite(spotPriceNum) && spotPriceNum > 0 && iv30 != null) {
     const dailyPct = (iv30 / Math.sqrt(252)).toFixed(1);
     const threeDayPct = (iv30 * Math.sqrt(3 / 252)).toFixed(1);
-    const expectedMove3d = (spotPrice * (iv30 / 100) * Math.sqrt(3 / 252)).toFixed(2);
-    const levelUp10 = Math.round(spotPrice * 1.10 * 100) / 100;
-    const levelUp5  = Math.round(spotPrice * 1.05 * 100) / 100;
-    const levelDn5  = Math.round(spotPrice * 0.95 * 100) / 100;
-    const pnlUp10 = (levelUp10 - costBasis) * shares;
-    const pnlUp5  = (levelUp5  - costBasis) * shares;
-    const pnlDn5  = (levelDn5  - costBasis) * shares;
+    const expectedMove3d = (spotPriceNum * (iv30 / 100) * Math.sqrt(3 / 252)).toFixed(2);
+    const levelUp10 = Math.round(spotPriceNum * 1.10 * 100) / 100;
+    const levelUp5  = Math.round(spotPriceNum * 1.05 * 100) / 100;
+    const levelDn5  = Math.round(spotPriceNum * 0.95 * 100) / 100;
+    const pnlUp10 = (levelUp10 - costBasisNum) * shares;
+    const pnlUp5  = (levelUp5  - costBasisNum) * shares;
+    const pnlDn5  = (levelDn5  - costBasisNum) * shares;
     painBlock = `\n\nPAIN TOLERANCE (estimated):
   Expected move (1d, IV30): ±${dailyPct}% | Through 3 days: ±${threeDayPct}% (≈ ±$${expectedMove3d}/share)
   Unrealized P&L at key levels: +10% ($${levelUp10}) = ${formatDollar(pnlUp10)}, +5% ($${levelUp5}) = ${formatDollar(pnlUp5)}, -5% ($${levelDn5}) = ${formatDollar(pnlDn5)}`;

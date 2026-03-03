@@ -164,9 +164,15 @@ export function importAll(data) {
   const migrated = migrate(data);
 
   // Validate importable sections before clearing to avoid data loss on malformed input
-  const hasPositions = migrated.positions && typeof migrated.positions === 'object';
-  const hasChats = migrated.chatHistories && typeof migrated.chatHistories === 'object';
-  const hasPrefs = migrated.preferences && typeof migrated.preferences === 'object';
+  const hasPositions = migrated.positions != null &&
+                       !Array.isArray(migrated.positions) &&
+                       typeof migrated.positions === 'object';
+  const hasChats = migrated.chatHistories != null &&
+                   !Array.isArray(migrated.chatHistories) &&
+                   typeof migrated.chatHistories === 'object';
+  const hasPrefs = migrated.preferences != null &&
+                   !Array.isArray(migrated.preferences) &&
+                   typeof migrated.preferences === 'object';
   if (!hasPositions && !hasChats && !hasPrefs) {
     throw new Error('Import data contains no valid sections.');
   }

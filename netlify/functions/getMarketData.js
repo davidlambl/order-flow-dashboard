@@ -347,6 +347,14 @@ export async function handler(event) {
 
     const { options, spotPrice, provider, delay } = rawData;
 
+    if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
+      return {
+        statusCode: 502,
+        headers,
+        body: JSON.stringify({ error: `No valid spot price for ${ticker} from ${provider || 'unknown'} provider` }),
+      };
+    }
+
     if (!options || options.length === 0) {
       return {
         statusCode: 404,

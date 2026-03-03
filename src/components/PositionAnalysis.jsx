@@ -340,11 +340,11 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
   
   const pnlPct = hasBasis && hasSpotPrice ? ((spotNum - costBasisNum) / costBasisNum) * 100 : null;
   const pnlDollars = hasBasis && hasShares && hasSpotPrice ? (spotNum - costBasisNum) * shares : null;
-  const pnlUp = pnlPct != null ? pnlPct >= 0 : true;
+  const pnlUp = pnlPct != null ? pnlPct >= 0 : null;
 
   const livePnlPct = hasBasis && hasLiveQuote ? ((liveNum - costBasisNum) / costBasisNum) * 100 : null;
   const livePnlDollars = hasBasis && hasShares && hasLiveQuote ? (liveNum - costBasisNum) * shares : null;
-  const livePnlUp = livePnlPct != null ? livePnlPct >= 0 : true;
+  const livePnlUp = livePnlPct != null ? livePnlPct >= 0 : null;
 
   const handleCostChange = (e) => {
     const val = e.target.value === '' ? null : parseFloat(e.target.value);
@@ -410,14 +410,14 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
             </span>
             <span
               className="text-xl font-bold tabular-nums font-mono"
-              style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+              style={{ color: pnlUp === null ? 'var(--color-text-muted)' : pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
             >
               {pnlUp ? '+' : ''}{pnlPct.toFixed(2)}%
             </span>
             {pnlDollars != null && (
               <span
                 className="text-xs tabular-nums font-mono"
-                style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                style={{ color: pnlUp === null ? 'var(--color-text-muted)' : pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
               >
                 {pnlUp ? '+' : ''}{formatDollar(pnlDollars)}
               </span>
@@ -459,14 +459,14 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                   <div className="flex flex-col items-end">
                     <span
                       className="text-base font-bold tabular-nums font-mono"
-                      style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                      style={{ color: pnlUp === null ? 'var(--color-text-muted)' : pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
                     >
                       {pnlPct != null ? `${pnlUp ? '+' : ''}${pnlPct.toFixed(2)}%` : '—'}
                     </span>
                     {pnlDollars != null && (
                       <span
                         className="text-xs tabular-nums font-mono"
-                        style={{ color: pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                        style={{ color: pnlUp === null ? 'var(--color-text-muted)' : pnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
                       >
                         {pnlUp ? '+' : ''}{formatDollar(pnlDollars)}
                       </span>
@@ -491,14 +491,14 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                   <div className="flex flex-col items-end">
                     <span
                       className="text-base font-bold tabular-nums font-mono"
-                      style={{ color: livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                      style={{ color: livePnlUp === null ? 'var(--color-text-muted)' : livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
                     >
                       {livePnlPct != null ? `${livePnlUp ? '+' : ''}${livePnlPct.toFixed(2)}%` : '—'}
                     </span>
                     {livePnlDollars != null && (
                       <span
                         className="text-xs tabular-nums font-mono"
-                        style={{ color: livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
+                        style={{ color: livePnlUp === null ? 'var(--color-text-muted)' : livePnlUp ? 'var(--color-bull)' : 'var(--color-bear)' }}
                       >
                         {livePnlUp ? '+' : ''}{formatDollar(livePnlDollars)}
                       </span>

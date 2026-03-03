@@ -136,10 +136,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
   }, [isOpen, loadModelsForProvider]);
 
+  const currentProviderKey = keys[provider];
   useEffect(() => {
     if (!isOpen) return;
-    loadModelsForProvider(provider, keys[provider]);
-  }, [isOpen, provider, keys, loadModelsForProvider]);
+    loadModelsForProvider(provider, currentProviderKey);
+  }, [isOpen, provider, currentProviderKey, loadModelsForProvider]);
 
   const testKey = useCallback(async () => {
     const key = keys[provider]?.trim();
