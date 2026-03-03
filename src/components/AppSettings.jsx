@@ -100,9 +100,9 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
   }, []);
 
   const currentKey = keys[provider] || '';
-  const aiKeySave = useAutoSave(currentKey, saveAiKey, 800);
-  const tradierSave = useAutoSave(tradierKey, saveTradierKey, 800);
-  const finnhubSave = useAutoSave(finnhubKey, saveFinnhubKey, 800);
+  const { saved: aiKeySaved, reset: aiKeyReset, flush: aiKeyFlush } = useAutoSave(currentKey, saveAiKey, 800);
+  const { saved: tradierSaved, reset: tradierReset, flush: tradierFlush } = useAutoSave(tradierKey, saveTradierKey, 800);
+  const { saved: finnhubSaved, reset: finnhubReset, flush: finnhubFlush } = useAutoSave(finnhubKey, saveFinnhubKey, 800);
 
   // ── Model loading ──
   const loadModelsForProvider = useCallback(async (prov, key) => {
@@ -172,13 +172,16 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     setActiveTab('ai');
     setShowRequest(false);
 
-    // Reset auto-save hooks so they don't fire on the loaded values
-    aiKeySave.reset();
-    tradierSave.reset();
-    finnhubSave.reset();
-
     loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
-  }, [isOpen, loadModelsForProvider, aiKeySave, tradierSave, finnhubSave]);
+  }, [isOpen, loadModelsForProvider]);
+
+  // Reset auto-save hooks when modal opens so they don't fire on loaded values
+  useEffect(() => {
+    if (!isOpen) return;
+    aiKeyReset();
+    tradierReset();
+    finnhubReset();
+  }, [isOpen, aiKeyReset, tradierReset, finnhubReset]);
 
   // Reload models when provider/key changes
   const currentProviderKey = keys[provider];
@@ -189,11 +192,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
 
   // ── Flush pending saves and close ──
   const handleClose = useCallback(() => {
-    aiKeySave.flush();
-    tradierSave.flush();
-    finnhubSave.flush();
+    aiKeyFlush();
+    tradierFlush();
+    finnhubFlush();
     onClose();
-  }, [aiKeySave, tradierSave, finnhubSave, onClose]);
+  }, [aiKeyFlush, tradierFlush, finnhubFlush, onClose]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -419,7 +422,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                 <label className="text-xs font-medium text-[var(--color-text-secondary)]">
                   {providerMeta?.label} API Key
                 </label>
-                <SavedIndicator show={aiKeySave.saved} />
+                <SavedIndicator show={aiKeySaved} />
               </div>
               <div className="flex gap-2">
                 <div className="flex-1 relative">
@@ -566,7 +569,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                 <label className="text-xs font-medium text-[var(--color-text-secondary)]">
                   Tradier API Key
                 </label>
-                <SavedIndicator show={tradierSave.saved} />
+                <SavedIndicator show={tradierSaved} />
               </div>
               <div className="relative">
                 <input
@@ -602,7 +605,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                 <label className="text-xs font-medium text-[var(--color-text-secondary)]">
                   Finnhub API Key
                 </label>
-                <SavedIndicator show={finnhubSave.saved} />
+                <SavedIndicator show={finnhubSaved} />
               </div>
               <div className="relative">
                 <input
@@ -791,11 +794,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   onClick={() => setContextEditorOpen(true)}
                   className="w-full text-left rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] p-3 hover:border-[var(--color-text-muted)] transition-colors group"
                 >
-                  <div className="relative overflow-hidden" style={{ maxHeight: 100 }}>
-                    <pre className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words m-0">
-                      {contextPreview.slice(0, 300)}
-                    </pre>
-                    <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--color-surface-2)] to-transparent pointer-events-none" />
+                  <div className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words line-clamp-4">
+                    {contextPreview}
                   </div>
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--color-border-subtle)]">
                     <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
