@@ -245,7 +245,12 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
     if (earnings) {
       const daysTo = earnings.date
-        ? Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000)
+        ? (() => {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const target = new Date(earnings.date + 'T00:00:00');
+            return Math.round((target - today) / 86_400_000);
+          })()
         : null;
       const timing = daysTo != null
         ? (daysTo > 0 ? `${daysTo} day${daysTo !== 1 ? 's' : ''} away` : daysTo === 0 ? 'TODAY' : `${Math.abs(daysTo)} day${Math.abs(daysTo) !== 1 ? 's' : ''} ago`)

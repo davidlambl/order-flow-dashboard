@@ -141,7 +141,10 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
 
         {/* Earnings badge */}
         {earnings?.date && (() => {
-          const daysTo = Math.ceil((new Date(earnings.date) - new Date()) / 86_400_000);
+          const now = new Date();
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const target = new Date(earnings.date + 'T00:00:00');
+          const daysTo = Math.round((target - today) / 86_400_000);
           if (daysTo < 0 || daysTo > 7) return null;
           return (
             <span
