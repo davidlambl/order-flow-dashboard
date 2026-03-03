@@ -40,7 +40,7 @@ function quoteSourceLabel(source) {
  */
 function relativeTime(ts) {
   if (!ts) return '';
-  const diffMs = Date.now() - ts;
+  const diffMs = Math.max(0, Date.now() - ts);
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 10) return 'just now';
   if (diffSec < 60) return `${diffSec}s ago`;
@@ -223,21 +223,23 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
   }
 
   // After hours: Yahoo-style — close price primary, extended price secondary with drift
+  // If we have no spot price but do have a live extended price, show the live price as primary
+  const primaryPrice = hasSpot ? spotNum : liveNum;
   const closePrevClose = q.previousClose;
   const hasCloseChange = Number.isFinite(closePrevClose) && closePrevClose > 0 && hasSpot;
   const closeChangePct = hasCloseChange ? ((spotNum - closePrevClose) / closePrevClose) * 100 : null;
   const closeUp = (closeChangePct || 0) >= 0;
 
-  // Drift = extended price vs close price
+  // Drift = extended price vs close price (only meaningful when we have both)
   const drift = hasSpot && hasLive ? ((liveNum - spotNum) / spotNum) * 100 : null;
   const driftUp = (drift || 0) >= 0;
 
   return (
     <div className="flex flex-col gap-1">
-      {/* Primary: Close price */}
+      {/* Primary: Close/spot price (falls back to live price if spot unavailable) */}
       <div className="flex items-baseline gap-3 flex-wrap">
         <span className="text-2xl font-bold font-mono tabular-nums text-[var(--color-text-primary)]">
-          {formatPrice(spotNum)}
+          {formatPrice(primaryPrice)}
         </span>
         {closeChangePct != null && (
           <span
