@@ -736,17 +736,16 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   const requestContextSuggestions = useCallback(async () => {
     if (sending) return;
-
-    const userMsg = { role: 'user', content: CONTEXT_UPDATE_PROMPT };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
     setSending(true);
 
     try {
       const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
-      const apiMessages = newMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(-10);
+
+      // Send the prompt as a transient API message — not persisted in chat history
+      const apiMessages = [
+        ...messages.filter((m) => m.role === 'user' || m.role === 'assistant').slice(-10),
+        { role: 'user', content: CONTEXT_UPDATE_PROMPT },
+      ];
 
       const settings = getAISettings();
 

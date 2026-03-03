@@ -180,31 +180,34 @@ function migrate(data) {
  * and don't already exist in localStorage.
  */
 export function migrateSessionToLocal() {
-  const sessionKeys = [
-    'ai_provider', 'ai_model', 'ai_model_name',
-    'ai_key_anthropic', 'ai_key_openai', 'ai_key_gemini',
-    'data_tradier_key', 'data_finnhub_key',
-  ];
-  // Also migrate legacy key names from the very first version
-  const legacyMap = {
-    anthropic_api_key: 'ai_key_anthropic',
-    anthropic_model: 'ai_model',
-  };
+  if (typeof window === 'undefined') return;
+  try {
+    const sessionKeys = [
+      'ai_provider', 'ai_model', 'ai_model_name',
+      'ai_key_anthropic', 'ai_key_openai', 'ai_key_gemini',
+      'data_tradier_key', 'data_finnhub_key',
+    ];
+    // Also migrate legacy key names from the very first version
+    const legacyMap = {
+      anthropic_api_key: 'ai_key_anthropic',
+      anthropic_model: 'ai_model',
+    };
 
-  for (const key of sessionKeys) {
-    const val = sessionStorage.getItem(key);
-    if (val != null && backend.getPreference(key) == null) {
-      backend.setPreference(key, val);
+    for (const key of sessionKeys) {
+      const val = sessionStorage.getItem(key);
+      if (val != null && backend.getPreference(key) == null) {
+        backend.setPreference(key, val);
+      }
+      sessionStorage.removeItem(key);
     }
-    sessionStorage.removeItem(key);
-  }
-  for (const [oldKey, newKey] of Object.entries(legacyMap)) {
-    const val = sessionStorage.getItem(oldKey);
-    if (val != null && backend.getPreference(newKey) == null) {
-      backend.setPreference(newKey, val);
+    for (const [oldKey, newKey] of Object.entries(legacyMap)) {
+      const val = sessionStorage.getItem(oldKey);
+      if (val != null && backend.getPreference(newKey) == null) {
+        backend.setPreference(newKey, val);
+      }
+      sessionStorage.removeItem(oldKey);
     }
-    sessionStorage.removeItem(oldKey);
-  }
+  } catch { /* sessionStorage unavailable — skip migration */ }
 }
 
 export function importAll(data) {

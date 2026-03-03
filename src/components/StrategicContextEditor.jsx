@@ -9,13 +9,16 @@ function useAutoSave(value, saveFn, delay = 1000) {
   const timeoutRef = useRef(null);
   const fadeRef = useRef(null);
   const initialRef = useRef(true);
+  const pendingRef = useRef(null);
 
   useEffect(() => {
-    if (initialRef.current) { initialRef.current = false; return; }
     clearTimeout(timeoutRef.current);
     clearTimeout(fadeRef.current);
+    if (initialRef.current) { initialRef.current = false; pendingRef.current = null; return; }
     setSaved(false);
+    pendingRef.current = { value, saveFn };
     timeoutRef.current = setTimeout(() => {
+      pendingRef.current = null;
       saveFn(value);
       setSaved(true);
       fadeRef.current = setTimeout(() => setSaved(false), 1500);
@@ -23,8 +26,24 @@ function useAutoSave(value, saveFn, delay = 1000) {
     return () => { clearTimeout(timeoutRef.current); clearTimeout(fadeRef.current); };
   }, [value, saveFn, delay]);
 
-  const reset = useCallback(() => { initialRef.current = true; setSaved(false); }, []);
-  return { saved, reset };
+  const reset = useCallback(() => {
+    clearTimeout(timeoutRef.current);
+    clearTimeout(fadeRef.current);
+    pendingRef.current = null;
+    initialRef.current = true;
+    setSaved(false);
+  }, []);
+
+  const flush = useCallback(() => {
+    if (pendingRef.current) {
+      clearTimeout(timeoutRef.current);
+      clearTimeout(fadeRef.current);
+      pendingRef.current.saveFn(pendingRef.current.value);
+      pendingRef.current = null;
+    }
+  }, []);
+
+  return { saved, reset, flush };
 }
 
 export default function StrategicContextEditor({ isOpen, onClose }) {
@@ -35,7 +54,12 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
     setPreference('strategic_context', val?.trim() || null);
   }, []);
 
-  const { saved, reset } = useAutoSave(content, save, 1000);
+  const { saved, reset, flush } = useAutoSave(content, save, 1000);
+
+  const handleClose = useCallback(() => {
+    flush();
+    onClose();
+  }, [flush, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -49,11 +73,11 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); handleClose(); }
     };
     window.addEventListener('keydown', handleKeyDown, true); // capture phase to beat AppSettings
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleClose]);
 
   if (!isOpen) return null;
 
@@ -62,9 +86,9 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={handleClose} />
 
-      <div className="relative w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl">
+      <div className="relative w-full max-w-3xl mx-4 h-[75vh] max-h-[90vh] min-h-[300px] flex flex-col rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl overflow-hidden sm:resize">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border-subtle)] shrink-0">
           <div className="flex items-center gap-2.5">
@@ -81,7 +105,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
               </span>
             )}
             <button
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Close strategic context editor"
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
             >
@@ -98,7 +122,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
             onChange={(e) => setContent(e.target.value)}
             placeholder="Paste your strategic context here — macro thesis, position notes, earnings expectations, decision rules, trim ladders, etc. This is appended to every AI Co-Pilot conversation as context."
             spellCheck={false}
-            className="w-full h-full min-h-[60vh] bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] font-mono leading-relaxed rounded-lg px-4 py-3 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none"
+            className="w-full h-full min-h-0 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] font-mono leading-relaxed rounded-lg px-4 py-3 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none"
           />
         </div>
       </div>

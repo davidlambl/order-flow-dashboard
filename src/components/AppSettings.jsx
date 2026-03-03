@@ -40,6 +40,7 @@ function useAutoSave(value, saveFn, delay = 600) {
   const timeoutRef = useRef(null);
   const fadeRef = useRef(null);
   const initialRef = useRef(true);
+  const pendingRef = useRef(null); // tracks { value, saveFn } when a timer is queued
 
   useEffect(() => {
     // Clear any in-flight timers first
@@ -47,10 +48,12 @@ function useAutoSave(value, saveFn, delay = 600) {
     clearTimeout(fadeRef.current);
 
     // Skip initial mount — don't save the value loaded from storage
-    if (initialRef.current) { initialRef.current = false; return; }
+    if (initialRef.current) { initialRef.current = false; pendingRef.current = null; return; }
     setSaved(false);
 
+    pendingRef.current = { value, saveFn };
     timeoutRef.current = setTimeout(() => {
+      pendingRef.current = null;
       saveFn(value);
       setSaved(true);
       fadeRef.current = setTimeout(() => setSaved(false), 1500);
@@ -63,10 +66,22 @@ function useAutoSave(value, saveFn, delay = 600) {
   const reset = useCallback(() => {
     clearTimeout(timeoutRef.current);
     clearTimeout(fadeRef.current);
+    pendingRef.current = null;
     initialRef.current = true;
     setSaved(false);
   }, []);
-  return { saved, reset };
+
+  // Flush any pending debounced save immediately (call on close/unmount)
+  const flush = useCallback(() => {
+    if (pendingRef.current) {
+      clearTimeout(timeoutRef.current);
+      clearTimeout(fadeRef.current);
+      pendingRef.current.saveFn(pendingRef.current.value);
+      pendingRef.current = null;
+    }
+  }, []);
+
+  return { saved, reset, flush };
 }
 
 function SavedIndicator({ show }) {
@@ -221,15 +236,23 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
     loadModelsForProvider(provider, currentProviderKey);
   }, [isOpen, provider, currentProviderKey, loadModelsForProvider]);
 
+  // ── Flush pending saves and close ──
+  const handleClose = useCallback(() => {
+    aiKeySave.flush();
+    tradierSave.flush();
+    finnhubSave.flush();
+    onClose();
+  }, [aiKeySave, tradierSave, finnhubSave, onClose]);
+
   // ── Keyboard shortcuts ──
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      if (e.key === 'Escape') { e.preventDefault(); handleClose(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleClose]);
 
   // ── Immediate-save helpers (no debounce needed) ──
   const handleProviderChange = useCallback((id) => {
@@ -374,7 +397,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
 
       <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl">
         {/* Header + Tab bar */}
@@ -387,7 +410,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
               <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Settings</h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Close settings"
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
             >
@@ -817,11 +840,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
                   onClick={() => setContextEditorOpen(true)}
                   className="w-full text-left rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] p-3 hover:border-[var(--color-text-muted)] transition-colors group"
                 >
-                  <div className="relative overflow-hidden max-h-[120px]">
-                    <pre className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words">
-                      {contextPreview.slice(0, 600)}
+                  <div className="relative overflow-hidden" style={{ maxHeight: 100 }}>
+                    <pre className="text-[11px] text-[var(--color-text-secondary)] font-mono leading-relaxed whitespace-pre-wrap break-words m-0">
+                      {contextPreview.slice(0, 300)}
                     </pre>
-                    <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[var(--color-surface-2)] to-transparent" />
+                    <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--color-surface-2)] to-transparent pointer-events-none" />
                   </div>
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-[var(--color-border-subtle)]">
                     <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
