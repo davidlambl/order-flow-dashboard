@@ -210,13 +210,15 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
 
   // ── Immediate-save helpers (no debounce needed) ──
   const handleProviderChange = useCallback((id) => {
+    // Flush any pending AI key save for the previous provider before switching
+    aiKeyFlush();
     setProvider(id);
     setKeyTestStatus(null);
     setKeyTestError('');
     setShowApiKey(false);
     setPreference('ai_provider', id);
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
-  }, []);
+  }, [aiKeyFlush]);
 
   const handleModelChange = useCallback((modelId) => {
     setSelectedModel(modelId);
