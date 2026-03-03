@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
-import { exportAll, importAll, getPreference, setPreference } from '../lib/store';
+import { exportAll, importAll, getPreference, setPreference, migrateSessionToLocal } from '../lib/store';
 import RequestAccessForm from './RequestAccessForm';
 import StrategicContextEditor from './StrategicContextEditor';
 
@@ -156,7 +156,12 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
         setModels(result.models);
         const savedModel = getPreference('ai_model');
         const match = result.models.find((m) => m.id === savedModel);
-        if (!match) setSelectedModel(result.models[0].id);
+        if (!match) {
+          const fallback = result.models[0];
+          setSelectedModel(fallback.id);
+          setPreference('ai_model', fallback.id);
+          if (fallback.name) setPreference('ai_model_name', fallback.name);
+        }
         setModelError(null);
       } else {
         setModels([]);
@@ -258,7 +263,12 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
         setModels(result.models);
         setModelError(null);
         const match = result.models.find((m) => m.id === selectedModel);
-        if (!match) setSelectedModel(result.models[0].id);
+        if (!match) {
+          const fallback = result.models[0];
+          setSelectedModel(fallback.id);
+          setPreference('ai_model', fallback.id);
+          if (fallback.name) setPreference('ai_model_name', fallback.name);
+        }
       } else {
         setKeyTestStatus('error');
         setKeyTestError(result.error || 'Key returned no models — check that it is valid.');
