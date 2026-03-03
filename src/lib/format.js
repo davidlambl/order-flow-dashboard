@@ -32,16 +32,18 @@ export function formatDollarFull(value) {
  * Format a percentage with one decimal.
  */
 export function formatPct(value) {
-  if (value == null || !Number.isFinite(Number(value))) return '—';
-  return `${value.toFixed(1)}%`;
+  const n = Number(value);
+  if (value == null || !Number.isFinite(n)) return '—';
+  return `${n.toFixed(1)}%`;
 }
 
 /**
  * Format a ratio to two decimals.
  */
 export function formatRatio(value) {
-  if (value == null || !Number.isFinite(Number(value))) return '—';
-  return value.toFixed(2);
+  const n = Number(value);
+  if (value == null || !Number.isFinite(n)) return '—';
+  return n.toFixed(2);
 }
 
 /**
