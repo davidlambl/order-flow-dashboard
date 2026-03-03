@@ -82,6 +82,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
             )}
             <button
               onClick={onClose}
+              aria-label="Close strategic context editor"
               className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
             >
               <X size={16} />
