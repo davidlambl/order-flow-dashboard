@@ -2,7 +2,7 @@
 // Shared debounced auto-save hook with flush/reset support.
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export default function useAutoSave(value, saveFn, delay = 600) {
+export function useAutoSave(value, saveFn, delay = 600) {
   const [saved, setSaved] = useState(false);
   const timeoutRef = useRef(null);
   const fadeRef = useRef(null);
