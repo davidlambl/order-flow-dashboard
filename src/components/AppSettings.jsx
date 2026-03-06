@@ -45,7 +45,7 @@ function SavedIndicator({ show }) {
 }
 
 // ── Main Component ──
-export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource }) {
+export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource, userEmail, onSignOut }) {
   const [activeTab, setActiveTab] = useState('ai');
 
   // AI state
@@ -642,6 +642,37 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource 
         {/* ════════════════════════════════════════════ */}
         {activeTab === 'account' && (
           <div className="p-6 space-y-4 fade-in">
+            {/* Cloud sync account */}
+            {userEmail ? (
+              <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[var(--color-bull)]" />
+                    <span className="text-xs font-medium text-[var(--color-text-primary)]">Signed in</span>
+                  </div>
+                  <button
+                    onClick={onSignOut}
+                    className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+                  >
+                    Sign out
+                  </button>
+                </div>
+                <p className="text-[11px] text-[var(--color-text-secondary)] pl-4">{userEmail}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)] pl-4">
+                  Your data syncs to the cloud automatically.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Not signed in — data is stored locally only.
+                </p>
+              </div>
+            )}
+
+            <hr className="border-[var(--color-border-subtle)]" />
+
+            {/* Premium token */}
             {isPremium ? (
               <div className="rounded-lg border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] p-4 space-y-3">
                 {/* Tier + expiry */}
