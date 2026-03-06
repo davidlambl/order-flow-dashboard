@@ -118,7 +118,10 @@ export class SupabaseBackend {
       const op = this._syncQueue[0];
       try {
         const { error } = await op();
-        this._syncQueue.shift(); // remove on success
+        // Always shift on resolved promise — returned errors (RLS, constraint)
+        // are deterministic and retrying won't help. Only thrown errors (network)
+        // are retried via the catch block below.
+        this._syncQueue.shift();
         retries = 0;
         if (error) console.warn('Supabase sync error:', error.message);
       } catch (err) {

@@ -22,10 +22,10 @@ ALTER TABLE preferences   ADD PRIMARY KEY (user_id, key);
 ALTER TABLE chat_histories DROP CONSTRAINT chat_histories_pkey;
 ALTER TABLE chat_histories ADD PRIMARY KEY (user_id, ticker);
 
--- 4. Drop old permissive RLS policies
-DROP POLICY "Full access" ON positions;
-DROP POLICY "Full access" ON preferences;
-DROP POLICY "Full access" ON chat_histories;
+-- 4. Drop old permissive RLS policies (IF EXISTS for idempotency)
+DROP POLICY IF EXISTS "Full access" ON positions;
+DROP POLICY IF EXISTS "Full access" ON preferences;
+DROP POLICY IF EXISTS "Full access" ON chat_histories;
 
 -- 5. Create user-scoped RLS policies (auth.uid() = user_id)
 CREATE POLICY "User isolation" ON positions
