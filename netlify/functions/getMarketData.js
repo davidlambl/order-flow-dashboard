@@ -122,7 +122,7 @@ export async function handler(event) {
         const supabase = getSupabaseAdmin();
 
         const cutoff = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
-        const { data: rows } = await supabase
+        const { data: rows, error: flowErr } = await supabase
           .from('flow_history')
           .select('date, net_premium, cum_premium, call_volume, put_volume')
           .eq('ticker', ticker)
@@ -130,6 +130,7 @@ export async function handler(event) {
           .order('date', { ascending: false })
           .limit(30);
 
+        if (flowErr) console.warn('Flow history query error:', flowErr.message);
         if (rows?.length > 0) {
           // Rows come newest-first from the query; reverse for chronological order
           result.flowHistory = rows.reverse().map((r) => ({

@@ -113,13 +113,24 @@ export class SupabaseBackend {
   async _flush() {
     if (this._flushing) return;
     this._flushing = true;
+    let retries = 0;
     while (this._syncQueue.length > 0) {
-      const op = this._syncQueue.shift();
+      const op = this._syncQueue[0];
       try {
         const { error } = await op();
+        this._syncQueue.shift(); // remove on success
+        retries = 0;
         if (error) console.warn('Supabase sync error:', error.message);
       } catch (err) {
-        console.warn('Supabase sync failed:', err.message);
+        retries++;
+        if (retries >= 3) {
+          this._syncQueue.shift(); // drop after 3 retries
+          retries = 0;
+          console.warn('Supabase sync failed after 3 retries:', err.message);
+        } else {
+          console.warn(`Supabase sync retry ${retries}/3:`, err.message);
+          await new Promise((r) => setTimeout(r, 1000 * retries));
+        }
       }
     }
     this._flushing = false;

@@ -24,6 +24,11 @@ const collectFlow = async () => {
     return { statusCode: 200 };
   }
 
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('Supabase env vars not set — skipping flow collection.');
+    return { statusCode: 200 };
+  }
+
   const supabase = getSupabaseAdmin();
   const today = new Date().toISOString().slice(0, 10);
   const results = [];
