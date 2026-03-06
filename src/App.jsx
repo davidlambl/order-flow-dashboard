@@ -15,15 +15,24 @@ import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
-import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal } from './lib/store';
+import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend } from './lib/store';
+import { supabase } from './lib/supabase';
+import { SupabaseBackend } from './lib/SupabaseBackend';
 
 const SIDEBAR_DEFAULT = 384;
 const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 640;
 
 export default function App() {
-  // Run session→local migration exactly once at startup
-  useEffect(() => { migrateSessionToLocal(); }, []);
+  // Run session→local migration and initialize Supabase backend at startup
+  useEffect(() => {
+    migrateSessionToLocal();
+    if (supabase) {
+      const backend = new SupabaseBackend(new LocalStorageBackend());
+      setBackend(backend);
+      backend.hydrate(); // Non-blocking — fills missing local data from cloud
+    }
+  }, []);
 
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
