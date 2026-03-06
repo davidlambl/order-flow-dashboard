@@ -2,13 +2,10 @@
 // Offline-first backend: localStorage for reads, Supabase for durable sync.
 // Wraps LocalStorageBackend with write-through async sync to Supabase.
 // Secret keys (API keys) are NEVER sent to Supabase.
+// NOTE: No user scoping — this is a single-user/small-team tool.
 
 import { supabase } from './supabase';
-
-const SECRET_KEYS = new Set([
-  'ai_key_anthropic', 'ai_key_openai', 'ai_key_gemini',
-  'data_tradier_key', 'data_finnhub_key',
-]);
+import { SECRET_KEYS } from './store';
 
 export class SupabaseBackend {
   constructor(localBackend) {
@@ -58,7 +55,7 @@ export class SupabaseBackend {
     this._enqueue(() =>
       value != null
         ? supabase.from('preferences').upsert(
-            { key: name, value: JSON.stringify(value), updated_at: new Date().toISOString() },
+            { key: name, value, updated_at: new Date().toISOString() },
             { onConflict: 'key' }
           )
         : supabase.from('preferences').delete().eq('key', name)
@@ -80,7 +77,7 @@ export class SupabaseBackend {
     this._enqueue(() =>
       messages?.length
         ? supabase.from('chat_histories').upsert(
-            { ticker, messages: JSON.stringify(messages), updated_at: new Date().toISOString() },
+            { ticker, messages, updated_at: new Date().toISOString() },
             { onConflict: 'ticker' }
           )
         : supabase.from('chat_histories').delete().eq('ticker', ticker)
@@ -153,11 +150,7 @@ export class SupabaseBackend {
           if (SECRET_KEYS.has(row.key)) continue;
           const existing = this.local.getPreference(row.key);
           if (existing == null) {
-            try {
-              this.local.setPreference(row.key, JSON.parse(row.value));
-            } catch {
-              this.local.setPreference(row.key, row.value);
-            }
+            this.local.setPreference(row.key, row.value);
           }
         }
       }
@@ -167,10 +160,8 @@ export class SupabaseBackend {
         for (const row of chats) {
           const existing = this.local.getChatHistory(row.ticker);
           if (!existing || existing.length === 0) {
-            try {
-              const msgs = typeof row.messages === 'string' ? JSON.parse(row.messages) : row.messages;
-              this.local.setChatHistory(row.ticker, msgs);
-            } catch { /* skip corrupted */ }
+            const msgs = typeof row.messages === 'string' ? JSON.parse(row.messages) : row.messages;
+            if (Array.isArray(msgs)) this.local.setChatHistory(row.ticker, msgs);
           }
         }
       }
@@ -203,7 +194,7 @@ export class SupabaseBackend {
       const prefs = this.local.getAllPreferences();
       const prefRows = Object.entries(prefs)
         .filter(([key]) => !SECRET_KEYS.has(key))
-        .map(([key, value]) => ({ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }));
+        .map(([key, value]) => ({ key, value, updated_at: new Date().toISOString() }));
       if (prefRows.length > 0) {
         const { error } = await supabase.from('preferences').upsert(prefRows, { onConflict: 'key', ignoreDuplicates: true });
         if (error) console.warn('Push preferences error:', error.message);
@@ -213,7 +204,7 @@ export class SupabaseBackend {
       const chats = this.local.getAllChatHistories();
       const chatRows = Object.entries(chats)
         .filter(([, msgs]) => msgs?.length > 0)
-        .map(([ticker, msgs]) => ({ ticker, messages: JSON.stringify(msgs), updated_at: new Date().toISOString() }));
+        .map(([ticker, msgs]) => ({ ticker, messages: msgs, updated_at: new Date().toISOString() }));
       if (chatRows.length > 0) {
         const { error } = await supabase.from('chat_histories').upsert(chatRows, { onConflict: 'ticker', ignoreDuplicates: true });
         if (error) console.warn('Push chat_histories error:', error.message);

@@ -1,9 +1,10 @@
 // netlify/functions/collectFlowHistory.js
 //
-// Scheduled function: runs Mon-Fri at ~4:30 PM ET (after market close).
+// Scheduled function: runs Mon-Fri at 9:30 PM UTC (~4:30-5:30 PM ET depending on DST).
 // Fetches options flow data for tracked tickers and stores daily snapshots
 // in the Supabase flow_history table.
 
+import { schedule } from '@netlify/functions';
 import { getSupabaseAdmin } from './lib/supabaseAdmin.js';
 import { fetchCBOE, computeNetPremium, computePutCallRatio } from './lib/marketDataHelpers.js';
 
@@ -15,12 +16,12 @@ const TRACKED_TICKERS = [
   'SPY', 'QQQ',
 ];
 
-export default async () => {
+const collectFlow = async () => {
   // Skip weekends
   const dow = new Date().getDay();
   if (dow === 0 || dow === 6) {
     console.log('Weekend — skipping flow collection.');
-    return;
+    return { statusCode: 200 };
   }
 
   const supabase = getSupabaseAdmin();
@@ -73,10 +74,9 @@ export default async () => {
       console.log(`Stored flow history for ${results.length} tickers on ${today}.`);
     }
   }
+
+  return { statusCode: 200 };
 };
 
-// Netlify Scheduled Function: Mon-Fri at 20:30 UTC (4:30 PM ET / 5:30 PM EDT).
-// During EDT the run is 30 min late, which is fine — data is still from the same trading day.
-export const config = {
-  schedule: '30 20 * * 1-5',
-};
+// Mon-Fri at 21:30 UTC — covers both EST (4:30 PM) and EDT (5:30 PM), always after market close.
+export const handler = schedule('30 21 * * 1-5', collectFlow);

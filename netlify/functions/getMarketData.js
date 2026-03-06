@@ -127,11 +127,12 @@ export async function handler(event) {
           .select('date, net_premium, cum_premium, call_volume, put_volume')
           .eq('ticker', ticker)
           .gte('date', cutoff)
-          .order('date', { ascending: true })
+          .order('date', { ascending: false })
           .limit(30);
 
         if (rows?.length > 0) {
-          result.flowHistory = rows.map((r) => ({
+          // Rows come newest-first from the query; reverse for chronological order
+          result.flowHistory = rows.reverse().map((r) => ({
             date: r.date,
             netPremium: r.net_premium,
             cumPremium: r.cum_premium,
