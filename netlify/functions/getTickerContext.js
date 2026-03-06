@@ -1,10 +1,10 @@
 // netlify/functions/getTickerContext.js
 //
-// Fetches enriched ticker context from Finnhub in parallel:
+// Fetches enriched ticker context from Finnhub + Alpha Vantage in parallel:
 //   - Company news (last 7 days)
 //   - General market news (top headlines)
 //   - Market index quotes (SPY, QQQ, VIX, USO, GLD)
-//   - Earnings calendar (next/recent)
+//   - Earnings (Alpha Vantage, cached in Supabase)
 //   - Analyst recommendation trends
 //   - Price target consensus
 //   - Basic financials (key metrics)
@@ -12,6 +12,8 @@
 //
 // BYOK: accepts x-finnhub-key header, falls back to FINNHUB_API_KEY env var.
 // Partial success: individual sections can fail without blocking others.
+
+import { getSupabaseAdmin } from './lib/supabaseAdmin.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
@@ -54,6 +56,79 @@ async function finnhubGet(path, token) {
   return res.json();
 }
 
+// Fetch earnings from Alpha Vantage with Supabase caching.
+// Returns the earnings object or null on failure.
+async function fetchEarnings(ticker) {
+  const avKey = process.env.ALPHA_VANTAGE_KEY;
+  if (!avKey) return null;
+
+  // Check Supabase cache first
+  try {
+    const sb = getSupabaseAdmin();
+    const { data: cached } = await sb
+      .from('earnings_cache')
+      .select('data, next_report_date')
+      .eq('ticker', ticker)
+      .single();
+
+    if (cached?.next_report_date) {
+      const nextDate = new Date(cached.next_report_date + 'T00:00:00Z');
+      if (nextDate > new Date()) {
+        return cached.data; // cache is fresh
+      }
+    }
+  } catch {
+    // No cache or Supabase unavailable — fall through to API call
+  }
+
+  // Call Alpha Vantage
+  try {
+    const avUrl = `https://www.alphavantage.co/query?function=EARNINGS&symbol=${encodeURIComponent(ticker)}&apikey=${avKey}`;
+    const res = await fetch(avUrl);
+    if (!res.ok) return null;
+    const json = await res.json();
+
+    const quarters = json.quarterlyEarnings;
+    if (!Array.isArray(quarters) || quarters.length === 0) return null;
+
+    const q = quarters[0]; // most recent quarter
+    const earnings = {
+      date: q.reportedDate || null,
+      epsEstimate: q.estimatedEPS != null ? +q.estimatedEPS : null,
+      epsActual: q.reportedEPS != null ? +q.reportedEPS : null,
+      revenueEstimate: null,
+      revenueActual: null,
+      quarter: null,
+      year: null,
+      surprisePercent: q.surprisePercentage != null ? +q.surprisePercentage : null,
+    };
+
+    // Estimate next report date: last reported + 95 days (quarterly cadence + buffer)
+    let nextReportDate = null;
+    if (q.reportedDate) {
+      const d = new Date(q.reportedDate + 'T00:00:00Z');
+      d.setDate(d.getDate() + 95);
+      nextReportDate = d.toISOString().slice(0, 10);
+    }
+
+    // Upsert into cache (non-blocking — don't let cache write failures break the response)
+    try {
+      const sb = getSupabaseAdmin();
+      await sb.from('earnings_cache').upsert(
+        { ticker, data: earnings, next_report_date: nextReportDate, fetched_at: new Date().toISOString() },
+        { onConflict: 'ticker' }
+      );
+    } catch (cacheErr) {
+      console.warn('Earnings cache write failed:', cacheErr.message);
+    }
+
+    return earnings;
+  } catch (err) {
+    console.warn('Alpha Vantage earnings fetch failed:', err.message);
+    return null;
+  }
+}
+
 export default async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: CORS });
@@ -85,26 +160,24 @@ export default async (req) => {
   const oneYearAgo = Math.floor(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime() / 1000);
   const nowUnix = Math.floor(now.getTime() / 1000);
 
-  const earningsFrom = new Date(now);
-  earningsFrom.setDate(earningsFrom.getDate() - 90);
-  const earningsTo = new Date(now);
-  earningsTo.setDate(earningsTo.getDate() + 60);
-
   const MARKET_SYMBOLS = ['SPY', 'QQQ', 'VIX', 'USO', 'GLD'];
   const MARKET_LABELS = { SPY: 'S&P 500', QQQ: 'Nasdaq 100', VIX: 'VIX', USO: 'Oil (USO)', GLD: 'Gold (GLD)' };
 
+  // Fetch earnings from Alpha Vantage (cached) in parallel with Finnhub calls
   const [
-    newsRes, earningsRes, recRes, ptRes, metricsRes, candleRes,
-    generalNewsRes, ...quoteResults
-  ] = await Promise.allSettled([
-    finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
-    finnhubGet(`/calendar/earnings?symbol=${ticker}&from=${earningsFrom.toISOString().slice(0, 10)}&to=${earningsTo.toISOString().slice(0, 10)}`, finnhubKey),
-    finnhubGet(`/stock/recommendation?symbol=${ticker}`, finnhubKey),
-    finnhubGet(`/stock/price-target?symbol=${ticker}`, finnhubKey),
-    finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
-    finnhubGet(`/stock/candle?symbol=${ticker}&resolution=D&from=${oneYearAgo}&to=${nowUnix}`, finnhubKey),
-    finnhubGet('/news?category=general', finnhubKey),
-    ...MARKET_SYMBOLS.map((sym) => finnhubGet(`/quote?symbol=${sym}`, finnhubKey)),
+    earningsResult,
+    [newsRes, recRes, ptRes, metricsRes, candleRes, generalNewsRes, ...quoteResults],
+  ] = await Promise.all([
+    fetchEarnings(ticker),
+    Promise.allSettled([
+      finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
+      finnhubGet(`/stock/recommendation?symbol=${ticker}`, finnhubKey),
+      finnhubGet(`/stock/price-target?symbol=${ticker}`, finnhubKey),
+      finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
+      finnhubGet(`/stock/candle?symbol=${ticker}&resolution=D&from=${oneYearAgo}&to=${nowUnix}`, finnhubKey),
+      finnhubGet('/news?category=general', finnhubKey),
+      ...MARKET_SYMBOLS.map((sym) => finnhubGet(`/quote?symbol=${sym}`, finnhubKey)),
+    ]),
   ]);
 
   const news = newsRes.status === 'fulfilled'
@@ -118,23 +191,7 @@ export default async (req) => {
       }))
     : [];
 
-  let earnings = null;
-  if (earningsRes.status === 'fulfilled') {
-    const cal = earningsRes.value?.earningsCalendar || [];
-    const upcoming = cal.find((e) => new Date(e.date) >= now) || cal[0] || null;
-    if (upcoming) {
-      earnings = {
-        date: upcoming.date,
-        epsEstimate: upcoming.epsEstimate ?? null,
-        epsActual: upcoming.epsActual ?? null,
-        revenueEstimate: upcoming.revenueEstimate ?? null,
-        revenueActual: upcoming.revenueActual ?? null,
-        quarter: upcoming.quarter ?? null,
-        year: upcoming.year ?? null,
-        surprisePercent: upcoming.surprisePct ?? null,
-      };
-    }
-  }
+  const earnings = earningsResult; // from Alpha Vantage (cached in Supabase)
 
   let analysts = null;
   if (recRes.status === 'fulfilled' && ptRes.status === 'fulfilled') {
