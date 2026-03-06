@@ -11,19 +11,61 @@ import FlowChart from './components/FlowChart';
 import ChatBot from './components/ChatBot';
 import PremiumGate from './components/PremiumGate';
 import AppSettings from './components/AppSettings';
+import LoginForm from './components/LoginForm';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
-import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal } from './lib/store';
+import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend } from './lib/store';
+import { supabase } from './lib/supabase';
+import { SupabaseBackend } from './lib/SupabaseBackend';
 
 const SIDEBAR_DEFAULT = 384;
 const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 640;
 
 export default function App() {
-  // Run session→local migration exactly once at startup
-  useEffect(() => { migrateSessionToLocal(); }, []);
+  // ── Auth state ───────────────────────────────────────────────────────────
+  const [authSession, setAuthSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(!!supabase); // only loading if Supabase is configured
+  const [authSkipped, setAuthSkipped] = useState(false);
+
+  // Check existing session + listen for auth changes (magic link callback, sign-out)
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── Backend initialization (after auth) ──────────────────────────────────
+  const backendInitRef = useRef(false);
+  useEffect(() => {
+    migrateSessionToLocal();
+    const userId = authSession?.user?.id;
+    if (supabase && userId && !backendInitRef.current) {
+      backendInitRef.current = true;
+      const backend = new SupabaseBackend(new LocalStorageBackend(), userId);
+      setBackend(backend);
+      backend.hydrate(); // Non-blocking — fills missing local data from cloud
+    }
+    // Sign-out: reset to plain localStorage backend
+    if (!authSession && backendInitRef.current) {
+      backendInitRef.current = false;
+      setBackend(new LocalStorageBackend());
+    }
+  }, [authSession]);
+
+  const handleSignOut = useCallback(async () => {
+    if (supabase) await supabase.auth.signOut();
+    setAuthSession(null);
+    setAuthSkipped(false);
+  }, []);
 
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
@@ -135,6 +177,20 @@ export default function App() {
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   const dataSource = usingMock ? 'mock' : (data?.provider || 'cboe');
+
+  // Show loading spinner while checking existing session
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-400 border-t-transparent" />
+      </div>
+    );
+  }
+
+  // Show login form if Supabase is available but user hasn't signed in or skipped
+  if (supabase && !authSession && !authSkipped) {
+    return <LoginForm onSkip={() => setAuthSkipped(true)} />;
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -310,6 +366,8 @@ export default function App() {
         onClose={closeSettings}
         onAuthChange={refreshAuth}
         dataSource={dataSource}
+        userEmail={authSession?.user?.email}
+        onSignOut={handleSignOut}
       />
     </div>
   );

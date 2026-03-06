@@ -259,3 +259,4 @@ export function importAll(data) {
 }
 
 export function setBackend(newBackend) { backend = newBackend; }
+export { LocalStorageBackend, SECRET_KEYS };
