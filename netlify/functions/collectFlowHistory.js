@@ -39,6 +39,7 @@ const collectFlow = async () => {
         .from('flow_history')
         .select('cum_premium')
         .eq('ticker', ticker)
+        .lt('date', today)
         .order('date', { ascending: false })
         .limit(1);
 

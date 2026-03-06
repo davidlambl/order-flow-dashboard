@@ -131,7 +131,8 @@ export class SupabaseBackend {
     if (!supabase) return;
 
     try {
-      const { data: positions } = await supabase.from('positions').select('*');
+      const { data: positions, error: posErr } = await supabase.from('positions').select('*');
+      if (posErr) console.warn('Hydrate positions error:', posErr.message);
       if (positions) {
         for (const row of positions) {
           const existing = this.local.getPosition(row.ticker);
@@ -144,7 +145,8 @@ export class SupabaseBackend {
         }
       }
 
-      const { data: prefs } = await supabase.from('preferences').select('*');
+      const { data: prefs, error: prefErr } = await supabase.from('preferences').select('*');
+      if (prefErr) console.warn('Hydrate preferences error:', prefErr.message);
       if (prefs) {
         for (const row of prefs) {
           if (SECRET_KEYS.has(row.key)) continue;
@@ -155,7 +157,8 @@ export class SupabaseBackend {
         }
       }
 
-      const { data: chats } = await supabase.from('chat_histories').select('*');
+      const { data: chats, error: chatErr } = await supabase.from('chat_histories').select('*');
+      if (chatErr) console.warn('Hydrate chat_histories error:', chatErr.message);
       if (chats) {
         for (const row of chats) {
           const existing = this.local.getChatHistory(row.ticker);

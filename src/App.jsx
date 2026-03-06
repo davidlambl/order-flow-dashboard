@@ -24,10 +24,13 @@ const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 640;
 
 export default function App() {
-  // Run session→local migration and initialize Supabase backend at startup
+  // Run session→local migration and initialize Supabase backend at startup.
+  // useRef guard prevents double-init under React.StrictMode (dev mode).
+  const backendInitRef = useRef(false);
   useEffect(() => {
     migrateSessionToLocal();
-    if (supabase) {
+    if (supabase && !backendInitRef.current) {
+      backendInitRef.current = true;
       const backend = new SupabaseBackend(new LocalStorageBackend());
       setBackend(backend);
       backend.hydrate(); // Non-blocking — fills missing local data from cloud
