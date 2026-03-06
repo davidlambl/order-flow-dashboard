@@ -63,19 +63,29 @@ async function fetchEarnings(ticker) {
   if (!avKey) return null;
 
   // Check Supabase cache first
+  let staleData = null;
   try {
     const sb = getSupabaseAdmin();
     const { data: cached } = await sb
       .from('earnings_cache')
-      .select('data, next_report_date')
+      .select('data, next_report_date, fetched_at')
       .eq('ticker', ticker)
       .single();
 
-    if (cached?.next_report_date) {
-      const nextDate = new Date(cached.next_report_date + 'T00:00:00Z');
-      if (nextDate > new Date()) {
-        return cached.data; // cache is fresh
+    if (cached?.data) {
+      const now = new Date();
+      // Fresh if next_report_date is in the future
+      if (cached.next_report_date) {
+        const nextDate = new Date(cached.next_report_date + 'T00:00:00Z');
+        if (nextDate > now) return cached.data;
       }
+      // TTL fallback: treat cache as fresh for 24h when next_report_date is missing
+      if (!cached.next_report_date && cached.fetched_at) {
+        const age = now - new Date(cached.fetched_at);
+        if (age >= 0 && age <= 24 * 60 * 60 * 1000) return cached.data;
+      }
+      // Cache exists but is stale — keep as fallback in case AV fails
+      staleData = cached.data;
     }
   } catch {
     // No cache or Supabase unavailable — fall through to API call
@@ -85,11 +95,11 @@ async function fetchEarnings(ticker) {
   try {
     const avUrl = `https://www.alphavantage.co/query?function=EARNINGS&symbol=${encodeURIComponent(ticker)}&apikey=${avKey}`;
     const res = await fetch(avUrl);
-    if (!res.ok) return null;
+    if (!res.ok) return staleData;
     const json = await res.json();
 
     const quarters = json.quarterlyEarnings;
-    if (!Array.isArray(quarters) || quarters.length === 0) return null;
+    if (!Array.isArray(quarters) || quarters.length === 0) return staleData;
 
     const q = quarters[0]; // most recent quarter
     const earnings = {
@@ -125,7 +135,7 @@ async function fetchEarnings(ticker) {
     return earnings;
   } catch (err) {
     console.warn('Alpha Vantage earnings fetch failed:', err.message);
-    return null;
+    return staleData; // return stale cache rather than nothing
   }
 }
 

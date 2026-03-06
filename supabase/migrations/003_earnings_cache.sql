@@ -16,4 +16,5 @@ CREATE POLICY "Public read" ON earnings_cache
 
 -- Only server-side functions (service role) can write
 CREATE POLICY "Service write" ON earnings_cache
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR INSERT, UPDATE, DELETE TO service_role
+  USING (true) WITH CHECK (true);
