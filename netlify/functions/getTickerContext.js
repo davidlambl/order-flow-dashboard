@@ -124,10 +124,13 @@ async function fetchEarnings(ticker) {
     // Upsert into cache (non-blocking — don't let cache write failures break the response)
     try {
       const sb = getSupabaseAdmin();
-      await sb.from('earnings_cache').upsert(
+      const { error: upsertError } = await sb.from('earnings_cache').upsert(
         { ticker, data: earnings, next_report_date: nextReportDate, fetched_at: new Date().toISOString() },
         { onConflict: 'ticker' }
       );
+      if (upsertError) {
+        console.warn('Earnings cache upsert error:', upsertError.message || upsertError);
+      }
     } catch (cacheErr) {
       console.warn('Earnings cache write failed:', cacheErr.message);
     }
