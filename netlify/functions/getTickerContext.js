@@ -219,6 +219,10 @@ export default async (req) => {
 
   // EPS from Alpha Vantage (accurate), revenue from Finnhub
   const earnings = earningsResult;
+  // Migration shim for stale cache entries that used `surprisePercent` instead of `surprise`
+  if (earnings && earnings.surprise === undefined && earnings.surprisePercent !== undefined) {
+    earnings.surprise = earnings.surprisePercent;
+  }
   if (earnings && earningsRevRes.status === 'fulfilled') {
     const cal = earningsRevRes.value?.earningsCalendar || [];
     const match = cal.find((e) => e.date === earnings.date) || cal[0];
