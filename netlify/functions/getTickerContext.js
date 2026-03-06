@@ -117,7 +117,7 @@ async function fetchEarnings(ticker) {
       revenueActual: null,
       quarter: null,
       year: null,
-      surprisePercent: toNumberOrNull(q.surprisePercentage),
+      surprise: toNumberOrNull(q.surprise),
     };
 
     // Estimate next report date: last reported + 95 days (quarterly cadence + buffer)
@@ -180,17 +180,23 @@ export default async (req) => {
   const oneYearAgo = Math.floor(new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).getTime() / 1000);
   const nowUnix = Math.floor(now.getTime() / 1000);
 
+  const earningsFrom = new Date(now);
+  earningsFrom.setDate(earningsFrom.getDate() - 90);
+  const earningsTo = new Date(now);
+  earningsTo.setDate(earningsTo.getDate() + 60);
+
   const MARKET_SYMBOLS = ['SPY', 'QQQ', 'VIX', 'USO', 'GLD'];
   const MARKET_LABELS = { SPY: 'S&P 500', QQQ: 'Nasdaq 100', VIX: 'VIX', USO: 'Oil (USO)', GLD: 'Gold (GLD)' };
 
-  // Fetch earnings from Alpha Vantage (cached) in parallel with Finnhub calls
+  // Fetch Alpha Vantage earnings (EPS, cached) in parallel with Finnhub calls (revenue + everything else)
   const [
     earningsResult,
-    [newsRes, recRes, ptRes, metricsRes, candleRes, generalNewsRes, ...quoteResults],
+    [newsRes, earningsRevRes, recRes, ptRes, metricsRes, candleRes, generalNewsRes, ...quoteResults],
   ] = await Promise.all([
     fetchEarnings(ticker),
     Promise.allSettled([
       finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
+      finnhubGet(`/calendar/earnings?symbol=${ticker}&from=${earningsFrom.toISOString().slice(0, 10)}&to=${earningsTo.toISOString().slice(0, 10)}`, finnhubKey),
       finnhubGet(`/stock/recommendation?symbol=${ticker}`, finnhubKey),
       finnhubGet(`/stock/price-target?symbol=${ticker}`, finnhubKey),
       finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
@@ -211,7 +217,16 @@ export default async (req) => {
       }))
     : [];
 
-  const earnings = earningsResult; // from Alpha Vantage (cached in Supabase)
+  // EPS from Alpha Vantage (accurate), revenue from Finnhub
+  const earnings = earningsResult;
+  if (earnings && earningsRevRes.status === 'fulfilled') {
+    const cal = earningsRevRes.value?.earningsCalendar || [];
+    const match = cal.find((e) => e.date === earnings.date) || cal[0];
+    if (match) {
+      earnings.revenueEstimate = match.revenueEstimate ?? null;
+      earnings.revenueActual = match.revenueActual ?? null;
+    }
+  }
 
   let analysts = null;
   if (recRes.status === 'fulfilled' && ptRes.status === 'fulfilled') {
