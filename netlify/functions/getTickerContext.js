@@ -102,15 +102,22 @@ async function fetchEarnings(ticker) {
     if (!Array.isArray(quarters) || quarters.length === 0) return staleData;
 
     const q = quarters[0]; // most recent quarter
+
+    const toNumberOrNull = (value) => {
+      if (value === null || value === undefined) return null;
+      const num = typeof value === 'number' ? value : parseFloat(value);
+      return Number.isFinite(num) ? num : null;
+    };
+
     const earnings = {
       date: q.reportedDate || null,
-      epsEstimate: q.estimatedEPS != null ? +q.estimatedEPS : null,
-      epsActual: q.reportedEPS != null ? +q.reportedEPS : null,
+      epsEstimate: toNumberOrNull(q.estimatedEPS),
+      epsActual: toNumberOrNull(q.reportedEPS),
       revenueEstimate: null,
       revenueActual: null,
       quarter: null,
       year: null,
-      surprisePercent: q.surprisePercentage != null ? +q.surprisePercentage : null,
+      surprisePercent: toNumberOrNull(q.surprisePercentage),
     };
 
     // Estimate next report date: last reported + 95 days (quarterly cadence + buffer)
