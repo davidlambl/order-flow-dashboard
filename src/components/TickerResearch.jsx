@@ -145,21 +145,6 @@ function EarningsCard({ earnings, loading }) {
             )}
           </div>
         )}
-        {earnings.revenueEstimate != null && (
-          <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
-            <p className="text-[10px] text-[var(--color-text-muted)]">Rev. Est.</p>
-            <p className="font-semibold text-[var(--color-text-primary)] tabular-nums">
-              ${(earnings.revenueEstimate / 1e9).toFixed(2)}B
-            </p>
-            {earnings.revenueActual != null && (
-              <p className={`text-[10px] font-medium tabular-nums ${
-                earnings.revenueActual >= earnings.revenueEstimate ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'
-              }`}>
-                Actual: ${(earnings.revenueActual / 1e9).toFixed(2)}B
-              </p>
-            )}
-          </div>
-        )}
       </div>
 
       {earnings.surprisePercent != null && (
