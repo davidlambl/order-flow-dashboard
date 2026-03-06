@@ -179,5 +179,47 @@ export class SupabaseBackend {
     } catch (err) {
       console.warn('Supabase hydration failed (non-fatal):', err.message);
     }
+
+    // After pulling cloud data, push any local data that's missing from Supabase.
+    // This ensures pre-existing localStorage data gets synced on first run.
+    this._pushLocal();
+  }
+
+  async _pushLocal() {
+    if (!supabase) return;
+
+    try {
+      // Push positions
+      const positions = this.local.getAllPositions();
+      const posRows = Object.entries(positions)
+        .filter(([, p]) => p.costBasis != null || p.shares != null)
+        .map(([ticker, p]) => ({ ticker, cost_basis: p.costBasis, shares: p.shares, updated_at: new Date().toISOString() }));
+      if (posRows.length > 0) {
+        const { error } = await supabase.from('positions').upsert(posRows, { onConflict: 'ticker', ignoreDuplicates: true });
+        if (error) console.warn('Push positions error:', error.message);
+      }
+
+      // Push non-secret preferences
+      const prefs = this.local.getAllPreferences();
+      const prefRows = Object.entries(prefs)
+        .filter(([key]) => !SECRET_KEYS.has(key))
+        .map(([key, value]) => ({ key, value: JSON.stringify(value), updated_at: new Date().toISOString() }));
+      if (prefRows.length > 0) {
+        const { error } = await supabase.from('preferences').upsert(prefRows, { onConflict: 'key', ignoreDuplicates: true });
+        if (error) console.warn('Push preferences error:', error.message);
+      }
+
+      // Push chat histories
+      const chats = this.local.getAllChatHistories();
+      const chatRows = Object.entries(chats)
+        .filter(([, msgs]) => msgs?.length > 0)
+        .map(([ticker, msgs]) => ({ ticker, messages: JSON.stringify(msgs), updated_at: new Date().toISOString() }));
+      if (chatRows.length > 0) {
+        const { error } = await supabase.from('chat_histories').upsert(chatRows, { onConflict: 'ticker', ignoreDuplicates: true });
+        if (error) console.warn('Push chat_histories error:', error.message);
+      }
+    } catch (err) {
+      console.warn('Push local data failed (non-fatal):', err.message);
+    }
   }
 }
