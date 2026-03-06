@@ -264,7 +264,7 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
       if (earnings.epsActual != null) eLine += ` | Actual: $${earnings.epsActual}`;
       if (earnings.revenueEstimate != null) eLine += `\n  Revenue Estimate: $${(earnings.revenueEstimate / 1e9).toFixed(2)}B`;
       if (earnings.revenueActual != null) eLine += ` | Actual: $${(earnings.revenueActual / 1e9).toFixed(2)}B`;
-      if (earnings.surprisePercent != null) eLine += `\n  Surprise: ${earnings.surprisePercent > 0 ? '+' : ''}${earnings.surprisePercent.toFixed(1)}%`;
+      if (earnings.surprise != null) eLine += `\n  Surprise: ${earnings.surprise >= 0 ? '+' : '-'}$${Math.abs(earnings.surprise).toFixed(2)} ${earnings.surprise >= 0 ? 'beat' : 'miss'}`;
       enriched += `\n\nEARNINGS:\n${eLine}`;
     }
 

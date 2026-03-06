@@ -145,15 +145,30 @@ function EarningsCard({ earnings, loading }) {
             )}
           </div>
         )}
+        {earnings.revenueEstimate != null && (
+          <div className="p-2 rounded-lg bg-[var(--color-surface-2)]">
+            <p className="text-[10px] text-[var(--color-text-muted)]">Rev. Est.</p>
+            <p className="font-semibold text-[var(--color-text-primary)] tabular-nums">
+              ${(earnings.revenueEstimate / 1e9).toFixed(2)}B
+            </p>
+            {earnings.revenueActual != null && (
+              <p className={`text-[10px] font-medium tabular-nums ${
+                earnings.revenueActual >= earnings.revenueEstimate ? 'text-[var(--color-bull)]' : 'text-[var(--color-bear)]'
+              }`}>
+                Actual: ${(earnings.revenueActual / 1e9).toFixed(2)}B
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
-      {earnings.surprisePercent != null && (
+      {earnings.surprise != null && (
         <div className={`text-[10px] font-medium px-2 py-1 rounded text-center ${
-          earnings.surprisePercent >= 0
+          earnings.surprise >= 0
             ? 'text-[var(--color-bull)] bg-[var(--color-bull)]/10'
             : 'text-[var(--color-bear)] bg-[var(--color-bear)]/10'
         }`}>
-          {earnings.surprisePercent > 0 ? '+' : ''}{earnings.surprisePercent.toFixed(1)}% surprise
+          {earnings.surprise >= 0 ? '+' : '-'}${Math.abs(earnings.surprise).toFixed(2)} {earnings.surprise >= 0 ? 'beat' : 'miss'}
         </div>
       )}
     </div>
