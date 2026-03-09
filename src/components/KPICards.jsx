@@ -76,7 +76,7 @@ export default function KPICards({ kpis, loading }) {
       icon: ArrowRightLeft,
       color: k.putCallRatio > 1 ? 'var(--color-bear)' : k.putCallRatio < 0.7 ? 'var(--color-bull)' : 'var(--color-warn)',
       bgColor: k.putCallRatio > 1 ? 'var(--color-bear-bg)' : k.putCallRatio < 0.7 ? 'var(--color-bull-bg)' : 'var(--color-warn-bg)',
-      subtitle: `Vol C: ${formatCompact(k.callVolume)} \u00b7 P: ${formatCompact(k.putVolume)}`,
+      subtitle: `Vol: ${formatCompact((k.callVolume || 0) + (k.putVolume || 0))} \u00b7 Prem: ${formatDollar((k.callPremium || 0) + (k.putPremium || 0))}`,
     },
   ];
 
