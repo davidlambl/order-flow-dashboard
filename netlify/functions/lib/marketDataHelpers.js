@@ -22,20 +22,20 @@ export async function fetchCBOE(ticker) {
     spotPrice: data.current_price ?? 0,
     priceChange: data.price_change || 0,
     priceChangePct: data.price_change_percent || 0,
-    iv30: data.iv30 || 0,
-    volume: data.volume || 0,
+    iv30: data.iv30 ?? 0,
+    volume: data.volume ?? 0,
     lastTradeTime: data.last_trade_time || null,
     options: (data.options || []).map((opt) => ({
       symbol: opt.option,
-      bid: opt.bid || 0,
-      ask: opt.ask || 0,
-      iv: opt.iv || 0,
-      openInterest: opt.open_interest || 0,
-      volume: opt.volume || 0,
-      delta: opt.delta || 0,
-      gamma: opt.gamma || 0,
-      theta: opt.theta || 0,
-      vega: opt.vega || 0,
+      bid: opt.bid ?? 0,
+      ask: opt.ask ?? 0,
+      iv: opt.iv ?? 0,
+      openInterest: opt.open_interest ?? 0,
+      volume: opt.volume ?? 0,
+      delta: opt.delta ?? 0,
+      gamma: opt.gamma ?? 0,
+      theta: opt.theta ?? 0,
+      vega: opt.vega ?? 0,
     })),
   };
 }
@@ -279,7 +279,8 @@ export function computeNetPremium(options) {
 }
 
 export function estimateDarkPoolPct(stockVolume, iv30) {
+  if (!iv30 || !stockVolume) return null;
   const basePct = 37.5;
-  const ivMod = ((iv30 || 30) - 30) * 0.1;
+  const ivMod = (iv30 - 30) * 0.1;
   return Math.max(25, Math.min(55, basePct + ivMod));
 }

@@ -68,7 +68,9 @@ export default function KPICards({ kpis, loading }) {
       icon: Moon,
       color: 'var(--color-purple)',
       bgColor: 'var(--color-purple-bg)',
-      subtitle: k.darkPoolPct > 40 ? 'Above average' : k.darkPoolPct < 30 ? 'Below average' : 'Normal range',
+      subtitle: k.darkPoolPct != null
+        ? (k.darkPoolPct > 40 ? 'Above average' : k.darkPoolPct < 30 ? 'Below average' : 'Normal range')
+        : 'No data',
     },
     {
       label: 'Put / Call Ratio',
