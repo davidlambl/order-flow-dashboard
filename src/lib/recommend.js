@@ -13,7 +13,8 @@ export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexB
   if (!costBasis || !spotPrice || !kpis) return null;
 
   const k = kpis;
-  const pnlDollars = (spotPrice - costBasis) * (shares || 0);
+  const numShares = Math.max(0, Number(shares) || 0);
+  const pnlDollars = (spotPrice - costBasis) * numShares;
   const pnlPercent = ((spotPrice - costBasis) / costBasis) * 100;
   const pnl = { dollars: pnlDollars, percent: pnlPercent };
 
@@ -83,9 +84,12 @@ export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexB
     if (k.netPremium > 0) {
       scores.push(1);
       reasons.push('Net premium is bullish — institutional call buying');
-    } else {
+    } else if (k.netPremium < 0) {
       scores.push(-1);
       reasons.push('Net premium is bearish — institutional put buying');
+    } else {
+      scores.push(0);
+      reasons.push('Net premium is neutral — balanced call/put flow');
     }
   }
 
