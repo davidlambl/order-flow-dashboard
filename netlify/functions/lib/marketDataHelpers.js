@@ -20,22 +20,22 @@ export async function fetchCBOE(ticker) {
     provider: 'cboe',
     delay: '15-min delayed',
     spotPrice: data.current_price ?? 0,
-    priceChange: data.price_change || 0,
-    priceChangePct: data.price_change_percent || 0,
-    iv30: data.iv30 || 0,
-    volume: data.volume || 0,
+    priceChange: data.price_change ?? 0,
+    priceChangePct: data.price_change_percent ?? 0,
+    iv30: data.iv30 ?? 0,
+    volume: data.volume ?? 0,
     lastTradeTime: data.last_trade_time || null,
     options: (data.options || []).map((opt) => ({
       symbol: opt.option,
-      bid: opt.bid || 0,
-      ask: opt.ask || 0,
-      iv: opt.iv || 0,
-      openInterest: opt.open_interest || 0,
-      volume: opt.volume || 0,
-      delta: opt.delta || 0,
-      gamma: opt.gamma || 0,
-      theta: opt.theta || 0,
-      vega: opt.vega || 0,
+      bid: opt.bid ?? 0,
+      ask: opt.ask ?? 0,
+      iv: opt.iv ?? 0,
+      openInterest: opt.open_interest ?? 0,
+      volume: opt.volume ?? 0,
+      delta: opt.delta ?? 0,
+      gamma: opt.gamma ?? 0,
+      theta: opt.theta ?? 0,
+      vega: opt.vega ?? 0,
     })),
   };
 }
@@ -114,15 +114,15 @@ export async function fetchTradier(ticker, apiKey) {
     for (const opt of arr) {
       allOptions.push({
         symbol: opt.symbol,
-        bid: opt.bid || 0,
-        ask: opt.ask || 0,
-        iv: opt.greeks?.mid_iv || opt.greeks?.ask_iv || 0,
-        openInterest: opt.open_interest || 0,
-        volume: opt.volume || 0,
-        delta: opt.greeks?.delta || 0,
-        gamma: opt.greeks?.gamma || 0,
-        theta: opt.greeks?.theta || 0,
-        vega: opt.greeks?.vega || 0,
+        bid: opt.bid ?? 0,
+        ask: opt.ask ?? 0,
+        iv: opt.greeks?.mid_iv ?? opt.greeks?.ask_iv ?? 0,
+        openInterest: opt.open_interest ?? 0,
+        volume: opt.volume ?? 0,
+        delta: opt.greeks?.delta ?? 0,
+        gamma: opt.greeks?.gamma ?? 0,
+        theta: opt.greeks?.theta ?? 0,
+        vega: opt.greeks?.vega ?? 0,
       });
     }
   }
@@ -133,10 +133,10 @@ export async function fetchTradier(ticker, apiKey) {
     provider: isSandbox ? 'tradier-sandbox' : 'tradier',
     delay: isSandbox ? 'sandbox (delayed)' : 'real-time',
     spotPrice: quote.last ?? quote.close ?? 0,
-    priceChange: quote.change || 0,
-    priceChangePct: quote.change_percentage || 0,
+    priceChange: quote.change ?? 0,
+    priceChangePct: quote.change_percentage ?? 0,
     iv30: 0,
-    volume: quote.volume || 0,
+    volume: quote.volume ?? 0,
     lastTradeTime: quote.trade_date || null,
     options: allOptions,
   };
@@ -279,7 +279,10 @@ export function computeNetPremium(options) {
 }
 
 export function estimateDarkPoolPct(stockVolume, iv30) {
+  const vol = Number(stockVolume);
+  const iv = Number(iv30);
+  if (!Number.isFinite(vol) || vol <= 0 || !Number.isFinite(iv) || iv <= 0) return null;
   const basePct = 37.5;
-  const ivMod = ((iv30 || 30) - 30) * 0.1;
+  const ivMod = (iv - 30) * 0.1;
   return Math.max(25, Math.min(55, basePct + ivMod));
 }
