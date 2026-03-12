@@ -358,7 +358,13 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
     onUpdate(costBasis, val);
   };
 
-  if (loading) return null;
+  if (loading) return (
+    <div className="space-y-3">
+      <div className="skeleton h-8 w-48" />
+      <div className="skeleton h-24 w-full" />
+      <div className="skeleton h-16 w-full" />
+    </div>
+  );
 
   return (
     <div>
