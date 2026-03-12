@@ -1,5 +1,5 @@
 // src/components/ChatBot.jsx
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListChecks, Pencil } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -622,15 +622,17 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const inputRef = useRef(null);
   const chunkBuf = useRef('');
   const rafId = useRef(null);
+  const messagesRef = useRef(messages);
+  useLayoutEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
     if (currentTicker && currentTicker !== prevTickerRef.current) {
-      setChatHistory(prevTickerRef.current, messages);
+      setChatHistory(prevTickerRef.current, messagesRef.current);
       prevTickerRef.current = currentTicker;
       skipSaveRef.current = true;
       setMessages(getChatHistory(currentTicker));
     }
-  }, [currentTicker, messages]);
+  }, [currentTicker]);
 
   useEffect(() => {
     if (skipSaveRef.current) { skipSaveRef.current = false; return; }
@@ -697,16 +699,15 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     if (!text.trim() || sending) return;
 
     const userMsg = { role: 'user', content: text.trim() };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
     setSending(true);
 
     try {
       const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
-      const apiMessages = newMessages
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
+      const currentMessages = messagesRef.current;
+      const apiMessages = [...currentMessages.filter((m) => m.role === 'user' || m.role === 'assistant'), userMsg]
         .slice(-10);
 
       const settings = getAISettings();
@@ -732,7 +733,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
 
   const requestContextSuggestions = useCallback(async () => {
     if (sending) return;
@@ -743,7 +744,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
       // Send the prompt as a transient API message — not persisted in chat history
       const apiMessages = [
-        ...messages.filter((m) => m.role === 'user' || m.role === 'assistant').slice(-10),
+        ...messagesRef.current.filter((m) => m.role === 'user' || m.role === 'assistant').slice(-10),
         { role: 'user', content: CONTEXT_UPDATE_PROMPT },
       ];
 
@@ -770,7 +771,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [messages, sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
