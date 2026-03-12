@@ -1,5 +1,5 @@
 // src/components/ChatBot.jsx
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListChecks, Pencil } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -623,7 +623,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const chunkBuf = useRef('');
   const rafId = useRef(null);
   const messagesRef = useRef(messages);
-  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useLayoutEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
     if (currentTicker && currentTicker !== prevTickerRef.current) {
