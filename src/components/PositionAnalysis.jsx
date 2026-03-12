@@ -355,7 +355,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
   const handleSharesChange = (e) => {
     const val = e.target.value === '' ? null : parseFloat(e.target.value);
     if (val !== null && isNaN(val)) return;
-    onUpdate(costBasis, val);
+    onUpdate(costBasisNum || null, val);
   };
 
   if (loading) return null;

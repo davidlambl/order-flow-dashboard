@@ -83,7 +83,9 @@ class LocalStorageBackend {
       } else {
         this.deleteChatHistory(ticker);
       }
-    } catch { /* quota exceeded */ }
+    } catch (e) {
+      console.warn('setChatHistory: localStorage quota exceeded for', ticker, e?.message);
+    }
   }
 
   deleteChatHistory(ticker) {
@@ -234,6 +236,17 @@ export function importAll(data) {
   if (!hasPositions && !hasChats && !hasPrefs) {
     throw new Error('Import data contains no valid sections.');
   }
+
+  // Backup current data before clearing — stored under a recovery key so a
+  // failed import can be manually recovered from localStorage.
+  try {
+    const backup = JSON.stringify({
+      positions: backend.getAllPositions(),
+      chatHistories: backend.getAllChatHistories(),
+      preferences: backend.getAllPreferences({ includeSecrets: false }),
+    });
+    localStorage.setItem('_import_backup', backup);
+  } catch { /* best-effort backup */ }
 
   backend.clearAll();
 
