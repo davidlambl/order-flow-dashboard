@@ -68,7 +68,7 @@ export default function KPICards({ kpis, loading }) {
       icon: Moon,
       color: 'var(--color-purple)',
       bgColor: 'var(--color-purple-bg)',
-      subtitle: k.darkPoolPct != null
+      subtitle: Number.isFinite(k.darkPoolPct)
         ? (k.darkPoolPct > 40 ? 'Above average' : k.darkPoolPct < 30 ? 'Below average' : 'Normal range')
         : 'No data',
     },
