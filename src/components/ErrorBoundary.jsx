@@ -27,13 +27,13 @@ export default class ErrorBoundary extends Component {
         <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-6">
           <div className="max-w-md w-full text-center space-y-4">
             <div className="text-4xl">⚠️</div>
-            <h1 className="text-xl font-semibold text-[var(--color-text)]">
+            <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">
               Something went wrong
             </h1>
             <p className="text-sm text-[var(--color-text-muted)]">
               An unexpected error occurred. Your data is safe — try reloading.
             </p>
-            {this.state.error?.message && (
+            {import.meta.env.DEV && this.state.error?.message && (
               <pre className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface)] rounded-lg p-3 overflow-x-auto text-left border border-[var(--color-border-subtle)]">
                 {this.state.error.message}
               </pre>
