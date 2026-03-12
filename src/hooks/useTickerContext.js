@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchTickerContext } from '../lib/api';
 
 const CACHE_TTL = 15 * 60 * 1000;
+const MAX_CACHE_SIZE = 50;
 const cache = new Map();
 
 function getCached(ticker) {
@@ -20,6 +21,11 @@ function getCached(ticker) {
 
 function setCache(ticker, data) {
   cache.set(ticker, { data, ts: Date.now() });
+  // Evict oldest entries when cache exceeds size limit to prevent memory leaks
+  if (cache.size > MAX_CACHE_SIZE) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
 }
 
 export function useTickerContext(ticker) {
