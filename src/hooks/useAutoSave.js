@@ -8,6 +8,8 @@ export function useAutoSave(value, saveFn, delay = 600) {
   const fadeRef = useRef(null);
   const initialRef = useRef(true);
   const pendingRef = useRef(null); // tracks { value, saveFn } when a timer is queued
+  const saveFnRef = useRef(saveFn);
+  useEffect(() => { saveFnRef.current = saveFn; }, [saveFn]);
 
   useEffect(() => {
     // Clear any in-flight timers first
@@ -18,16 +20,16 @@ export function useAutoSave(value, saveFn, delay = 600) {
     if (initialRef.current) { initialRef.current = false; pendingRef.current = null; return; }
     setSaved(false);
 
-    pendingRef.current = { value, saveFn };
+    pendingRef.current = { value, saveFn: saveFnRef.current };
     timeoutRef.current = setTimeout(() => {
       pendingRef.current = null;
-      saveFn(value);
+      saveFnRef.current(value);
       setSaved(true);
       fadeRef.current = setTimeout(() => setSaved(false), 1500);
     }, delay);
 
     return () => { clearTimeout(timeoutRef.current); clearTimeout(fadeRef.current); };
-  }, [value, saveFn, delay]);
+  }, [value, delay]);
 
   // Reset initial flag when the hook is re-mounted (modal reopen)
   const reset = useCallback(() => {
