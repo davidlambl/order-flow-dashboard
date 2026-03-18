@@ -627,12 +627,12 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   useEffect(() => {
     if (currentTicker && currentTicker !== prevTickerRef.current) {
-      setChatHistory(prevTickerRef.current, messagesRef.current);
+      setChatHistory(prevTickerRef.current, getCompleteMessages());
       prevTickerRef.current = currentTicker;
       skipSaveRef.current = true;
       setMessages(getChatHistory(currentTicker));
     }
-  }, [currentTicker]);
+  }, [currentTicker, getCompleteMessages]);
 
   useEffect(() => {
     if (skipSaveRef.current) { skipSaveRef.current = false; return; }
@@ -672,6 +672,17 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     if (rafId.current) cancelAnimationFrame(rafId.current);
   }, []);
 
+  const getCompleteMessages = useCallback(() => {
+    const buf = chunkBuf.current;
+    if (!buf) return messagesRef.current;
+    const msgs = messagesRef.current;
+    const last = msgs[msgs.length - 1];
+    if (last?.role === 'assistant') {
+      return [...msgs.slice(0, -1), { ...last, content: last.content + buf }];
+    }
+    return [...msgs, { role: 'assistant', content: buf }];
+  }, []);
+
   const flushChunks = useCallback(() => {
     rafId.current = null;
     const text = chunkBuf.current;
@@ -706,8 +717,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
     try {
       const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
-      const currentMessages = messagesRef.current;
-      const apiMessages = [...currentMessages.filter((m) => m.role === 'user' || m.role === 'assistant'), userMsg]
+      const apiMessages = [...getCompleteMessages().filter((m) => m.role === 'user' || m.role === 'assistant'), userMsg]
         .slice(-10);
 
       const settings = getAISettings();
@@ -733,7 +743,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks, getCompleteMessages]);
 
   const requestContextSuggestions = useCallback(async () => {
     if (sending) return;
@@ -744,7 +754,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
       // Send the prompt as a transient API message — not persisted in chat history
       const apiMessages = [
-        ...messagesRef.current.filter((m) => m.role === 'user' || m.role === 'assistant').slice(-10),
+        ...getCompleteMessages().filter((m) => m.role === 'user' || m.role === 'assistant').slice(-10),
         { role: 'user', content: CONTEXT_UPDATE_PROMPT },
       ];
 
@@ -771,7 +781,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     } finally {
       setSending(false);
     }
-  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks, getCompleteMessages]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
