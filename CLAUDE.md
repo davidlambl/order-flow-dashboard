@@ -20,8 +20,10 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline until Phase 4a lands: 19 `no-undef` in
-  `netlify/**` (browser globals applied to Node code) plus a handful of react-hooks errors; don't add new ones.
+- `npm run build` — must pass. `npm run lint` — baseline after Phase 4a: 7 errors + 1 warning, all
+  `react-hooks/*` or `react-refresh/*` in `src/` and owned by Phases 2/5; don't add new ones. CI runs lint
+  non-blocking until that count is zero, then it becomes required.
+- `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
 ## Layout
