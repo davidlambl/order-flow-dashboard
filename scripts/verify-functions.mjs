@@ -29,7 +29,7 @@ const req = (path, { method = 'GET', body, headers = {} } = {}) => new Request(`
   method, headers: { 'content-type': 'application/json', ...headers }, body: body ? JSON.stringify(body) : undefined,
 });
 const json = async (res) => ({ status: res.status, headers: Object.fromEntries(res.headers), body: await res.json().catch(() => null) });
-const reset = () => { _resetRateLimiter(); _resetRevocationCache(); calls.length = 0; for (const k of ['TOKEN_SECRET','ANTHROPIC_API_KEY','TRADIER_API_KEY','FINNHUB_API_KEY','ALPHA_VANTAGE_KEY','SITE_ORIGIN','ALLOWED_MODELS','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','SUPABASE_ANON_KEY','VITE_SUPABASE_URL','VITE_SUPABASE_ANON_KEY']) delete process.env[k]; };
+const reset = () => { _resetRateLimiter(); _resetRevocationCache(); calls.length = 0; for (const k of ['TOKEN_SECRET','ANTHROPIC_API_KEY','TRADIER_API_KEY','FINNHUB_API_KEY','ALPHA_VANTAGE_KEY','SITE_ORIGIN','ALLOWED_MODELS','TRACKED_TICKERS','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','SUPABASE_ANON_KEY','VITE_SUPABASE_URL','VITE_SUPABASE_ANON_KEY']) delete process.env[k]; };
 let passed = 0;
 const t = async (name, fn) => { reset(); try { await fn(); passed++; console.log('  ok  ', name); } catch (e) { console.log('  FAIL', name, '\n      ', e.message); process.exitCode = 1; } };
 
@@ -170,7 +170,9 @@ await t('unconfigured → 503 without leaking config', async () => {
 });
 
 console.log('getMarketData');
-const cboeBody = { data: { current_price: 100, options: [{ option: 'AVGO260117C00100000', bid: 1, ask: 2, volume: 10, open_interest: 5, gamma: 0.01 }] } };
+// Expiry 30 days out: past expiries are dropped by normalizeChain, so a fixed date would go stale.
+const fixtureExpiry = new Date(Date.now() + 30 * 86400000).toISOString().slice(2, 10).replace(/-/g, '');
+const cboeBody = { data: { current_price: 100, options: [{ option: `AVGO${fixtureExpiry}C00100000`, bid: 1, ask: 2, volume: 10, open_interest: 5, gamma: 0.01 }] } };
 await t('invalid ticker → 400', async () => {
   const r = await json(await getMarketData(req('getMarketData?ticker=..%2Fx'))); assert.equal(r.status, 400); assert.equal(calls.length, 0);
 });
@@ -251,5 +253,17 @@ await t('server key without token → 401; BYOK gemini uses header', async () =>
   const r2 = await json(await getModels(req('getModels?provider=gemini', { headers: { 'x-api-key': 'AIzaK' } })));
   assert.equal(r2.status, 200); assert.equal(r2.body.models[0].id, 'gemini-2.0-flash'); assert.ok(!calls[0].url.includes('AIzaK')); assert.equal(calls[0].init.headers['x-goog-api-key'], 'AIzaK');
 });
+
+// Phase 2 checks live in scripts/verify/<area>.mjs (one module per area) and share this
+// runner's helpers through `ctx`. t() resets env, rate limiter, revocation cache and `calls`
+// but not the fetch stub: every check sets its own stub with ctx.setFetch().
+const ctx = {
+  t, req, json, mint, calls, assert, ROOT, SECRET,
+  setFetch: (fn) => { fetchImpl = fn; },
+  resetFetch: () => { fetchImpl = async () => new Response('{}', { status: 200 }); },
+};
+for (const name of ['calendar', 'marketData', 'liveQuote', 'tickerContext', 'collector']) {
+  await (await import(`./verify/${name}.mjs`)).default(ctx);
+}
 
 console.log(`\n${passed} checks passed${process.exitCode ? ' (with failures)' : ''}`);
