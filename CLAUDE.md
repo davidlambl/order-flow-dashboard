@@ -21,18 +21,23 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline after Phase 4a: 7 errors + 1 warning, all
-  `react-hooks/*` or `react-refresh/*` in `src/` and owned by Phases 2/5; don't add new ones. CI runs lint
+- `npm run build` — must pass. `npm run lint` — baseline after Phase 2: 6 errors, 0 warnings (five
+  `react-hooks/set-state-in-effect` in `App`, `StrategicContextEditor`, `useAutoSave` and `useMarketData`, one
+  `react-refresh/only-export-components` in `AppSettings`), all owned by Phase 5; don't add new ones. CI runs lint
   non-blocking until that count is zero, then it becomes required.
 - `npm run verify:functions` — drives every function in-process with a stubbed `fetch` (blocking in CI). The runner
   is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's helpers
-  via `ctx`. Time-dependent code takes an injectable `now`, so checks never depend on the wall clock.
+  via `ctx`. Server areas: `calendar`, `marketData`, `liveQuote`, `tickerContext`, `collector`; client areas
+  (pure `src/lib` modules loaded under Node): `recommend`, `clientLib`, `charts`, `sse`. Time-dependent code takes
+  an injectable `now`, so checks never depend on the wall clock.
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
 ## Layout
 - `src/lib/` pure helpers + storage (`store.js` localStorage backend, `SupabaseBackend.js` cloud sync,
-  `api.js` fetchers incl. SSE streaming, `recommend.js`, `format.js`, `auth.js` JWT client side).
+  `api.js` fetchers incl. SSE streaming, `sse.js` stream framing/events, `recommend.js`, `format.js`,
+  `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.js` JWT client side). Modules the Node harness loads
+  use explicit `.js` relative imports (Vite resolves both) and no top-level `window`/`localStorage` access.
 - `src/hooks/` data hooks (`useMarketData`, `useLiveQuote`, `useTickerContext`, `useAutoSave`).
 - `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are
   large and scheduled for decomposition (Phase 5) along the seams listed in the roadmap.
@@ -40,8 +45,9 @@ should:
   `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
   with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
 - `shared/` pure modules imported by both `src/` and `netlify/` (`marketCalendar.js`: ET clock, NYSE holidays and
-  early closes, session windows, `isExpiryClosed`). No Node or browser APIs, no `console`, injectable `now`;
-  `netlify.toml` lists it in `included_files`.
+  early closes, session windows, `isExpiryClosed`; `thresholds.js`: the P/C, dark-pool, P&L, GEX, staleness and
+  recommendation cut-offs used by the engine, the KPI cards, the chat context and the LLM prompt). No Node or
+  browser APIs, no `console`, injectable `now`; `netlify.toml` lists it in `included_files`.
 - `supabase/migrations/` — run 001→004 in order in the SQL editor; all idempotent (see `supabase/README.md`).
 - `types/` (planned) shared JSON contracts between `src/` and `netlify/` — `netlify/` must never import `src/`.
 - `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
