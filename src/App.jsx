@@ -12,13 +12,15 @@ import ChatBot from './components/ChatBot';
 import PremiumGate from './components/PremiumGate';
 import AppSettings from './components/AppSettings';
 import LoginForm from './components/LoginForm';
+import SyncChoice from './components/SyncChoice';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
 import { hasValidToken, getTokenTier, daysRemaining, clearToken, verifyStoredToken, AUTH_EVENT } from './lib/auth';
-import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend } from './lib/store';
+import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend, emitStoreChanged, subscribeCrossTab } from './lib/store';
 import { supabase } from './lib/supabase';
 import { SupabaseBackend } from './lib/SupabaseBackend';
+import { signOut, claimLocalData } from './lib/session';
 
 const SIDEBAR_DEFAULT = 384;
 const SIDEBAR_MIN = 280;
@@ -43,29 +45,63 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Backend initialization (after auth) ──────────────────────────────────
-  const backendInitRef = useRef(false);
+  // ── Storage backend, keyed on the signed-in account ──────────────────────
+  // One SupabaseBackend per account, built when the account changes (StrictMode's second effect run
+  // finds the same account and builds nothing); a plain LocalStorageBackend when signed out. Data here
+  // that belongs to another account is cleared before the new account's backend exists, and hydrate()
+  // never merges on its own: a conflict waits for the user's choice in SyncChoice (roadmap D1, D6).
+  const activeUserIdRef = useRef(undefined);
+  const backendRef = useRef(null);
+  const [syncConflict, setSyncConflict] = useState(null); // { userId, report } from hydrate()
+  const [syncBusy, setSyncBusy] = useState(false);
   useEffect(() => {
     migrateSessionToLocal();
     const userId = authSession?.user?.id;
-    if (supabase && userId && !backendInitRef.current) {
-      backendInitRef.current = true;
-      const backend = new SupabaseBackend(new LocalStorageBackend(), userId);
-      setBackend(backend);
-      backend.hydrate(); // Non-blocking — fills missing local data from cloud
-    }
-    // Sign-out: reset to plain localStorage backend
-    if (!authSession && backendInitRef.current) {
-      backendInitRef.current = false;
+    if (activeUserIdRef.current === userId) return;
+    const previous = activeUserIdRef.current;
+    activeUserIdRef.current = userId;
+    if (!supabase || !userId) {
+      backendRef.current = null;
       setBackend(new LocalStorageBackend());
+      return;
     }
+    // The account changed without a sign-out (a magic link for another user opened in this browser),
+    // or this browser still holds the data of an account whose session ended elsewhere: that data must
+    // never reach this account, so it is cleared (API keys kept) before this account's backend exists.
+    const cleared = claimLocalData(userId, { previousUserId: previous });
+    const backend = new SupabaseBackend(new LocalStorageBackend(), userId, supabase);
+    setBackend(backend);
+    backendRef.current = backend;
+    if (cleared) emitStoreChanged();
+    backend.hydrate().then((report) => {
+      if (activeUserIdRef.current !== userId) return; // signed out or switched while hydrating
+      if (report?.status === 'conflict') setSyncConflict({ userId, report });
+    });
   }, [authSession]);
 
+  // (No `finally` here: the React Compiler lint skips a whole component that has one.)
+  const handleSyncChoice = useCallback(async (choice) => {
+    setSyncBusy(true);
+    try {
+      await backendRef.current?.resolveConflict(choice);
+    } catch (err) {
+      console.warn('Sync: could not apply the choice:', err?.message ?? err);
+    }
+    setSyncBusy(false);
+    setSyncConflict(null);
+  }, []);
+
+  // One sign-out for both logins: Supabase session, access token and this browser's copy of the data.
   const handleSignOut = useCallback(async () => {
-    if (supabase) await supabase.auth.signOut();
+    const { signedOut } = await signOut({ client: supabase });
+    if (!signedOut) return;
+    setSyncConflict(null);
     setAuthSession(null);
     setAuthSkipped(false);
   }, []);
+
+  // Edits made in another tab reach this one as store-changed.
+  useEffect(() => subscribeCrossTab(), []);
 
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
@@ -212,8 +248,11 @@ export default function App() {
     return <LoginForm onSkip={() => setAuthSkipped(true)} />;
   }
 
+  // Keyed on the account: switching accounts without a sign-out remounts everything below, so no
+  // component keeps the previous account's data in its state (a streaming reply, an unsaved edit) and
+  // writes it through the new account's backend.
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div key={authSession?.user?.id ?? 'local'} className="h-full flex flex-col overflow-hidden">
       <Header
         ticker={ticker}
         onTickerChange={handleTickerChange}
@@ -389,6 +428,11 @@ export default function App() {
         userEmail={authSession?.user?.email}
         onSignOut={handleSignOut}
       />
+
+      {/* Sign-in found different data here and in the account: nothing syncs until the user picks */}
+      {syncConflict && syncConflict.userId === authSession?.user?.id && (
+        <SyncChoice report={syncConflict.report} busy={syncBusy} onChoose={handleSyncChoice} />
+      )}
     </div>
   );
 }

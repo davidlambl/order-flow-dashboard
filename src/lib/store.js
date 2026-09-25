@@ -1,8 +1,17 @@
 // src/lib/store.js
 // Storage abstraction layer for all persistent user data.
 // Backed by localStorage today; swap backend for Supabase (or other) via setBackend().
+//
+// `store-changed` (a CustomEvent on window) tells the UI to re-read the store:
+//   - no `detail`: everything may have changed (import, hydrate, conflict resolution, sign-out,
+//     another tab clearing or rewriting several items);
+//   - `detail = { kind: 'position' | 'chat' | 'pref', id }`: one item changed (id is the ticker or
+//     the preference name), so a listener showing something else can ignore it.
+// Dispatch it with emitStoreChanged(); subscribeCrossTab() turns other tabs' localStorage writes
+// into it.
 
 const SCHEMA_VERSION = 2;
+const STORE_CHANGED = 'store-changed';
 
 const POSITION_PREFIX = 'position_';
 const CHAT_PREFIX = 'chat_history_';
@@ -38,6 +47,13 @@ const DEVICE_KEYS = new Set([...SECRET_KEYS, 'auth_skipped']);
 // Layout preferences: synced and exported like the rest, but a difference between
 // this browser and the cloud copy is not worth asking the user which one to keep.
 const LAYOUT_KEYS = new Set(['sidebarWidth', 'section_position', 'section_research', 'section_charts']);
+
+// Every preference name the app reads or writes. A cloud row under any other name is not applied
+// here: it would otherwise land in an arbitrary localStorage key.
+const PREF_NAMES = new Set(Object.keys(PREF_MAP));
+
+// localStorage key → preference name (a Map, so keys like 'constructor' are not found on a prototype).
+const PREF_NAME_BY_STORAGE_KEY = new Map(Object.entries(PREF_MAP).map(([name, key]) => [key, name]));
 
 // Browsers disagree on how a full store reports itself: QuotaExceededError (code 22)
 // in most engines, NS_ERROR_DOM_QUOTA_REACHED (code 1014) in older Firefox.
@@ -160,7 +176,12 @@ class LocalStorageBackend {
     return result;
   }
 
-  clearAll() {
+  /**
+   * Remove every position, chat history and preference from this browser.
+   * @param {{ keepSecrets?: boolean }} [opts] keepSecrets: leave the SECRET_KEYS preferences
+   *   (the user's own API keys) in place, e.g. when replacing the data with a cloud copy.
+   */
+  clearAll({ keepSecrets = false } = {}) {
     const toRemove = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -168,12 +189,87 @@ class LocalStorageBackend {
         toRemove.push(key);
       }
     }
-    for (const key of Object.values(PREF_MAP)) toRemove.push(key);
+    for (const [name, key] of Object.entries(PREF_MAP)) {
+      if (!(keepSecrets && SECRET_KEYS.has(name))) toRemove.push(key);
+    }
     toRemove.forEach((k) => localStorage.removeItem(k));
   }
 }
 
 let backend = new LocalStorageBackend();
+
+/** Dispatch `store-changed` on window (no-op without one); see the event contract at the top. */
+export function emitStoreChanged(detail) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(STORE_CHANGED, detail == null ? undefined : { detail }));
+}
+
+/**
+ * What a localStorage key holds, in `store-changed` detail form.
+ * @param {string|null} key
+ * @returns {{ kind: 'position'|'chat'|'pref', id: string } | null} null for keys the store does not own
+ */
+export function describeStorageKey(key) {
+  if (typeof key !== 'string') return null;
+  if (key.startsWith(POSITION_PREFIX) && key.length > POSITION_PREFIX.length) {
+    return { kind: 'position', id: key.slice(POSITION_PREFIX.length) };
+  }
+  if (key.startsWith(CHAT_PREFIX) && key.length > CHAT_PREFIX.length) {
+    return { kind: 'chat', id: key.slice(CHAT_PREFIX.length) };
+  }
+  const name = PREF_NAME_BY_STORAGE_KEY.get(key);
+  return name ? { kind: 'pref', id: name } : null;
+}
+
+// A `storage` event for sessionStorage says nothing about the store (it only ever uses localStorage).
+function isLocalStorageArea(area) {
+  if (area == null) return true; // synthetic events carry none
+  try {
+    return area === globalThis.localStorage;
+  } catch {
+    return true; // storage access blocked: cannot tell, so assume it is ours
+  }
+}
+
+/**
+ * Re-dispatch other tabs' localStorage writes as `store-changed`, so an edit in one tab shows in the
+ * others. A burst of writes (an import, a hydrate) becomes one event per macrotask: with the item's
+ * detail when exactly one store key changed, without detail when several did or the storage was
+ * cleared (`key === null`). Keys the store does not own are ignored.
+ * @returns {() => void} unsubscribe (also drops an event still waiting to be dispatched)
+ */
+export function subscribeCrossTab() {
+  if (typeof window === 'undefined') return () => {};
+  let timer = null;
+  let pending; // undefined: nothing yet; a detail: one item so far; null: several items or cleared
+
+  const dispatch = () => {
+    const detail = pending;
+    timer = null;
+    pending = undefined;
+    emitStoreChanged(detail);
+  };
+
+  const onStorage = (e) => {
+    if (!isLocalStorageArea(e.storageArea)) return;
+    let detail = null;
+    if (e.key !== null) {
+      detail = describeStorageKey(e.key);
+      if (!detail) return;
+    }
+    if (pending === undefined) pending = detail;
+    else if (pending && !(detail && detail.kind === pending.kind && detail.id === pending.id)) pending = null;
+    if (timer === null) timer = setTimeout(dispatch, 0);
+  };
+
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener('storage', onStorage);
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    pending = undefined;
+  };
+}
 
 export function getPosition(ticker) { return backend.getPosition(ticker); }
 export function setPosition(ticker, data) { backend.setPosition(ticker, data); }
@@ -185,6 +281,12 @@ export function deleteChatHistory(ticker) { backend.deleteChatHistory(ticker); }
 
 export function getPreference(key) { return backend.getPreference(key); }
 export function setPreference(key, value) { backend.setPreference(key, value); }
+
+/**
+ * Clear this browser's copy of the user data through the current backend (never the cloud copy).
+ * @param {{ keepSecrets?: boolean }} [opts] see LocalStorageBackend#clearAll
+ */
+export function clearAll(opts) { backend.clearAll(opts); }
 
 export function exportAll() {
   return {
@@ -302,8 +404,16 @@ export function importAll(data) {
   // Clean up backup after successful import
   try { localStorage.removeItem('_import_backup'); } catch { /* ignore */ }
 
-  window.dispatchEvent(new CustomEvent('store-changed'));
+  emitStoreChanged();
 }
 
-export function setBackend(newBackend) { backend = newBackend; }
-export { LocalStorageBackend, SECRET_KEYS, DEVICE_KEYS, LAYOUT_KEYS };
+/**
+ * Route every store call to `newBackend`. The backend it replaces is disposed (when it has a
+ * dispose()): a SupabaseBackend swapped out by a sign-out or an account switch must not apply a
+ * hydrate still in flight to what is now another account's (or nobody's) browser.
+ */
+export function setBackend(newBackend) {
+  if (backend !== newBackend) backend?.dispose?.();
+  backend = newBackend;
+}
+export { LocalStorageBackend, SECRET_KEYS, DEVICE_KEYS, LAYOUT_KEYS, PREF_NAMES };
