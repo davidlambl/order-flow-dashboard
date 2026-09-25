@@ -1,22 +1,25 @@
 // src/components/ChatBot.jsx
-import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListChecks, Pencil } from 'lucide-react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, Children, cloneElement, isValidElement } from 'react';
+import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListChecks, Pencil, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
+import { STOP_REASON } from '../lib/sse';
 import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import { getChatHistory, setChatHistory, getPreference } from '../lib/store';
+import { isStaleData } from '../lib/staleness';
 import StrategicContextEditor from './StrategicContextEditor';
 import { getAISettings } from './AppSettings';
 import { computeRecommendation, computeDualRecommendation, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
+import { GEX_NEAR_SPOT_CHAT_PCT, DARK_POOL_PCT, PUT_CALL } from '../../shared/thresholds.js';
 
 /**
  * Serializes the current dashboard state into a plain-text context block
  * that gets injected into the LLM system prompt.
  */
 function gexCharacter(gex, strike, spotPrice) {
-  const near = spotPrice && Math.abs(strike - spotPrice) / spotPrice < 0.02;
+  const near = spotPrice && Math.abs(strike - spotPrice) / spotPrice < GEX_NEAR_SPOT_CHAT_PCT / 100;
   if (gex > 0) return near ? 'Positive gamma — dealer dampener near spot' : 'Positive gamma — magnet/pin';
   return near ? 'Negative gamma — volatility amplifier near spot' : 'Negative gamma — accelerates moves';
 }
@@ -101,7 +104,8 @@ USER POSITION:
   }
 
   const dpLevel = Number.isFinite(k.darkPoolPct)
-    ? (k.darkPoolPct > 40 ? 'Elevated (>40%)' : k.darkPoolPct < 30 ? 'Low (<30%)' : 'Normal range')
+    ? (k.darkPoolPct > DARK_POOL_PCT.elevatedAbove ? `Elevated (>${DARK_POOL_PCT.elevatedAbove}%)`
+      : k.darkPoolPct < DARK_POOL_PCT.lowBelow ? `Low (<${DARK_POOL_PCT.lowBelow}%)` : 'Normal range')
     : 'No data';
   const maxPainDist = k.maxPain && spotPrice
     ? ` — Spot is $${Math.abs(spotPrice - k.maxPain).toFixed(2)} ${spotPrice < k.maxPain ? 'below' : 'above'}`
@@ -116,7 +120,7 @@ USER POSITION:
 
   let gexStructure = '';
   if (topGexArr.length > 0 && spotPrice) {
-    const negNear = topGexArr.filter((s) => s.gex < 0 && s.strike <= spotPrice * 1.02);
+    const negNear = topGexArr.filter((s) => s.gex < 0 && s.strike <= spotPrice * (1 + GEX_NEAR_SPOT_CHAT_PCT / 100));
     const posAbove = topGexArr.filter((s) => s.gex > 0 && s.strike > spotPrice);
     if (negNear.length > 0 || posAbove.length > 0) {
       const parts = [];
@@ -132,7 +136,7 @@ USER POSITION:
     .map((f) => `  ${f.date}: Net ${formatDollar(f.netPremium)}, Cum ${formatDollar(f.cumPremium)}, Calls ${f.callVolume.toLocaleString()}, Puts ${f.putVolume.toLocaleString()}`)
     .join('\n');
   const flowTrend = buildFlowTrend(flowHistory);
-  const flowNote = '\nNote: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting institutional flow.';
+  const flowNote = '\nNote: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).';
 
   let signalBlock = '';
   
@@ -193,25 +197,18 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
   Recommendation: ${rec.signal} (${rec.confidence} confidence)
 ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
-        // Add staleness caveat
-        if (lastUpdated) {
-          const diffMs = Date.now() - new Date(lastUpdated).getTime();
-          const diffMinutes = diffMs / (1000 * 60);
-          // Use optionsMarketOpen since options data updates until 4:15 PM ET
-          const isStale = (optionsMarketOpen || marketOpen) ? diffMinutes > 60 : diffMinutes > 240;
-          
-          if (isStale) {
-            const d = new Date(lastUpdated);
-            const timeStr = d.toLocaleString('en-US', { 
-              weekday: 'short', 
-              month: 'short', 
-              day: 'numeric', 
-              hour: 'numeric', 
-              minute: '2-digit', 
-              hour12: true 
-            });
-            signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
-          }
+        // Add staleness caveat (optionsMarketOpen too: options data updates until 4:15 PM ET)
+        if (isStaleData(lastUpdated, Date.now(), optionsMarketOpen || marketOpen)) {
+          const d = new Date(lastUpdated);
+          const timeStr = d.toLocaleString('en-US', { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric', 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            hour12: true 
+          });
+          signalBlock += `\n  Note: This recommendation is based on options data from ${timeStr}. It does not reflect overnight/weekend macro developments.`;
         }
       }
     }
@@ -358,7 +355,7 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
   return `TICKER: ${ticker}
 TIMESTAMP: ${now}
-DATA LAST UPDATED: ${lastUpdated}${staleness}${sourceNote ? `\n${sourceNote}` : ''}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${Array.isArray(expiries) && expiries.length > 0 ? `\nEXPIRIES ANALYZED: ${expiries.join(', ')}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
+DATA LAST UPDATED: ${lastUpdated || 'unknown'}${staleness}${sourceNote ? `\n${sourceNote}` : ''}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${Array.isArray(expiries) && expiries.length > 0 ? `\nEXPIRIES ANALYZED: ${expiries.join(', ')}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
 SPOT PRICE: ${formatPrice(spotPrice)}${priceChangeNote}
 ${positionBlock}
 KPI SUMMARY:
@@ -367,7 +364,7 @@ KPI SUMMARY:
     Put Premium: ${formatDollar(k.putPremium)}
   Dark Pool Volume (statistical estimate from IV, not reported data): ${formatPct(k.darkPoolPct)} — ${dpLevel}
   Max Pain (${k.maxPainExpiry || 'nearest open expiry'}): ${formatPrice(k.maxPain)}${maxPainDist}
-  Put/Call Ratio: ${formatRatio(k.putCallRatio)} (${k.putCallRatio == null ? 'n/a' : k.putCallRatio > 1 ? 'Bearish' : k.putCallRatio < 0.7 ? 'Bullish' : 'Neutral'})
+  Put/Call Ratio: ${formatRatio(k.putCallRatio)} (${k.putCallRatio == null ? 'n/a' : k.putCallRatio > PUT_CALL.bearishAbove ? 'Bearish' : k.putCallRatio < PUT_CALL.bullishBelow ? 'Bullish' : 'Neutral'})
 
 TOP 5 GEX STRIKES (by magnitude):
 ${topGex || '  No GEX data'}${gexStructure}
@@ -386,9 +383,18 @@ const markdownComponents = {
   ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
   li: ({ children }) => <li>{children}</li>,
-  code: ({ children }) => (
-    <code className="bg-[var(--color-surface-2)] px-1 py-0.5 rounded text-[12px] font-mono">{children}</code>
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-[var(--color-accent)] underline underline-offset-2">{children}</a>
   ),
+  // A fenced block is <pre><code>: flag the code element so it renders as a block, not an inline pill.
+  pre: ({ children }) => (
+    <pre className="bg-[var(--color-surface-2)] rounded-lg p-2 mb-2 overflow-x-auto text-[11px] leading-relaxed">
+      {Children.map(children, (c) => (isValidElement(c) ? cloneElement(c, { block: true }) : c))}
+    </pre>
+  ),
+  code: ({ children, block }) => (block
+    ? <code className="font-mono whitespace-pre">{children}</code>
+    : <code className="bg-[var(--color-surface-2)] px-1 py-0.5 rounded text-[12px] font-mono">{children}</code>),
   h3: ({ children }) => (
     <h3 className="text-xs font-semibold text-[var(--color-text-primary)] mt-3 mb-1">{children}</h3>
   ),
@@ -416,13 +422,16 @@ const markdownComponents = {
 
 function MessageBubble({ msg, onDelete }) {
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef(null);
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
   const isUser = msg.role === 'user';
   const isError = msg.role === 'error';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).catch(() => {});
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -505,6 +514,8 @@ function ChatLockScreen({ onClose, onUnlock }) {
   const [tokenInput, setTokenInput] = useState('');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
+  const unlockTimer = useRef(null);
+  useEffect(() => () => clearTimeout(unlockTimer.current), []);
 
   const handleActivate = async (e) => {
     e.preventDefault();
@@ -517,7 +528,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
       if (result.valid) {
         setToken(raw);
         setStatus('success');
-        setTimeout(() => onUnlock?.(), 400);
+        unlockTimer.current = setTimeout(() => onUnlock?.(), 400);
       } else {
         setStatus('error');
         setError(result.error || 'Invalid token');
@@ -606,6 +617,51 @@ const CONTEXT_UPDATE_PROMPT = `Review our conversation and suggest specific upda
 
 Keep suggestions focused and actionable. Only suggest changes that are supported by our conversation. Do not rewrite the entire document.`;
 
+/** Italic note appended to a reply that did not end normally; '' when it did. */
+function stopMarker(stopReason) {
+  if (stopReason === STOP_REASON.END) return '';
+  if (stopReason === STOP_REASON.MAX_TOKENS) return '*(cut off at the token limit)*';
+  if (stopReason == null) return '*(response ended early)*'; // the stream closed without a stop reason
+  return `*(the model stopped here: ${stopReason})*`;
+}
+
+/**
+ * Settle the streamed reply (the last message, when it is the assistant's): drop its
+ * `pending` flag and append `marker`. A reply with neither text nor marker is removed.
+ */
+function settleReply(msgs, marker) {
+  const last = msgs[msgs.length - 1];
+  if (last?.role !== 'assistant' || (!last.pending && !marker)) return msgs;
+  const { pending: _pending, ...reply } = last;
+  if (!reply.content && !marker) return msgs.slice(0, -1);
+  const content = reply.content && marker ? `${reply.content}\n\n${marker}` : reply.content || marker;
+  return [...msgs.slice(0, -1), { ...reply, content }];
+}
+
+/** How many recent user/assistant turns go upstream with each request. */
+const CONVERSATION_WINDOW = 10;
+
+/**
+ * The last CONVERSATION_WINDOW turns, trimmed so the window opens on a user turn: the
+ * providers require the first message to be the user's, and a history that alternates
+ * starts a fixed-size tail on the assistant every other exchange.
+ */
+function conversationWindow(turns) {
+  const window = turns.slice(-CONVERSATION_WINDOW);
+  const firstUser = window.findIndex((m) => m.role === 'user');
+  return firstUser > 0 ? window.slice(firstUser) : window;
+}
+
+/** Chat history as persisted: no empty placeholder and no `pending` flag, even mid-stream. */
+function storableMessages(msgs) {
+  if (!msgs.some((m) => m.pending)) return msgs;
+  return msgs.flatMap((m) => {
+    if (!m.pending) return [m];
+    const { pending: _pending, ...rest } = m;
+    return rest.content ? [rest] : [];
+  });
+}
+
 export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen, liveQuote }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
@@ -626,24 +682,38 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const rafId = useRef(null);
   const messagesRef = useRef(messages);
   useLayoutEffect(() => { messagesRef.current = messages; }, [messages]);
+  const streamRef = useRef(null); // the in-flight reply: { controller, ticker, reason }
+  const sendingRef = useRef(false); // synchronous double-submit guard; `sending` state drives the UI
+  const contextCopyTimer = useRef(null);
+  useEffect(() => () => clearTimeout(contextCopyTimer.current), []);
 
   // Latest messages including any streamed text still buffered in chunkBuf
-  // (flushed to state only on the next animation frame). Declared before the
-  // effects that use it so it is never read before initialization.
+  // (flushed to state only on the next animation frame), minus a reply placeholder
+  // that is still empty, so it is never persisted. Declared before the effects that
+  // use it so it is never read before initialization.
   const getCompleteMessages = useCallback(() => {
     const buf = chunkBuf.current;
-    const msgs = messagesRef.current;
-    if (!buf) return msgs;
-    const last = msgs[msgs.length - 1];
-    if (last?.role === 'assistant') {
-      return [...msgs.slice(0, -1), { ...last, content: last.content + buf }];
+    let msgs = messagesRef.current;
+    if (buf) {
+      const last = msgs[msgs.length - 1];
+      msgs = last?.role === 'assistant'
+        ? [...msgs.slice(0, -1), { ...last, content: last.content + buf }] // keeps `pending`
+        : [...msgs, { role: 'assistant', content: buf }];
     }
-    return [...msgs, { role: 'assistant', content: buf }];
+    const tail = msgs[msgs.length - 1];
+    return tail?.pending && !tail.content ? msgs.slice(0, -1) : msgs;
   }, []);
 
   useEffect(() => {
     if (currentTicker && currentTicker !== prevTickerRef.current) {
-      setChatHistory(prevTickerRef.current, getCompleteMessages());
+      // A reply still streaming belongs to the old ticker: stop it and keep what arrived there.
+      if (streamRef.current) {
+        streamRef.current.reason = 'ticker';
+        streamRef.current.controller.abort();
+      }
+      setChatHistory(prevTickerRef.current, storableMessages(getCompleteMessages()));
+      if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = null; }
+      chunkBuf.current = '';
       prevTickerRef.current = currentTicker;
       skipSaveRef.current = true;
       setMessages(getChatHistory(currentTicker));
@@ -652,7 +722,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   useEffect(() => {
     if (skipSaveRef.current) { skipSaveRef.current = false; return; }
-    setChatHistory(currentTicker, messages);
+    setChatHistory(currentTicker, storableMessages(messages));
   }, [messages, currentTicker]);
 
   useEffect(() => {
@@ -686,6 +756,10 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   useEffect(() => () => {
     if (rafId.current) cancelAnimationFrame(rafId.current);
+    if (streamRef.current) {
+      streamRef.current.reason = 'unmount';
+      streamRef.current.controller.abort();
+    }
   }, []);
 
   const flushChunks = useCallback(() => {
@@ -711,82 +785,74 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     }
   }, [flushChunks]);
 
-  const sendMessage = useCallback(async (text) => {
-    if (!text.trim() || sending) return;
+  // One streamed reply. A placeholder bubble goes up front, so the typing indicator
+  // and the "suggest updates" reply have their own bubble from the start (F7); each
+  // stream has its own AbortController, aborted by the Stop button, a ticker change
+  // or unmount (F6); a reply that did not end normally gets a marker (F8).
+  const runStream = useCallback(async ({ apiMessages, failPrefix }) => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setMessages((prev) => [...prev, { role: 'assistant', content: '', pending: true }]);
+    const stream = { controller: new AbortController(), ticker: data?.ticker, reason: null };
+    streamRef.current = stream;
+
+    try {
+      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
+      const settings = getAISettings();
+
+      const result = await askLLMStream(
+        {
+          messages: apiMessages,
+          financialContext,
+          ticker: data?.ticker || 'UNKNOWN',
+          userApiKey: settings.apiKey || null,
+          model: settings.model,
+          provider: settings.provider,
+        },
+        onStreamChunk,
+        stream.controller.signal,
+      );
+      flushChunks();
+      setMessages((prev) => settleReply(prev, stopMarker(result.stopReason)));
+    } catch (err) {
+      // Aborted by a ticker change or unmount: the messages on screen are not this stream's any more.
+      if (stream.reason === 'ticker' || stream.reason === 'unmount') return;
+      flushChunks();
+      if (err.name === 'AbortError') {
+        setMessages((prev) => settleReply(prev, '*(stopped)*'));
+      } else {
+        const content = `${failPrefix}: ${err.message}${err.requestId ? ` (ref ${err.requestId})` : ''}`;
+        setMessages((prev) => [...settleReply(prev, ''), { role: 'error', content }]);
+      }
+    } finally {
+      if (streamRef.current === stream) streamRef.current = null;
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }, [data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+
+  const sendMessage = useCallback((text) => {
+    if (!text.trim() || sendingRef.current) return;
 
     const userMsg = { role: 'user', content: text.trim() };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
-    setSending(true);
 
-    try {
-      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
-      const apiMessages = [...getCompleteMessages().filter((m) => m.role === 'user' || m.role === 'assistant'), userMsg]
-        .slice(-10);
+    const apiMessages = conversationWindow([...getCompleteMessages().filter((m) => m.role === 'user' || m.role === 'assistant'), userMsg]);
+    runStream({ apiMessages, failPrefix: 'Failed to get analysis' });
+  }, [runStream, getCompleteMessages]);
 
-      const settings = getAISettings();
-
-      await askLLMStream(
-        {
-          messages: apiMessages,
-          financialContext,
-          ticker: data?.ticker || 'UNKNOWN',
-          userApiKey: settings.apiKey || null,
-          model: settings.model,
-          provider: settings.provider,
-        },
-        onStreamChunk,
-      );
-      flushChunks();
-    } catch (err) {
-      flushChunks();
-      setMessages((prev) => [
-        ...prev,
-        { role: 'error', content: `Failed to get analysis: ${err.message}` },
-      ]);
-    } finally {
-      setSending(false);
-    }
-  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks, getCompleteMessages]);
-
-  const requestContextSuggestions = useCallback(async () => {
-    if (sending) return;
-    setSending(true);
-
-    try {
-      const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
-
-      // Send the prompt as a transient API message — not persisted in chat history
-      const apiMessages = [
-        ...getCompleteMessages().filter((m) => m.role === 'user' || m.role === 'assistant').slice(-10),
-        { role: 'user', content: CONTEXT_UPDATE_PROMPT },
-      ];
-
-      const settings = getAISettings();
-
-      await askLLMStream(
-        {
-          messages: apiMessages,
-          financialContext,
-          ticker: data?.ticker || 'UNKNOWN',
-          userApiKey: settings.apiKey || null,
-          model: settings.model,
-          provider: settings.provider,
-        },
-        onStreamChunk,
-      );
-      flushChunks();
-    } catch (err) {
-      flushChunks();
-      setMessages((prev) => [
-        ...prev,
-        { role: 'error', content: `Failed to get suggestions: ${err.message}` },
-      ]);
-    } finally {
-      setSending(false);
-    }
-  }, [sending, data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks, getCompleteMessages]);
+  const requestContextSuggestions = useCallback(() => {
+    if (sendingRef.current) return;
+    // Send the prompt as a transient API message — not persisted in chat history
+    const apiMessages = [
+      ...conversationWindow(getCompleteMessages().filter((m) => m.role === 'user' || m.role === 'assistant')),
+      { role: 'user', content: CONTEXT_UPDATE_PROMPT },
+    ];
+    runStream({ apiMessages, failPrefix: 'Failed to get suggestions' });
+  }, [runStream, getCompleteMessages]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -903,7 +969,8 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
                 onClick={() => {
                   navigator.clipboard.writeText(ctx).catch(() => {});
                   setContextCopied(true);
-                  setTimeout(() => setContextCopied(false), 1500);
+                  clearTimeout(contextCopyTimer.current);
+                  contextCopyTimer.current = setTimeout(() => setContextCopied(false), 1500);
                 }}
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
               >
@@ -948,11 +1015,11 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
           </div>
         )}
 
-        {messages.map((msg, i) => (
+        {messages.map((msg, i) => (msg.pending && !msg.content ? null : (
           <MessageBubble key={i} msg={msg} onDelete={() => deleteMessage(i)} />
-        ))}
+        )))}
 
-        {sending && messages[messages.length - 1]?.role !== 'assistant' && <TypingIndicator />}
+        {sending && !messages[messages.length - 1]?.content && <TypingIndicator />}
       </div>}
 
       {/* Input */}
@@ -981,14 +1048,30 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
             <ListChecks size={16} />
           </button>
         )}
-        <button
-          type="submit"
-          disabled={!input.trim() || sending}
-          className="p-2 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-          aria-label="Send message"
-        >
-          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        </button>
+        {sending ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              // The second click of a double-click on Send lands here; only a fresh click stops the reply.
+              if (e.detail > 1) return;
+              streamRef.current?.controller.abort();
+            }}
+            className="p-2 rounded-lg bg-[var(--color-bear-bg)] text-[var(--color-bear)] hover:bg-[var(--color-bear)]/20 transition-colors shrink-0"
+            aria-label="Stop generating"
+            title="Stop generating"
+          >
+            <Square size={16} />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="p-2 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            aria-label="Send message"
+          >
+            <Send size={16} />
+          </button>
+        )}
       </form>
 
       <StrategicContextEditor

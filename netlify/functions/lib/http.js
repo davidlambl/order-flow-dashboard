@@ -73,15 +73,39 @@ export function errorResponse(req, { status, code, message, requestId, cause }) 
 // ─── Upstream fetch with timeout ─────────────────────────────────────────────
 
 /**
- * fetch() with a hard timeout. If `parentSignal` (the incoming request's
- * signal) aborts, the upstream call aborts too, so a client that disconnects
- * mid-stream stops billing us.
+ * fetch() with a timeout. If `parentSignal` (the incoming request's signal) aborts,
+ * the upstream call aborts too, so a client that disconnects mid-stream stops billing us.
+ *
+ * By default (`bodyTimeout: true`) the timeout covers the whole exchange, body included:
+ * the signal stays attached to the response body, so reading it past `timeoutMs` fails.
+ * With `bodyTimeout: false` it bounds only the time to the response headers (first byte);
+ * the timer is cleared once they arrive, so a streamed body is never cut by it (the
+ * platform's function timeout still bounds the stream). Either way an expiry rejects with
+ * a `TimeoutError` (see isTimeoutError).
+ *
+ * @param {string|URL} url
+ * @param {RequestInit} [init] - `init.signal`, when present, is honoured as well
+ * @param {number} [timeoutMs]
+ * @param {AbortSignal|null} [parentSignal]
+ * @param {{ bodyTimeout?: boolean }} [options]
+ * @returns {Promise<Response>}
  */
-export function fetchWithTimeout(url, init = {}, timeoutMs = 8000, parentSignal = null) {
-  const signals = [AbortSignal.timeout(timeoutMs)];
+export function fetchWithTimeout(url, init = {}, timeoutMs = 8000, parentSignal = null, { bodyTimeout = true } = {}) {
+  if (bodyTimeout) {
+    const signals = [AbortSignal.timeout(timeoutMs)];
+    if (parentSignal) signals.push(parentSignal);
+    if (init.signal) signals.push(init.signal);
+    return fetch(url, { ...init, signal: AbortSignal.any(signals) });
+  }
+  const ctl = new AbortController();
+  const timer = setTimeout(
+    () => ctl.abort(new DOMException(`Upstream did not respond within ${timeoutMs} ms`, 'TimeoutError')),
+    timeoutMs,
+  );
+  const signals = [ctl.signal];
   if (parentSignal) signals.push(parentSignal);
   if (init.signal) signals.push(init.signal);
-  return fetch(url, { ...init, signal: AbortSignal.any(signals) });
+  return fetch(url, { ...init, signal: AbortSignal.any(signals) }).finally(() => clearTimeout(timer));
 }
 
 export function isTimeoutError(err) {

@@ -1,6 +1,7 @@
 // src/components/KPICards.jsx
 import { TrendingUp, TrendingDown, Moon, Crosshair, ArrowRightLeft } from 'lucide-react';
 import { formatDollar, formatPct, formatRatio, formatPrice, formatCompact } from '../lib/format';
+import { PUT_CALL } from '../../shared/thresholds.js';
 
 function KPICard({ label, badge, value, icon: Icon, color, bgColor, subtitle, loading }) {
   if (loading) {
@@ -88,8 +89,8 @@ export default function KPICards({ kpis, loading }) {
       label: 'Put / Call Ratio',
       value: formatRatio(k.putCallRatio),
       icon: ArrowRightLeft,
-      color: pc == null ? 'var(--color-text-muted)' : pc > 1 ? 'var(--color-bear)' : pc < 0.7 ? 'var(--color-bull)' : 'var(--color-warn)',
-      bgColor: pc == null ? 'var(--color-surface-3)' : pc > 1 ? 'var(--color-bear-bg)' : pc < 0.7 ? 'var(--color-bull-bg)' : 'var(--color-warn-bg)',
+      color: pc == null ? 'var(--color-text-muted)' : pc > PUT_CALL.bearishAbove ? 'var(--color-bear)' : pc < PUT_CALL.bullishBelow ? 'var(--color-bull)' : 'var(--color-warn)',
+      bgColor: pc == null ? 'var(--color-surface-3)' : pc > PUT_CALL.bearishAbove ? 'var(--color-bear-bg)' : pc < PUT_CALL.bullishBelow ? 'var(--color-bull-bg)' : 'var(--color-warn-bg)',
       subtitle: `Vol: ${formatCompact((k.callVolume || 0) + (k.putVolume || 0))} \u00b7 Prem: ${formatDollar((k.callPremium || 0) + (k.putPremium || 0))}`,
     },
   ];

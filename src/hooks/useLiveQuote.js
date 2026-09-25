@@ -1,8 +1,8 @@
 // src/hooks/useLiveQuote.js
 // Fetches real-time stock quotes via fetchLiveQuote (Yahoo Finance primary, Finnhub fallback).
 // Caches results client-side for 1 minute per ticker for freshness.
-// Extended-hours support and source fields (yahoo-regular, yahoo-post, yahoo-pre, futures-implied, finnhub) depend on
-// the underlying data provider and ticker eligibility (e.g., Nasdaq-100 constituents).
+// Extended-hours support and the source field (yahoo-regular | yahoo-post | yahoo-pre | finnhub) depend on
+// the underlying data provider; Nasdaq-100 constituents also get `futuresContext` outside the regular session.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchLiveQuote } from '../lib/api';
@@ -49,11 +49,17 @@ export function useLiveQuote(ticker) {
     const isTickerChange = activeTickerRef.current !== symbol;
     activeTickerRef.current = symbol;
 
+    // Abort first: an older request must not land after this call, and a cache hit
+    // takes over the loading flags from it (its finally skips the reset once aborted).
+    if (abortRef.current) abortRef.current.abort();
+
     if (!force) {
       const hit = getCached(symbol);
       if (hit) {
         setQuote(hit);
         setError(null);
+        loadingRef.current = false;
+        setLoading(false);
         return;
       }
     }
@@ -64,7 +70,6 @@ export function useLiveQuote(ticker) {
       setQuote(null);
     }
 
-    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -82,8 +87,11 @@ export function useLiveQuote(ticker) {
       console.warn('Live quote fetch failed:', err.message);
       setError(err.message);
     } finally {
-      loadingRef.current = false;
-      if (!background) setLoading(false);
+      // An aborted request no longer owns the loading flags: the newer call does.
+      if (!controller.signal.aborted) {
+        loadingRef.current = false;
+        if (!background) setLoading(false);
+      }
     }
   }, []);
 

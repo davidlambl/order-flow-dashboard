@@ -6,6 +6,10 @@
 //   - Server key (ANTHROPIC_API_KEY): only for holders of a valid access token,
 //     subject to a model allowlist, an output-token cap and a daily quota.
 //   If TOKEN_SECRET is not configured, server-key requests are refused (503).
+//
+// Timeouts: LLM_TIMEOUT_MS bounds the time to the upstream's first byte (response
+// headers) only; a streamed reply is relayed for as long as it runs, bounded by the
+// platform's function timeout, and stops early if the client disconnects.
 
 import {
   corsHeaders, preflight, jsonResponse, errorResponse, newRequestId,
@@ -14,11 +18,14 @@ import {
 import { verifyRequestToken } from './lib/auth.js';
 import { checkDailyQuota, logUsage } from './lib/quota.js';
 import { parseTicker } from './lib/ticker.js';
+import { PUT_CALL } from '../../shared/thresholds.js';
 
 const ALLOWED_HEADERS = 'x-api-key';
 const PROVIDERS = ['anthropic', 'openai', 'gemini'];
 const KEY_PREFIX = { anthropic: 'sk-ant-', openai: 'sk-', gemini: 'AIza' };
-const DEFAULT_MODEL = { anthropic: 'claude-opus-5', openai: 'gpt-4o', gemini: 'gemini-2.0-flash' };
+// Used when the request names no model. The OpenAI and Gemini defaults are re-verified each
+// phase against the providers' model lists: gpt-4o and gemini-2.0-flash were retired in 2026.
+const DEFAULT_MODEL = { anthropic: 'claude-opus-5', openai: 'gpt-5.1', gemini: 'gemini-3.8-flash' };
 
 // Request-shape limits (cost control + abuse resistance)
 const MAX_MESSAGES = 40;
@@ -27,7 +34,7 @@ const MAX_CONTEXT_CHARS = 32 * 1024;
 const MAX_MODEL_CHARS = 100;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const RATE_LIMIT = { limit: 30, windowMs: 60 * 1000 };
-const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 60_000;
+const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 60_000; // time to first byte, not the whole stream
 
 function buildSystemPrompt(ticker, financialContext) {
   return `You are a senior institutional equity & options analyst embedded in a trading dashboard. Your role is to provide concise, actionable analysis based on the live market data provided below.
@@ -45,7 +52,7 @@ ANALYSIS GUIDELINES:
 - For GEX/Gamma Exposure, identify the "pin" strikes where dealers will hedge.
 - Dark Pool % is a statistical estimate derived from IV, not measured off-exchange volume; treat it as low-confidence colour, not evidence.
 - For Max Pain, explain how far the current price is from max pain and what that implies for expiration.
-- For Put/Call Ratio, contextualize: <0.7 is bullish, 0.7-1.0 neutral, >1.0 bearish.
+- For Put/Call Ratio, contextualize: <${PUT_CALL.bullishBelow} is bullish, ${PUT_CALL.bullishBelow}-${PUT_CALL.bearishAbove} neutral, >${PUT_CALL.bearishAbove} bearish.
 - Be direct. Use short paragraphs. Bold key numbers and levels.
 - If the data is unavailable or stale, say so rather than speculating.
 - Metrics shown as "—" or "n/a" are unavailable; say so instead of inferring them.
@@ -64,20 +71,57 @@ export function modelAllowed(model, patterns = allowedModelPatterns()) {
   return patterns.some((p) => (p.endsWith('*') ? model.startsWith(p.slice(0, -1)) : model === p));
 }
 
-function providerMaxOutputTokens(model) {
-  if (/^gpt-3\.5/.test(model)) return 4096;
-  if (/^gpt-4-turbo/.test(model)) return 4096;
-  if (/^gpt-4(?!o)/.test(model)) return 8192;
-  if (/^gemini-2\.0/.test(model)) return 8192;
-  return 16384;
+/**
+ * Maximum output tokens per model family, as [model-id prefix, cap]. Lookup uses the LONGEST
+ * matching prefix, so order does not matter and a dated id ('claude-3-haiku-20240307')
+ * or a point release ('gpt-5.1', 'gemini-2.5-flash') resolves to its family. A request
+ * above the model's limit is rejected upstream (400), which is why an unknown model
+ * gets the conservative DEFAULT_OUTPUT_CAP.
+ */
+export const PROVIDER_OUTPUT_CAPS = [
+  // Anthropic
+  ['claude-fable-5-1', 128000], ['claude-fable-5', 128000], ['claude-mythos-', 128000],
+  ['claude-opus-5-5', 128000], ['claude-opus-5', 128000], ['claude-opus-4-8', 128000],
+  ['claude-opus-4-7', 128000], ['claude-opus-4-6', 128000], ['claude-sonnet-5', 128000],
+  ['claude-sonnet-4-6', 128000],
+  ['claude-haiku-4-5', 64000], ['claude-opus-4-5', 64000], ['claude-sonnet-4-5', 64000],
+  ['claude-sonnet-4-0', 64000], ['claude-sonnet-4-20250514', 64000], ['claude-3-7-sonnet', 64000],
+  ['claude-opus-4-1', 32000], ['claude-opus-4-0', 32000], ['claude-opus-4-20250514', 32000], // 4.0: alias and dated id
+  ['claude-3-5-haiku', 8192], ['claude-3-5-sonnet', 8192],
+  ['claude-3-haiku', 4096], ['claude-3-opus', 4096],
+  // OpenAI (gpt-5.x and o-series need max_completion_tokens; see callOpenAI)
+  ['gpt-5', 128000], ['o1', 100000], ['o3', 100000], ['o4', 100000],
+  ['gpt-4.1', 32768], ['gpt-4o', 16384], ['chatgpt-4o', 16384],
+  ['gpt-4-turbo', 4096], ['gpt-4', 8192], ['gpt-3.5', 4096],
+  // Google
+  ['gemini-3', 65536], ['gemini-2.5', 65536], ['gemini-2.0', 8192], ['gemini-1.5', 8192],
+];
+
+/** Cap for a model the table does not know. */
+export const DEFAULT_OUTPUT_CAP = 16384;
+
+/** Ceiling for bring-your-own-key requests, whatever the model allows: bounds one reply's size and latency. */
+export const BYOK_OUTPUT_CAP = 16384;
+
+/** The model's own output limit: the longest matching prefix in PROVIDER_OUTPUT_CAPS, else DEFAULT_OUTPUT_CAP. */
+export function providerOutputCap(model) {
+  if (typeof model !== 'string') return DEFAULT_OUTPUT_CAP;
+  let best = null;
+  for (const [prefix, cap] of PROVIDER_OUTPUT_CAPS) {
+    if (model.startsWith(prefix) && (!best || prefix.length > best[0].length)) best = [prefix, cap];
+  }
+  return best ? best[1] : DEFAULT_OUTPUT_CAP;
 }
 
-/** Output cap: provider limit, further capped for server-key spend by MAX_OUTPUT_TOKENS (default 4096). */
+/**
+ * Output cap for one request: the model's limit, further capped at BYOK_OUTPUT_CAP for a
+ * user's own key, or by MAX_OUTPUT_TOKENS (default 4096) for server-key spend.
+ */
 export function maxOutputTokens(model, keySource) {
-  const providerCap = providerMaxOutputTokens(model);
-  if (keySource !== 'server') return providerCap;
+  const cap = providerOutputCap(model);
+  if (keySource !== 'server') return Math.min(cap, BYOK_OUTPUT_CAP);
   const envCap = Number(process.env.MAX_OUTPUT_TOKENS);
-  return Math.min(providerCap, Number.isFinite(envCap) && envCap > 0 ? envCap : 4096);
+  return Math.min(cap, Number.isFinite(envCap) && envCap > 0 ? envCap : 4096);
 }
 
 // ─── Provider calls ──────────────────────────────────────────────────────────
@@ -97,11 +141,12 @@ function callAnthropic({ apiKey, model, messages, systemPrompt, stream, maxToken
       stream,
       messages,
     }),
-  }, LLM_TIMEOUT_MS, signal);
+  }, LLM_TIMEOUT_MS, signal, { bodyTimeout: false });
 }
 
 function callOpenAI({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }) {
-  const isReasoning = /^(o1|o3|o4)/.test(model);
+  // o-series and gpt-5.x reject max_tokens and take the system prompt as a developer message.
+  const isReasoning = /^(o[134]|gpt-5)/.test(model);
   return fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -114,7 +159,7 @@ function callOpenAI({ apiKey, model, messages, systemPrompt, stream, maxTokens, 
         ...messages,
       ],
     }),
-  }, LLM_TIMEOUT_MS, signal);
+  }, LLM_TIMEOUT_MS, signal, { bodyTimeout: false });
 }
 
 function callGemini({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }) {
@@ -132,7 +177,7 @@ function callGemini({ apiKey, model, messages, systemPrompt, stream, maxTokens, 
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: { maxOutputTokens: maxTokens },
     }),
-  }, LLM_TIMEOUT_MS, signal);
+  }, LLM_TIMEOUT_MS, signal, { bodyTimeout: false });
 }
 
 const CALLERS = { anthropic: callAnthropic, openai: callOpenAI, gemini: callGemini };

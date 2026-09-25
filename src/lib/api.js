@@ -1,8 +1,11 @@
 // src/lib/api.js
 // Centralized API helpers — all calls route through Netlify Functions.
+// Node-loadable (the verify harness drives askLLMStream), so relative imports carry
+// their extension and nothing touches browser globals at import time.
 
-import { getAuthHeaders, clearTokenIfDead } from './auth';
-import { getPreference } from './store';
+import { getAuthHeaders, clearTokenIfDead } from './auth.js';
+import { getPreference } from './store.js';
+import { drainSSEBuffer, parseSSEEvents, STOP_REASON } from './sse.js';
 
 const FUNCTION_BASE = '/.netlify/functions';
 
@@ -54,33 +57,30 @@ export async function fetchMarketData(ticker, signal = null) {
   return res.json();
 }
 
-/**
- * Extract text from an SSE data line based on the provider's format.
- */
-function parseSSELine(jsonStr, provider) {
-  try {
-    const event = JSON.parse(jsonStr);
-    switch (provider) {
-      case 'openai':
-        return event.choices?.[0]?.delta?.content || null;
-      case 'gemini': {
-        const parts = event.candidates?.[0]?.content?.parts || [];
-        return parts.map((p) => p.text || '').join('') || null;
-      }
-      default:
-        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-          return event.delta.text;
-        }
-        return null;
-    }
-  } catch {
-    return null;
-  }
+/** Stop reasons meaning the model declined, as opposed to running out of room or erroring. */
+const DECLINED = new Set([STOP_REASON.REFUSAL, STOP_REASON.SAFETY, STOP_REASON.PROMPT_BLOCKED]);
+
+/** The error to throw once `signal` has aborted: its reason when that is an Error (an AbortError by default). */
+function abortError(signal) {
+  return signal.reason instanceof Error ? signal.reason : new DOMException('The stream was aborted', 'AbortError');
 }
 
 /**
- * Stream a message to the AI co-pilot with financial context.
- * Supports Anthropic, OpenAI, and Gemini streaming formats.
+ * Stream a message to the AI co-pilot with financial context. askLLM relays the
+ * provider's SSE body (Anthropic, OpenAI or Gemini; the X-Provider header says which),
+ * and each text delta is passed to `onChunk` as it arrives.
+ *
+ * @param {object} params - { messages, financialContext, ticker, userApiKey, model, provider }
+ * @param {(text: string) => void} onChunk
+ * @param {AbortSignal|null} [signal] - aborts the request and cancels the body reader; the
+ *   returned promise then rejects with the signal's reason (an AbortError by default)
+ * @returns {Promise<{ stopReason: string|null, chars: number, requestId: string|null, provider: string }>}
+ *   `stopReason` is a STOP_REASON value (the last one the stream reported), or null when the
+ *   stream ended without one (cut off upstream); `chars` counts the text delivered.
+ * @throws {Error} the function's JSON error (see apiError); code 'STREAM_ERROR' when the provider
+ *   reports an error mid-stream (`providerCode`, and `partial` when text was already delivered);
+ *   'REFUSED' when the model declined without any text; 'EMPTY_RESPONSE' when no text arrived.
+ *   Stream errors carry `requestId` (X-Request-Id) for the function log.
  */
 export async function askLLMStream({ messages, financialContext, ticker, userApiKey, model, provider }, onChunk, signal = null) {
   const options = {
@@ -99,40 +99,69 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
   }
 
   const effectiveProvider = res.headers.get('X-Provider') || provider || 'anthropic';
+  const requestId = res.headers.get('X-Request-Id') || null;
+  if (!res.body) {
+    throw Object.assign(new Error('The model returned an empty response'), { code: 'EMPTY_RESPONSE', requestId });
+  }
+
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = '';
+  // Cancelling the reader settles a pending read even when the body is not tied to the
+  // fetch signal (a relayed or test stream), so an abort never waits for the next chunk.
+  const onAbort = () => { reader.cancel(signal.reason).catch(() => {}); };
+  signal?.addEventListener('abort', onAbort, { once: true });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      // Flush any remaining buffer so the last chunk(s) are not dropped
-      if (buffer.trim()) {
-        const lines = buffer.split('\n');
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr || jsonStr === '[DONE]') continue;
-          const text = parseSSELine(jsonStr, effectiveProvider);
-          if (text) onChunk(text);
+  let buffer = '';
+  let chars = 0;
+  let stopReason = null;
+  let stopRaw = null;
+  const handle = (payloads) => {
+    for (const payload of payloads) {
+      for (const event of parseSSEEvents(payload, effectiveProvider)) {
+        if (event.type === 'text') {
+          chars += event.text.length;
+          onChunk(event.text);
+        } else if (event.type === 'stop') {
+          stopReason = event.reason; // the last one wins; keep reading
+          stopRaw = event.raw;
+        } else if (event.type === 'error') {
+          throw Object.assign(new Error(event.message || `The ${effectiveProvider} API reported an error`), {
+            code: 'STREAM_ERROR', providerCode: event.code || null, requestId, partial: chars > 0,
+          });
         }
       }
-      break;
     }
+  };
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const jsonStr = line.slice(6).trim();
-      if (!jsonStr || jsonStr === '[DONE]') continue;
-
-      const text = parseSSELine(jsonStr, effectiveProvider);
-      if (text) onChunk(text);
+  try {
+    while (true) {
+      if (signal?.aborted) throw abortError(signal);
+      const { done, value } = await reader.read();
+      if (signal?.aborted) throw abortError(signal); // a cancel settles the read as done
+      if (done) {
+        buffer += decoder.decode(); // flush a split multi-byte character
+        handle(drainSSEBuffer(buffer, { final: true }).payloads); // the last line may lack its newline
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      const drained = drainSSEBuffer(buffer);
+      buffer = drained.rest;
+      handle(drained.payloads);
     }
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    reader.cancel().catch(() => {}); // releases the upstream on an early exit; a no-op once done
   }
+
+  if (chars === 0) {
+    if (DECLINED.has(stopReason)) {
+      throw Object.assign(new Error(`The model declined to answer (${stopRaw || stopReason})`), {
+        code: 'REFUSED', stopReason, requestId,
+      });
+    }
+    throw Object.assign(new Error('The model returned an empty response'), { code: 'EMPTY_RESPONSE', stopReason, requestId });
+  }
+  return { stopReason, chars, requestId, provider: effectiveProvider };
 }
 
 /**

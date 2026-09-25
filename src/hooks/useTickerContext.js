@@ -41,19 +41,34 @@ export function useTickerContext(ticker, { enabled = true } = {}) {
   const [error, setError] = useState(null);
   const abortRef = useRef(null);
 
+  // Ticker changed: drop the previous ticker's context during render (React's "adjust
+  // state when a prop changes" pattern) so the new ticker never shows the old one's
+  // earnings, moving averages or news. A cached entry shows at once; otherwise the
+  // effect below fetches it.
+  const [shownTicker, setShownTicker] = useState(ticker);
+  if (ticker !== shownTicker) {
+    setShownTicker(ticker);
+    setContext(getCached(ticker));
+    setError(null);
+  }
+
   const load = useCallback(async (symbol, force = false) => {
     if (!symbol) return;
+
+    // Abort first: an older request must not land after this call, and a cache hit
+    // takes over `loading` from it (its finally skips the reset once aborted).
+    if (abortRef.current) abortRef.current.abort();
 
     if (!force) {
       const hit = getCached(symbol);
       if (hit) {
         setContext(hit);
         setError(null);
+        setLoading(false);
         return;
       }
     }
 
-    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 

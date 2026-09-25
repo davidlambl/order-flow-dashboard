@@ -258,12 +258,12 @@ export default function App() {
                 </span>
               )}
               {error && !usingMock && (
-                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20">
+                <span title={error} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20">
                   ERROR
                 </span>
               )}
             </div>
-            {data?.totalOptionsCount && !loading && (
+            {data?.totalOptionsCount > 0 && !loading && (
               <span className="text-xs text-[var(--color-text-muted)] tabular-nums hidden sm:inline">
                 {data.totalOptionsCount.toLocaleString()} contracts analyzed
               </span>
@@ -310,12 +310,12 @@ export default function App() {
           <div className="text-xs text-[var(--color-text-muted)] pt-2 pb-4">
             {usingMock ? (
               <span>
-                Currently showing simulated demo data. Deploy to Netlify and the CBOE data feed activates automatically \u2014 no API key needed.
+                Currently showing simulated demo data. Deploy to Netlify and the CBOE data feed activates automatically — no API key needed.
               </span>
             ) : data?.provider === 'tradier' ? (
               <span>
                 Real-time data via Tradier brokerage API. GEX, Max Pain, and P/C Ratio computed from live options chain.
-                Net Premium estimated from daily volume \u00d7 mid price.
+                Net Premium estimated from daily volume × mid price.
               </span>
             ) : data?.provider === 'tradier-sandbox' ? (
               <span>

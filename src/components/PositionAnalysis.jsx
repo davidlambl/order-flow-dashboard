@@ -2,7 +2,9 @@
 import { useMemo } from 'react';
 import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight, AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
 import { computeRecommendation, computeDualRecommendation, extractPriceLevels, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
+import { isStaleData } from '../lib/staleness';
 import { formatDollar, formatPrice } from '../lib/format';
+import { useNow } from '../hooks/useNow';
 
 const SIGNAL_STYLES = {
   BUY: {
@@ -22,25 +24,28 @@ const SIGNAL_STYLES = {
   },
 };
 
+/** Options feed names for the snapshot badges, keyed by data.provider (anything else is CBOE). */
+const FEED_NAMES = { cboe: 'CBOE', tradier: 'Tradier', 'tradier-sandbox': 'Tradier sandbox', mock: 'demo data' };
+
 /**
- * Human-readable source label for liveQuote.source.
+ * Human-readable label for liveQuote.source, which the server emits as
+ * 'yahoo-regular' | 'yahoo-post' | 'yahoo-pre' | 'finnhub'.
  */
 function quoteSourceLabel(source) {
   if (!source) return '';
   if (source === 'yahoo-post') return 'After Hours';
   if (source === 'yahoo-pre') return 'Pre-Market';
-  if (source === 'yahoo-extended') return 'Extended Hours'; // legacy fallback
-  if (source === 'futures-implied') return 'Futures-Implied';
   if (source === 'finnhub') return 'Finnhub';
   return 'Live';
 }
 
 /**
- * Relative time string from a millisecond timestamp, e.g. "2m ago".
+ * Relative time string from a millisecond timestamp, e.g. "2m ago". `now` (epoch ms) comes from
+ * useNow, so render never reads the clock and the label keeps moving while the page is idle.
  */
-function relativeTime(ts) {
-  if (!ts) return '';
-  const diffMs = Math.max(0, Date.now() - ts);
+function relativeTime(ts, now) {
+  if (!ts || !Number.isFinite(now)) return '';
+  const diffMs = Math.max(0, now - ts);
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 10) return 'just now';
   if (diffSec < 60) return `${diffSec}s ago`;
@@ -108,15 +113,14 @@ function PriceLevelBar({ levels }) {
   );
 }
 
-function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, hasWarning }) {
+function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, hasWarning, now }) {
   if (!rec) return null;
   const style = SIGNAL_STYLES[rec.signal];
 
   let timeAgo = '';
   if (isStale && lastUpdated) {
     const d = new Date(lastUpdated);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
+    const diffMs = now - d.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     
     if (diffHours < 24) {
@@ -175,11 +179,13 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
  * Yahoo-style price display: shows a reference/spot price + after-hours drift
  * when market is closed, or the live price during market hours when available.
  * NOTE: spotPrice is the data provider's latest quote (CBOE delayed or Tradier
- * real-time), not necessarily the official closing price.
+ * real-time), not necessarily the official closing price. Each badge describes the
+ * price beside it: the live quote's source, or the options feed's delay.
  */
-function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider }) {
+function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider, now }) {
   const isDelayed = !dataProvider || dataProvider === 'cboe' || dataProvider === 'tradier-sandbox';
-  const closeLabelText = isDelayed ? 'CBOE ~15min delayed' : 'Spot';
+  const feedName = FEED_NAMES[dataProvider] || 'CBOE';
+  const closeLabelText = isDelayed ? `Options snapshot (${feedName}, ~15 min delayed)` : `Options snapshot (${feedName})`;
   const spotNum = Number(spotPrice);
   const hasSpot = Number.isFinite(spotNum) && spotNum > 0;
   const q = liveQuote || {};
@@ -188,7 +194,7 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
 
   if (!hasSpot && !hasLive) return null;
 
-  const isExtended = q.source === 'yahoo-post' || q.source === 'yahoo-pre' || q.source === 'yahoo-extended' || q.source === 'futures-implied';
+  const isExtended = q.source === 'yahoo-post' || q.source === 'yahoo-pre';
   const sourceLabel = quoteSourceLabel(q.source);
 
   // During market hours (or no extended data): show spot/live as primary price
@@ -196,6 +202,12 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
     const displayPrice = hasLive ? liveNum : spotNum;
     const changePct = q.changePercent;
     const priceUp = (changePct || 0) >= 0;
+    // The badge labels the price shown: a live quote is never "delayed", whatever the options feed is.
+    const badge = hasLive
+      ? { text: q.source === 'yahoo-regular' ? 'Live · Yahoo' : sourceLabel, className: 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono' }
+      : isDelayed
+        ? { text: `~15min delayed (${feedName})`, className: 'bg-[var(--color-warn-bg)] text-[var(--color-warn)] font-medium' }
+        : { text: `Spot (${feedName})`, className: 'bg-[var(--color-surface-3)] text-[var(--color-text-muted)] font-medium' };
 
     return (
       <div className="flex items-baseline gap-3 flex-wrap">
@@ -210,13 +222,13 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
             {priceUp ? '+' : ''}{changePct.toFixed(2)}%
           </span>
         )}
-        {isDelayed && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-warn-bg)] text-[var(--color-warn)] font-medium">
-            ~15min delayed
+        {badge.text && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge.className}`}>
+            {badge.text}
           </span>
         )}
         <span className="text-xs text-[var(--color-text-muted)]">
-          {relativeTime(q.timestamp)}
+          {relativeTime(q.timestamp, now)}
         </span>
       </div>
     );
@@ -272,7 +284,7 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
           {sourceLabel}
         </span>
         <span className="text-xs text-[var(--color-text-muted)]">
-          {relativeTime(q.timestamp)}
+          {relativeTime(q.timestamp, now)}
         </span>
       </div>
     </div>
@@ -280,6 +292,9 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider })
 }
 
 export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote, dataProvider }) {
+  // Ticks once a minute, so staleness and relative times re-evaluate while idle without reading the clock in render
+  const now = useNow(60_000);
+
   // Normalize inputs once so all downstream logic (showDual, hasBasis, P&L) uses consistent numeric values
   const costBasisNum = Number(costBasis);
   const spotNum = Number(spotPrice);
@@ -320,18 +335,11 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
     return extractPriceLevels({ costBasis: costBasisNum, spotPrice: spotNum, kpis, gexByStrike });
   }, [costBasisNum, spotNum, kpis, gexByStrike]);
 
-  const isStale = useMemo(() => {
-    if (!lastUpdated) return false;
-    const diffMs = Date.now() - new Date(lastUpdated).getTime();
-    const diffMinutes = diffMs / (1000 * 60);
-    
-    // Use optionsMarketOpen since options data updates until 4:15 PM ET
-    if (optionsMarketOpen || marketOpen) {
-      return diffMinutes > 60;
-    } else {
-      return diffMinutes > 240;
-    }
-  }, [lastUpdated, optionsMarketOpen, marketOpen]);
+  // The tighter bar applies while either session is open (options data updates until 4:15 PM ET).
+  const isStale = useMemo(
+    () => isStaleData(lastUpdated, now, optionsMarketOpen || marketOpen),
+    [lastUpdated, now, optionsMarketOpen, marketOpen]
+  );
 
   const hasBasis = Number.isFinite(costBasisNum) && costBasisNum > 0;
   const hasShares = shares != null && shares > 0;
@@ -374,6 +382,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
         liveQuote={liveQuote}
         optionsMarketOpen={optionsMarketOpen}
         dataProvider={dataProvider}
+        now={now}
       />
 
       {/* Header row: inputs + P&L + recommendation */}
@@ -433,7 +442,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
 
         {/* Right: Recommendation (single) */}
         {!showDual && (
-          <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} hasWarning={isStale} />
+          <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} hasWarning={isStale} now={now} />
         )}
       </div>
 
@@ -444,7 +453,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn)]/20">
             <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
             <span className="text-xs text-[var(--color-warn)] font-medium">
-              Options market closed — price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since last close
+              Options market closed — price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since the options snapshot
             </span>
           </div>
 
@@ -454,7 +463,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
             <div className="flex flex-col gap-2 p-3 rounded-lg border border-[var(--color-border)]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
-                  P&L at Close
+                  P&L at options snapshot
                 </span>
               </div>
               {hasBasis && (
@@ -525,6 +534,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                 lastUpdated={lastUpdated}
                 label="Options Snapshot (delayed)"
                 hasWarning={true}
+                now={now}
               />
               {dualRec.primary && (
                 <div className="mt-2 space-y-1">
@@ -545,6 +555,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
                   rec={dualRec.secondary}
                   label="If Live Price Holds"
                   isSecondary={true}
+                  now={now}
                 />
                 {dualRec.secondary && (
                   <div className="mt-2 space-y-1">

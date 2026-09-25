@@ -1,5 +1,5 @@
 // src/components/PremiumGate.jsx
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Lock, KeyRound, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import RequestAccessForm from './RequestAccessForm';
@@ -9,6 +9,10 @@ export default function PremiumGate({ isPremium, onUnlock, featureName, children
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
   const [showRequest, setShowRequest] = useState(false);
+  // The post-success unlock is delayed for the checkmark; it must not fire after unmount.
+  // Hooks stay above the isPremium early return so their order never changes.
+  const unlockTimer = useRef(null);
+  useEffect(() => () => clearTimeout(unlockTimer.current), []);
 
   if (isPremium) return children;
 
@@ -25,7 +29,8 @@ export default function PremiumGate({ isPremium, onUnlock, featureName, children
       if (result.valid) {
         setToken(raw);
         setStatus('success');
-        setTimeout(() => onUnlock?.(), 400);
+        clearTimeout(unlockTimer.current); // a second quick submit must not orphan the first timer
+        unlockTimer.current = setTimeout(() => onUnlock?.(), 400);
       } else {
         setStatus('error');
         setError(result.error || 'Invalid token');
