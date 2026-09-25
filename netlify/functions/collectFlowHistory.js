@@ -36,6 +36,10 @@ const collectFlow = async () => {
   for (const ticker of TRACKED_TICKERS) {
     try {
       const rawData = await fetchCBOE(ticker);
+      if (!rawData.options || rawData.options.length === 0) {
+        console.warn(`No options data for ${ticker}, skipping`);
+        continue;
+      }
       const premium = computeNetPremium(rawData.options);
       const pcRatio = computePutCallRatio(rawData.options);
 

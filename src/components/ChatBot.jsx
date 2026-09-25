@@ -100,7 +100,9 @@ USER POSITION:
     }
   }
 
-  const dpLevel = k.darkPoolPct > 40 ? 'Elevated (>40%)' : k.darkPoolPct < 30 ? 'Low (<30%)' : 'Normal range';
+  const dpLevel = Number.isFinite(k.darkPoolPct)
+    ? (k.darkPoolPct > 40 ? 'Elevated (>40%)' : k.darkPoolPct < 30 ? 'Low (<30%)' : 'Normal range')
+    : 'No data';
   const maxPainDist = k.maxPain && spotPrice
     ? ` — Spot is $${Math.abs(spotPrice - k.maxPain).toFixed(2)} ${spotPrice < k.maxPain ? 'below' : 'above'}`
     : '';
