@@ -1,9 +1,13 @@
 // src/hooks/useMarketData.js
 // Fetches market data with optional auto-polling during US market hours.
+// A failed fetch keeps the last good data for the same ticker and sets `error`;
+// demo data appears only when nothing real has loaded for the ticker. Background
+// refreshes back off exponentially after consecutive failures (lib/retry.js).
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchMarketData } from '../lib/api';
 import { generateMockData } from '../lib/mockData';
+import { backoffSeconds } from '../lib/retry.js';
 import { isMarketOpen, isOptionsMarketOpen } from '../../shared/marketCalendar.js';
 
 function getRefreshSecs(provider) {
@@ -14,7 +18,7 @@ export function useMarketData(ticker) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [usingMock, setUsingMock] = useState(false);
+  const [failures, setFailures] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [marketOpen, setMarketOpen] = useState(isMarketOpen);
@@ -22,6 +26,9 @@ export function useMarketData(ticker) {
   const [timerEpoch, setTimerEpoch] = useState(0);
   const abortRef = useRef(null);
   const timerRef = useRef(null);
+  // Mirror of `data` so fetchAll can see what is on screen while keeping an empty deps array.
+  const dataRef = useRef(null);
+  const usingMock = data?.provider === 'mock';
 
   const fetchAll = useCallback(async (symbol, silent = false) => {
     if (abortRef.current) abortRef.current.abort();
@@ -37,7 +44,7 @@ export function useMarketData(ticker) {
       const result = await fetchMarketData(symbol, controller.signal);
       if (controller.signal.aborted) return;
 
-      setData({
+      const next = {
         ticker: result.ticker,
         provider: result.provider,
         delay: result.delay,
@@ -52,15 +59,27 @@ export function useMarketData(ticker) {
         totalOptionsCount: result.totalOptionsCount,
         fallbackReason: result.fallbackReason ?? null,
         expiries: result.expiries || [],
-      });
-      setUsingMock(false);
+      };
+      dataRef.current = next;
+      setData(next);
+      setFailures(0);
+      setError(null);
       setLoading(false);
     } catch (err) {
       if (controller.signal.aborted) return;
-      console.warn('Falling back to mock data:', err.message);
-      setData(generateMockData(symbol));
-      setUsingMock(true);
+      // Real data for this ticker survives any failure (manual or background); demo data
+      // stands in only when nothing real has loaded for it yet.
+      const keep = dataRef.current?.ticker === symbol && dataRef.current.provider !== 'mock';
+      setFailures((n) => n + 1);
       setError(err.message);
+      if (!keep) {
+        console.warn('No data loaded for', symbol, '— showing demo data:', err.message);
+        const mock = generateMockData(symbol);
+        dataRef.current = mock;
+        setData(mock);
+      } else {
+        console.warn('Market data refresh failed; keeping last good data:', err.message);
+      }
       setLoading(false);
     }
   }, []);
@@ -86,18 +105,21 @@ export function useMarketData(ticker) {
     return () => clearInterval(id);
   }, []);
 
-  // Auto-refresh countdown + silent fetch
+  // Auto-refresh countdown + silent fetch. Demo data never auto-refreshes; after
+  // consecutive failures the interval backs off (base × 2^failures, capped).
+  const hasData = data != null;
+  const provider = data?.provider;
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
 
-    const active = autoRefresh && optionsMarketOpen && !usingMock && !!ticker && data != null;
+    const active = autoRefresh && optionsMarketOpen && !usingMock && !!ticker && hasData;
     if (!active) {
       setSecondsLeft(0);
       return;
     }
 
-    const secs = getRefreshSecs(data?.provider);
+    const secs = backoffSeconds(getRefreshSecs(provider), failures);
     let target = Date.now() + secs * 1000;
     setSecondsLeft(secs);
 
@@ -112,7 +134,7 @@ export function useMarketData(ticker) {
     }, 1000);
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [autoRefresh, optionsMarketOpen, usingMock, ticker, data?.provider, fetchAll, timerEpoch]);
+  }, [autoRefresh, optionsMarketOpen, usingMock, ticker, provider, hasData, failures, fetchAll, timerEpoch]);
 
   const refresh = useCallback(() => {
     if (ticker) {
@@ -126,7 +148,7 @@ export function useMarketData(ticker) {
   }, []);
 
   return {
-    data, loading, error, usingMock, refresh,
+    data, loading, error, usingMock, failures, refresh,
     autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh,
   };
 }

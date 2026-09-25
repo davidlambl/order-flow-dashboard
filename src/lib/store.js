@@ -31,6 +31,31 @@ const SECRET_KEYS = new Set([
   'data_tradier_key', 'data_finnhub_key',
 ]);
 
+// Browsers disagree on how a full store reports itself: QuotaExceededError (code 22)
+// in most engines, NS_ERROR_DOM_QUOTA_REACHED (code 1014) in older Firefox.
+function isQuotaError(e) {
+  return !!e && (
+    e.name === 'QuotaExceededError' ||
+    e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    e.code === 22 || e.code === 1014
+  );
+}
+
+/**
+ * localStorage.setItem that never throws: a full (or unavailable) store logs one
+ * warning naming the caller and the key instead of breaking the UI mid-edit.
+ * @returns {boolean} true when the value was written
+ */
+function safeSetItem(key, value, what) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.warn(`${what}: ${isQuotaError(e) ? 'localStorage quota exceeded' : 'localStorage error'} for`, key, e);
+    return false;
+  }
+}
+
 class LocalStorageBackend {
   getPosition(ticker) {
     if (!ticker) return { costBasis: null, shares: null };
@@ -44,7 +69,7 @@ class LocalStorageBackend {
   setPosition(ticker, { costBasis, shares }) {
     if (!ticker) return;
     if (costBasis != null || shares != null) {
-      localStorage.setItem(POSITION_PREFIX + ticker, JSON.stringify({ costBasis, shares }));
+      safeSetItem(POSITION_PREFIX + ticker, JSON.stringify({ costBasis, shares }), 'setPosition');
     } else {
       this.deletePosition(ticker);
     }
@@ -77,22 +102,10 @@ class LocalStorageBackend {
 
   setChatHistory(ticker, messages) {
     if (!ticker) return;
-    try {
-      if (messages?.length) {
-        localStorage.setItem(CHAT_PREFIX + ticker, JSON.stringify(messages));
-      } else {
-        this.deleteChatHistory(ticker);
-      }
-    } catch (e) {
-      const isQuota = e && (
-        e.name === 'QuotaExceededError' ||
-        e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-        e.code === 22 || e.code === 1014
-      );
-      console.warn(
-        `setChatHistory: ${isQuota ? 'localStorage quota exceeded' : 'localStorage error'} for`,
-        ticker, e
-      );
+    if (messages?.length) {
+      safeSetItem(CHAT_PREFIX + ticker, JSON.stringify(messages), 'setChatHistory');
+    } else {
+      this.deleteChatHistory(ticker);
     }
   }
 
@@ -123,7 +136,7 @@ class LocalStorageBackend {
   setPreference(name, value) {
     const key = PREF_MAP[name] || name;
     if (value != null) {
-      localStorage.setItem(key, JSON.stringify(value));
+      safeSetItem(key, JSON.stringify(value), 'setPreference');
     } else {
       localStorage.removeItem(key);
     }
