@@ -22,6 +22,29 @@ export const SIGN_OUT_CONFIRM = "Sign out and remove this browser's copy of your
 /** localStorage key: the id of the account whose data this browser holds (absent: nobody's). */
 export const LOCAL_OWNER_KEY = 'local_data_owner';
 
+/**
+ * localStorage key: the user chose "Continue without signing in" on this browser, so the sign-in
+ * screen stays out of the way on reload (roadmap D11). A device flag like the owner mark, never a
+ * synced preference (it is in DEVICE_KEYS as a guard); a sign-in, the Account tab's "Sign in"
+ * button and signOut() clear it.
+ */
+export const AUTH_SKIPPED_KEY = 'auth_skipped';
+
+export function isAuthSkipped() {
+  try {
+    return localStorage.getItem(AUTH_SKIPPED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setAuthSkipped(skipped) {
+  try {
+    if (skipped) localStorage.setItem(AUTH_SKIPPED_KEY, '1');
+    else localStorage.removeItem(AUTH_SKIPPED_KEY);
+  } catch { /* storage unavailable: the choice lasts for this page load only */ }
+}
+
 function readOwner() {
   try {
     return localStorage.getItem(LOCAL_OWNER_KEY);
@@ -89,6 +112,7 @@ export async function signOut({ client = supabase, confirm = (message) => global
   clearToken();
   try { localStorage.removeItem('_import_backup'); } catch { /* storage unavailable */ }
   writeOwner(null);
+  setAuthSkipped(false); // the sign-in screen comes back after a sign-out
   setBackend(new LocalStorageBackend());
   emitStoreChanged();
   return { signedOut: true, error };

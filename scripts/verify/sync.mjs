@@ -433,6 +433,27 @@ export default async function run(ctx) {
     });
   });
 
+  await t('auth_skipped: a raw device flag under AUTH_SKIPPED_KEY, read back as a boolean, cleared with false; never a preference', async () => {
+    await inBrowser(async ({ storage, store, session }) => {
+      assert.equal(session.AUTH_SKIPPED_KEY, 'auth_skipped');
+      assert.ok(store.DEVICE_KEYS.has(session.AUTH_SKIPPED_KEY), 'guarded against ever syncing or exporting');
+      assert.equal(session.isAuthSkipped(), false);
+      session.setAuthSkipped(true);
+      assert.equal(storage.getItem('auth_skipped'), '1');
+      assert.equal(session.isAuthSkipped(), true);
+      assert.equal(store.getPreference('auth_skipped'), 1, 'a raw key, not JSON (getPreference would parse "1")');
+      assert.deepEqual(store.exportAll().preferences, {}, 'not exported');
+      session.setAuthSkipped(false);
+      assert.equal(storage.getItem('auth_skipped'), null);
+      assert.equal(session.isAuthSkipped(), false);
+    });
+    await withGlobals({ localStorage: undefined, window: undefined }, async () => {
+      const session = await import(SESSION_URL);
+      assert.equal(session.isAuthSkipped(), false, 'no storage: not skipped');
+      assert.doesNotThrow(() => session.setAuthSkipped(true), 'no storage: no throw');
+    });
+  });
+
   await t('signOut, confirmed: auth.signOut once; positions, chats, every preference, access_token, _import_backup and the owner mark removed; backend reset; store-changed', async () => {
     await inBrowser(async ({ storage, win, warnings, store, SupabaseBackend, session, local }) => {
       const client = fakeSupabase();
@@ -443,6 +464,7 @@ export default async function run(ctx) {
       storage.setItem('access_token', 'jwt');
       storage.setItem('_import_backup', '{}');
       storage.setItem(session.LOCAL_OWNER_KEY, U);
+      session.setAuthSkipped(true);
       storage.setItem('sb-project-auth-token', 'supabase-js removes its own session');
       let asked = null;
       const result = await session.signOut({ client, confirm: (message) => { asked = message; return true; } });
@@ -450,6 +472,7 @@ export default async function run(ctx) {
       assert.equal(asked, session.SIGN_OUT_CONFIRM);
       assert.equal(client.signOuts, 1);
       assert.deepEqual(Object.keys(contents(storage)), ['sb-project-auth-token'], 'nothing of the user is left');
+      assert.equal(session.isAuthSkipped(), false, 'the sign-in screen comes back after a sign-out');
       assert.ok(storeEvents(win).length >= 1 && storeEvents(win).at(-1).detail == null, 'store-changed without detail');
       assert.ok(win.events.some((e) => e.type === 'auth-changed'), 'the access token change is announced');
       store.setPosition('MSFT', { costBasis: 1, shares: 1 });
