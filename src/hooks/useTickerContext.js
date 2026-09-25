@@ -30,7 +30,12 @@ function setCache(ticker, data) {
   }
 }
 
-export function useTickerContext(ticker) {
+/**
+ * @param {string} ticker
+ * @param {{ enabled?: boolean }} [options] — when `enabled` is false nothing is fetched
+ *   (the research endpoint needs an access token or a BYOK Finnhub key).
+ */
+export function useTickerContext(ticker, { enabled = true } = {}) {
   const [context, setContext] = useState(() => getCached(ticker));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -70,23 +75,25 @@ export function useTickerContext(ticker) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     load(ticker);
     return () => { if (abortRef.current) abortRef.current.abort(); };
-  }, [ticker, load]);
+  }, [ticker, load, enabled]);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     const handler = () => {
       cache.delete(ticker);
       load(ticker, true);
     };
     window.addEventListener('data-source-changed', handler);
     return () => window.removeEventListener('data-source-changed', handler);
-  }, [ticker, load]);
+  }, [ticker, load, enabled]);
 
   const refresh = useCallback(() => {
     cache.delete(ticker);
     load(ticker, true);
   }, [ticker, load]);
 
-  return { context, loading, error, refresh };
+  return { context: enabled ? context : null, loading: enabled && loading, error: enabled ? error : null, refresh };
 }

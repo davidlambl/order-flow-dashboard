@@ -35,7 +35,7 @@ should:
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
   `validateToken`) and v1 `handler(event)` ones (`getMarketData`, `getModels`, `collectFlowHistory`);
   shared code in `netlify/functions/lib/`.
-- `supabase/migrations/` — run in order in the SQL editor (003 currently has invalid policy SQL; Phase 1 fixes).
+- `supabase/migrations/` — run 001→004 in order in the SQL editor; all idempotent (see `supabase/README.md`).
 - `types/` (planned) shared JSON contracts between `src/` and `netlify/` — `netlify/` must never import `src/`.
 - `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
   Phase 8) Terraform for AWS. See the roadmap's Phase 7/8 for the skill-building rationale.
@@ -43,7 +43,9 @@ should:
 ## Conventions
 - Secrets: BYOK keys live only in localStorage (`SECRET_KEYS` in `store.js`) and are never synced or exported.
 - Functions accept BYOK via headers/body (`x-tradier-key`, `x-finnhub-key`, `userApiKey`); server keys are
-  only for token holders (enforced from Phase 1 onward).
+  only for access-token holders (`netlify/functions/lib/auth.js`), and refused with 503 if `TOKEN_SECRET`
+  is unset. New functions must use `lib/http.js` (CORS allowlist, `fetchWithTimeout`, `errorResponse`
+  with a request id, `rateLimit`) and `lib/ticker.js` before touching an upstream URL.
 - Market-hours logic is Eastern Time; never use local `Date` for market decisions.
 - `generateMockData` is random — memoize/stub in tests.
 - Commit messages: imperative subject, body explains *why*.

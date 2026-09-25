@@ -1,60 +1,47 @@
 // netlify/functions/validateToken.js
-// Validates JWT access tokens for premium feature gating.
+// Verifies an access token (signature, issuer/audience, expiry, revocation)
+// so the client can unlock premium UI. Every server-key endpoint re-verifies
+// on each call; this endpoint only exists for the activation UX.
 
-import jwt from 'jsonwebtoken';
+import { preflight, jsonResponse, newRequestId, clientIp, rateLimit, rateLimitResponse } from './lib/http.js';
+import { verifyAccessToken } from './lib/auth.js';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
-
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+const RATE_LIMIT = { limit: 10, windowMs: 60 * 1000 };
 
 export default async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return preflight(req);
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' }, 405);
 
-  if (req.method !== 'POST') {
-    return jsonResponse({ error: 'POST only' }, 405);
-  }
-
-  const secret = process.env.TOKEN_SECRET;
-  if (!secret) {
-    return jsonResponse({ error: 'Server misconfigured: TOKEN_SECRET not set' }, 500);
-  }
+  const requestId = newRequestId();
+  const rl = rateLimit(`validateToken:${clientIp(req)}`, RATE_LIMIT);
+  if (!rl.ok) return rateLimitResponse(req, rl.retryAfterSec, requestId);
 
   let body;
   try {
     body = await req.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    return jsonResponse(req, { valid: false, error: 'Invalid JSON body', code: 'INVALID_JSON', requestId }, 400);
   }
 
-  const { token } = body;
+  const token = typeof body?.token === 'string' ? body.token.trim() : '';
   if (!token) {
-    return jsonResponse({ valid: false, error: 'Token is required' }, 400);
+    return jsonResponse(req, { valid: false, error: 'Token is required', code: 'TOKEN_REQUIRED', requestId }, 400);
+  }
+  if (token.length > 4096) {
+    return jsonResponse(req, { valid: false, error: 'Invalid access token', code: 'TOKEN_INVALID', requestId }, 401);
   }
 
-  try {
-    const decoded = jwt.verify(token, secret);
-    return jsonResponse({
-      valid: true,
-      tier: decoded.tier || 'pro',
-      sub: decoded.sub || null,
-      expiresAt: Number.isFinite(Number(decoded.exp)) && decoded.exp > 0
-        ? new Date(Number(decoded.exp) * 1000).toISOString()
-        : null,
-    });
-  } catch (err) {
-    const message = err.name === 'TokenExpiredError'
-      ? 'Token has expired'
-      : 'Invalid token';
-    return jsonResponse({ valid: false, error: message }, 401);
+  const result = await verifyAccessToken(token);
+  if (!result.ok) {
+    return jsonResponse(req, { valid: false, error: result.message, code: result.code, requestId }, result.status);
   }
+
+  const { claims } = result;
+  return jsonResponse(req, {
+    valid: true,
+    tier: claims.tier,
+    sub: claims.sub,
+    expiresAt: new Date(claims.exp * 1000).toISOString(),
+    requestId,
+  });
 };

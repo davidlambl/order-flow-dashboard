@@ -1,10 +1,27 @@
 // src/lib/api.js
 // Centralized API helpers — all calls route through Netlify Functions.
 
-import { getAuthHeaders, clearToken } from './auth';
+import { getAuthHeaders, clearTokenIfDead } from './auth';
 import { getPreference } from './store';
 
 const FUNCTION_BASE = '/.netlify/functions';
+
+/**
+ * Build an Error from a function's JSON error body. Clears the stored access
+ * token when the server says it is expired/invalid/revoked, so the UI re-locks.
+ */
+function apiError(body, status, fallback) {
+  const code = body?.code || null;
+  clearTokenIfDead(code);
+  const err = new Error(
+    body?.error
+      || (status === 401 ? 'Access token required' : status === 429 ? 'Too many requests' : `${fallback}: ${status}`),
+  );
+  err.code = code;
+  err.status = status;
+  if (body?.requestId) err.requestId = body.requestId;
+  return err;
+}
 
 /**
  * Fetch computed market data from our serverless function.
@@ -31,7 +48,7 @@ export async function fetchMarketData(ticker, signal = null) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `API error: ${res.status}`);
+    throw apiError(err, res.status, 'API error');
   }
   return res.json();
 }
@@ -77,11 +94,7 @@ export async function askLLMStream({ messages, financialContext, ticker, userApi
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    if (res.status === 401) {
-      if (err.code === 'TOKEN_EXPIRED') clearToken();
-      throw new Error(err.error || 'Access token required');
-    }
-    throw new Error(err.error || `LLM error: ${res.status}`);
+    throw apiError(err, res.status, 'LLM error');
   }
 
   const effectiveProvider = res.headers.get('X-Provider') || provider || 'anthropic';
@@ -145,7 +158,7 @@ export async function fetchTickerContext(ticker, signal = null) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `Ticker context error: ${res.status}`);
+    throw apiError(err, res.status, 'Ticker context error');
   }
   return res.json();
 }
@@ -164,11 +177,7 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    if (res.status === 401) {
-      if (err.code === 'TOKEN_EXPIRED') clearToken();
-      throw new Error(err.error || 'Access token required');
-    }
-    throw new Error(err.error || `Models API error: ${res.status}`);
+    throw apiError(err, res.status, 'Models API error');
   }
   return res.json();
 }
@@ -199,7 +208,7 @@ export async function fetchLiveQuote(ticker, signal = null) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || `Live quote error: ${res.status}`);
+    throw apiError(err, res.status, 'Live quote error');
   }
   return res.json();
 }

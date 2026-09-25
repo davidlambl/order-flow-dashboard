@@ -7,18 +7,17 @@
 //
 // BYOK: accepts x-finnhub-key header for Finnhub fallback, falls back to FINNHUB_API_KEY env var.
 
+import {
+  preflight, jsonResponse, errorResponse, newRequestId,
+  fetchWithTimeout, isTimeoutError, clientIp, rateLimit, rateLimitResponse,
+} from './lib/http.js';
+import { verifyRequestToken } from './lib/auth.js';
+import { parseTicker } from './lib/ticker.js';
+
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
-
-// Allowed ticker format: 1-10 uppercase letters/digits, optional dot/hyphen
-const TICKER_REGEX = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, x-finnhub-key, Authorization',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'private, max-age=60',
-  'Vary': 'x-finnhub-key',
-};
+const ALLOWED_HEADERS = 'x-finnhub-key';
+const UPSTREAM_TIMEOUT_MS = 6000;
+const RATE_LIMIT = { limit: 120, windowMs: 60 * 1000 };
 
 /**
  * Check whether a value is a usable finite number.
@@ -58,7 +57,7 @@ const FUTURES_CACHE_TTL = 60 * 1000; // 60 seconds
  * Fetch Nasdaq-100 futures data to calculate overnight implied prices.
  * Uses in-memory cache to avoid repeated API calls within 60s window.
  */
-async function fetchNasdaqFutures() {
+async function fetchNasdaqFutures(signal = null) {
   // Check cache first
   const now = Date.now();
   if (futuresCache && (now - futuresCacheTimestamp) < FUTURES_CACHE_TTL) {
@@ -66,12 +65,8 @@ async function fetchNasdaqFutures() {
   }
 
   // NQ=F is the Nasdaq-100 futures ticker on Yahoo Finance
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/NQ=F?interval=1m&range=1d`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-    },
-  });
+  const url = 'https://query2.finance.yahoo.com/v8/finance/chart/NQ%3DF?interval=1m&range=1d';
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, UPSTREAM_TIMEOUT_MS, signal);
   
   if (!res.ok) {
     throw new Error(`Futures fetch failed: ${res.status}`);
@@ -226,14 +221,10 @@ function extractExtendedHoursPrice(result, preferPre = false) {
  * Fetch live quote from Yahoo Finance (includes extended hours).
  * Returns both actual quote and optional futures data for context.
  */
-async function fetchYahooQuote(ticker) {
+async function fetchYahooQuote(ticker, signal = null) {
   // Use query2 endpoint which has more reliable extended hours data
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1m&range=1d&includePrePost=true`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-    },
-  });
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1m&range=1d&includePrePost=true`;
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, UPSTREAM_TIMEOUT_MS, signal);
   
   if (!res.ok) {
     throw new Error(`Yahoo Finance: ${res.status}`);
@@ -326,7 +317,7 @@ async function fetchYahooQuote(ticker) {
 
     if (!isUSMarketOpen) {
       try {
-        const futures = await fetchNasdaqFutures();
+        const futures = await fetchNasdaqFutures(signal);
         
         // Only include futures if they've moved meaningfully (>0.1%)
         if (Math.abs(futures.changePercent) > 0.1) {
@@ -361,12 +352,12 @@ async function fetchYahooQuote(ticker) {
 /**
  * Fetch live quote from Finnhub (fallback, regular hours only).
  */
-async function fetchFinnhubQuote(ticker, finnhubKey) {
+async function fetchFinnhubQuote(ticker, finnhubKey, signal = null) {
   const url = new URL(`${FINNHUB_BASE}/quote`);
   url.searchParams.append('symbol', ticker);
   url.searchParams.append('token', finnhubKey);
   
-  const res = await fetch(url.toString());
+  const res = await fetchWithTimeout(url, {}, UPSTREAM_TIMEOUT_MS, signal);
   if (!res.ok) throw new Error(`Finnhub: ${res.status}`);
   
   const q = await res.json();
@@ -386,57 +377,57 @@ async function fetchFinnhubQuote(ticker, finnhubKey) {
 }
 
 export default async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS });
-  }
+  if (req.method === 'OPTIONS') return preflight(req, ALLOWED_HEADERS);
+  if (req.method !== 'GET') return jsonResponse(req, { error: 'GET only', code: 'METHOD_NOT_ALLOWED' }, 405);
 
-  const url = new URL(req.url);
-  const ticker = (url.searchParams.get('ticker') || '').toUpperCase().trim();
-  
+  const requestId = newRequestId();
+  const rl = rateLimit(`getLiveQuote:${clientIp(req)}`, RATE_LIMIT);
+  if (!rl.ok) return rateLimitResponse(req, rl.retryAfterSec, requestId);
+
+  const ticker = parseTicker(new URL(req.url).searchParams.get('ticker') || '');
   if (!ticker) {
-    return new Response(JSON.stringify({ error: 'Missing ticker' }), {
-      status: 400,
-      headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
-  }
-  
-  // Validate ticker format to prevent injection attacks
-  if (!TICKER_REGEX.test(ticker)) {
-    return new Response(JSON.stringify({ error: 'Invalid ticker format' }), {
-      status: 400,
-      headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse(req, { error: 'Invalid or missing ticker', code: 'INVALID_TICKER', requestId }, 400);
   }
 
-  const finnhubKey = req.headers.get('x-finnhub-key') || process.env.FINNHUB_API_KEY || '';
+  const okHeaders = {
+    'Cache-Control': 'private, max-age=60',
+    'Vary': 'Origin, x-finnhub-key, Authorization',
+  };
+
+  // Yahoo Finance needs no key and is available to everyone.
+  let yahooError = null;
+  try {
+    const quote = await fetchYahooQuote(ticker, req.signal);
+    return jsonResponse(req, quote, 200, okHeaders);
+  } catch (err) {
+    yahooError = err;
+    console.warn(`[${requestId}] Yahoo Finance failed, trying Finnhub:`, err.message);
+  }
+
+  // Finnhub fallback: BYOK for anyone; the server key only for access-token holders.
+  let finnhubKey = (req.headers.get('x-finnhub-key') || '').trim();
+  if (!finnhubKey && process.env.FINNHUB_API_KEY) {
+    const auth = await verifyRequestToken(req);
+    if (auth.ok) finnhubKey = process.env.FINNHUB_API_KEY;
+  }
+  if (!finnhubKey) {
+    return errorResponse(req, {
+      status: isTimeoutError(yahooError) ? 504 : 502,
+      code: 'QUOTE_UNAVAILABLE',
+      message: `Live quote unavailable for ${ticker}`,
+      requestId, cause: yahooError,
+    });
+  }
 
   try {
-    // Try Yahoo Finance first (includes extended hours)
-    try {
-      const quote = await fetchYahooQuote(ticker);
-      return new Response(JSON.stringify(quote), {
-        status: 200,
-        headers: { ...CORS, 'Content-Type': 'application/json' },
-      });
-    } catch (yahooErr) {
-      console.warn('Yahoo Finance failed, falling back to Finnhub:', yahooErr.message);
-      
-      // Fallback to Finnhub if available
-      if (finnhubKey) {
-        const quote = await fetchFinnhubQuote(ticker, finnhubKey);
-        return new Response(JSON.stringify(quote), {
-          status: 200,
-          headers: { ...CORS, 'Content-Type': 'application/json' },
-        });
-      }
-      
-      // No fallback available
-      throw new Error(`Yahoo Finance failed and no Finnhub key configured: ${yahooErr.message}`);
-    }
+    const quote = await fetchFinnhubQuote(ticker, finnhubKey, req.signal);
+    return jsonResponse(req, quote, 200, okHeaders);
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
-    );
+    return errorResponse(req, {
+      status: isTimeoutError(err) ? 504 : 502,
+      code: 'QUOTE_UNAVAILABLE',
+      message: `Live quote unavailable for ${ticker}`,
+      requestId, cause: err,
+    });
   }
 };

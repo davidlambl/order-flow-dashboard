@@ -1,15 +1,33 @@
 // netlify/functions/lib/marketDataHelpers.js
 // Shared computation functions for options data — used by getMarketData and collectFlowHistory.
 
-const CBOE_BASE = 'https://cdn.cboe.com/api/global/delayed_quotes/options';
+import { fetchWithTimeout } from './http.js';
+import { parseTicker } from './ticker.js';
 
-export async function fetchCBOE(ticker) {
-  const res = await fetch(`${CBOE_BASE}/${ticker}.json`, {
+const CBOE_BASE = 'https://cdn.cboe.com/api/global/delayed_quotes/options';
+const CBOE_TIMEOUT_MS = 8000;
+const TRADIER_TIMEOUT_MS = 6000;
+
+function assertTicker(ticker) {
+  const t = parseTicker(ticker);
+  if (!t) throw new Error(`Invalid ticker: ${String(ticker).slice(0, 20)}`);
+  return t;
+}
+
+function tradierUrl(base, path, params) {
+  const url = new URL(`${base}/v1/markets/${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  return url;
+}
+
+export async function fetchCBOE(rawTicker, signal = null) {
+  const ticker = assertTicker(rawTicker);
+  const res = await fetchWithTimeout(`${CBOE_BASE}/${encodeURIComponent(ticker)}.json`, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json',
     },
-  });
+  }, CBOE_TIMEOUT_MS, signal);
 
   if (!res.ok) throw new Error(`CBOE returned ${res.status} for ${ticker}`);
 
@@ -40,7 +58,9 @@ export async function fetchCBOE(ticker) {
   };
 }
 
-export async function fetchTradier(ticker, apiKey) {
+export async function fetchTradier(rawTicker, apiKey, signal = null) {
+  const ticker = assertTicker(rawTicker);
+  const headers = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };
   const bases = [
     'https://api.tradier.com',
     'https://sandbox.tradier.com',
@@ -51,14 +71,10 @@ export async function fetchTradier(ticker, apiKey) {
 
   for (const base of bases) {
     try {
-      const expRes = await fetch(
-        `${base}/v1/markets/options/expirations?symbol=${ticker}&includeAllRoots=true`,
-        {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'application/json',
-          },
-        }
+      const expRes = await fetchWithTimeout(
+        tradierUrl(base, 'options/expirations', { symbol: ticker, includeAllRoots: 'true' }),
+        { headers },
+        TRADIER_TIMEOUT_MS, signal,
       );
       if (expRes.ok) {
         const expData = await expRes.json();
@@ -76,14 +92,10 @@ export async function fetchTradier(ticker, apiKey) {
     throw new Error('Tradier: no expiration dates found');
   }
 
-  const quoteRes = await fetch(
-    `${baseUrl}/v1/markets/quotes?symbols=${ticker}&greeks=false`,
-    {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Accept': 'application/json',
-      },
-    }
+  const quoteRes = await fetchWithTimeout(
+    tradierUrl(baseUrl, 'quotes', { symbols: ticker, greeks: 'false' }),
+    { headers },
+    TRADIER_TIMEOUT_MS, signal,
   );
   if (!quoteRes.ok) {
     throw new Error(`Tradier quote fetch failed: ${quoteRes.status}`);
@@ -93,15 +105,11 @@ export async function fetchTradier(ticker, apiKey) {
 
   const nearbyExpiries = expirations.slice(0, 6);
   const chainPromises = nearbyExpiries.map((exp) =>
-    fetch(
-      `${baseUrl}/v1/markets/options/chains?symbol=${ticker}&expiration=${exp}&greeks=true`,
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Accept': 'application/json',
-        },
-      }
-    ).then((r) => r.json()).catch(() => null)
+    fetchWithTimeout(
+      tradierUrl(baseUrl, 'options/chains', { symbol: ticker, expiration: exp, greeks: 'true' }),
+      { headers },
+      TRADIER_TIMEOUT_MS, signal,
+    ).then((r) => (r.ok ? r.json() : null)).catch(() => null)
   );
 
   const chainResults = await Promise.all(chainPromises);

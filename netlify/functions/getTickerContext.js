@@ -14,16 +14,17 @@
 // Partial success: individual sections can fail without blocking others.
 
 import { getSupabaseAdmin } from './lib/supabaseAdmin.js';
+import {
+  preflight, jsonResponse, newRequestId,
+  fetchWithTimeout, clientIp, rateLimit, rateLimitResponse,
+} from './lib/http.js';
+import { verifyRequestToken } from './lib/auth.js';
+import { parseTicker } from './lib/ticker.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, x-finnhub-key, Authorization',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Cache-Control': 'private, max-age=900',
-  'Vary': 'x-finnhub-key',
-};
+const ALLOWED_HEADERS = 'x-finnhub-key';
+const UPSTREAM_TIMEOUT_MS = 8000;
+const RATE_LIMIT = { limit: 30, windowMs: 60 * 1000 };
 
 function computeSMA(closes, period) {
   if (closes.length < period) return null;
@@ -48,17 +49,18 @@ function computeRSI(closes, period = 14) {
   return 100 - 100 / (1 + rs);
 }
 
-async function finnhubGet(path, token) {
-  const sep = path.includes('?') ? '&' : '?';
-  const url = `${FINNHUB_BASE}${path}${sep}token=${token}`;
-  const res = await fetch(url);
+async function finnhubGet(path, params, token, signal) {
+  const url = new URL(`${FINNHUB_BASE}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
+  url.searchParams.set('token', token);
+  const res = await fetchWithTimeout(url, {}, UPSTREAM_TIMEOUT_MS, signal);
   if (!res.ok) throw new Error(`Finnhub ${path}: ${res.status}`);
   return res.json();
 }
 
 // Fetch earnings from Alpha Vantage with Supabase caching.
 // Returns the earnings object or null on failure.
-async function fetchEarnings(ticker) {
+async function fetchEarnings(ticker, signal) {
   const avKey = process.env.ALPHA_VANTAGE_KEY;
   if (!avKey) return null;
 
@@ -93,8 +95,11 @@ async function fetchEarnings(ticker) {
 
   // Call Alpha Vantage
   try {
-    const avUrl = `https://www.alphavantage.co/query?function=EARNINGS&symbol=${encodeURIComponent(ticker)}&apikey=${avKey}`;
-    const res = await fetch(avUrl);
+    const avUrl = new URL('https://www.alphavantage.co/query');
+    avUrl.searchParams.set('function', 'EARNINGS');
+    avUrl.searchParams.set('symbol', ticker);
+    avUrl.searchParams.set('apikey', avKey);
+    const res = await fetchWithTimeout(avUrl, {}, UPSTREAM_TIMEOUT_MS, signal);
     if (!res.ok) return staleData;
     const json = await res.json();
 
@@ -150,26 +155,38 @@ async function fetchEarnings(ticker) {
 }
 
 export default async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: CORS });
-  }
+  if (req.method === 'OPTIONS') return preflight(req, ALLOWED_HEADERS);
+  if (req.method !== 'GET') return jsonResponse(req, { error: 'GET only', code: 'METHOD_NOT_ALLOWED' }, 405);
 
-  const url = new URL(req.url);
-  const ticker = (url.searchParams.get('ticker') || '').toUpperCase();
+  const requestId = newRequestId();
+  const rl = rateLimit(`getTickerContext:${clientIp(req)}`, RATE_LIMIT);
+  if (!rl.ok) return rateLimitResponse(req, rl.retryAfterSec, requestId);
+
+  const ticker = parseTicker(new URL(req.url).searchParams.get('ticker') || '');
   if (!ticker) {
-    return new Response(JSON.stringify({ error: 'Missing ticker' }), {
-      status: 400,
-      headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
+    return jsonResponse(req, { error: 'Invalid or missing ticker', code: 'INVALID_TICKER', requestId }, 400);
   }
 
-  const finnhubKey = req.headers.get('x-finnhub-key') || process.env.FINNHUB_API_KEY || '';
-  if (!finnhubKey) {
-    return new Response(
-      JSON.stringify({ error: 'No Finnhub API key configured. Add one in Settings or set FINNHUB_API_KEY env var.' }),
-      { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } },
-    );
+  // Finnhub: BYOK for anyone; the server key (and the server-only Alpha Vantage
+  // earnings cache) only for access-token holders.
+  let finnhubKey = (req.headers.get('x-finnhub-key') || '').trim();
+  let tokenHolder = false;
+  if (process.env.FINNHUB_API_KEY || process.env.ALPHA_VANTAGE_KEY) {
+    const auth = await verifyRequestToken(req);
+    tokenHolder = auth.ok;
+    if (!finnhubKey && tokenHolder && process.env.FINNHUB_API_KEY) finnhubKey = process.env.FINNHUB_API_KEY;
+    if (!finnhubKey && !auth.ok && auth.code !== 'TOKEN_REQUIRED' && auth.code !== 'AUTH_NOT_CONFIGURED') {
+      // A token was presented but is invalid/expired/revoked: say so.
+      return jsonResponse(req, { error: auth.message, code: auth.code, requestId }, auth.status);
+    }
   }
+  if (!finnhubKey) {
+    return jsonResponse(req, {
+      error: 'A Finnhub API key is required. Add one in Settings, or activate an access token.',
+      code: 'KEY_REQUIRED', requestId,
+    }, 401);
+  }
+  const signal = req.signal;
 
   const now = new Date();
   const fromDate = new Date(now);
@@ -193,16 +210,16 @@ export default async (req) => {
     earningsResult,
     [newsRes, earningsRevRes, recRes, ptRes, metricsRes, candleRes, generalNewsRes, ...quoteResults],
   ] = await Promise.all([
-    fetchEarnings(ticker),
+    tokenHolder ? fetchEarnings(ticker, signal) : Promise.resolve(null),
     Promise.allSettled([
-      finnhubGet(`/company-news?symbol=${ticker}&from=${fromStr}&to=${toDate}`, finnhubKey),
-      finnhubGet(`/calendar/earnings?symbol=${ticker}&from=${earningsFrom.toISOString().slice(0, 10)}&to=${earningsTo.toISOString().slice(0, 10)}`, finnhubKey),
-      finnhubGet(`/stock/recommendation?symbol=${ticker}`, finnhubKey),
-      finnhubGet(`/stock/price-target?symbol=${ticker}`, finnhubKey),
-      finnhubGet(`/stock/metric?symbol=${ticker}&metric=all`, finnhubKey),
-      finnhubGet(`/stock/candle?symbol=${ticker}&resolution=D&from=${oneYearAgo}&to=${nowUnix}`, finnhubKey),
-      finnhubGet('/news?category=general', finnhubKey),
-      ...MARKET_SYMBOLS.map((sym) => finnhubGet(`/quote?symbol=${sym}`, finnhubKey)),
+      finnhubGet('/company-news', { symbol: ticker, from: fromStr, to: toDate }, finnhubKey, signal),
+      finnhubGet('/calendar/earnings', { symbol: ticker, from: earningsFrom.toISOString().slice(0, 10), to: earningsTo.toISOString().slice(0, 10) }, finnhubKey, signal),
+      finnhubGet('/stock/recommendation', { symbol: ticker }, finnhubKey, signal),
+      finnhubGet('/stock/price-target', { symbol: ticker }, finnhubKey, signal),
+      finnhubGet('/stock/metric', { symbol: ticker, metric: 'all' }, finnhubKey, signal),
+      finnhubGet('/stock/candle', { symbol: ticker, resolution: 'D', from: oneYearAgo, to: nowUnix }, finnhubKey, signal),
+      finnhubGet('/news', { category: 'general' }, finnhubKey, signal),
+      ...MARKET_SYMBOLS.map((sym) => finnhubGet('/quote', { symbol: sym }, finnhubKey, signal)),
     ]),
   ]);
 
@@ -329,8 +346,8 @@ export default async (req) => {
     marketQuotes: Object.keys(marketQuotes).length > 0 ? marketQuotes : null,
   };
 
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { ...CORS, 'Content-Type': 'application/json' },
+  return jsonResponse(req, body, 200, {
+    'Cache-Control': 'private, max-age=900',
+    'Vary': 'Origin, x-finnhub-key, Authorization',
   });
 };
