@@ -236,6 +236,9 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
   const upside = displayPrice && spotPrice
     ? ((displayPrice - spotPrice) / spotPrice * 100).toFixed(1)
     : null;
+  // Markers need a range to sit in: when high === low there is no position (x / 0 is NaN%).
+  const span = pt.high - pt.low;
+  const hasSpan = Number.isFinite(span) && span > 0;
 
   return (
     <div className="space-y-3">
@@ -279,22 +282,24 @@ function AnalystPanel({ analysts, spotPrice, loading }) {
 
           {pt.low != null && pt.high != null && (
             <div className="relative h-2 rounded-full bg-[var(--color-surface-2)]">
-              {spotPrice && pt.low != null && pt.high != null && (
+              {hasSpan && spotPrice > 0 && (
                 <div
                   className="absolute top-0 h-full w-0.5 bg-[var(--color-warn)] rounded"
                   style={{
-                    left: `${Math.max(0, Math.min(100, ((spotPrice - pt.low) / (pt.high - pt.low)) * 100))}%`,
+                    left: `${Math.max(0, Math.min(100, ((spotPrice - pt.low) / span) * 100))}%`,
                   }}
                   title={`Spot: $${spotPrice.toFixed(2)}`}
                 />
               )}
-              <div
-                className="absolute top-0 h-full w-1 bg-[var(--color-accent)] rounded"
-                style={{
-                  left: `${Math.max(0, Math.min(100, (((pt.mean ?? pt.median) - pt.low) / (pt.high - pt.low)) * 100))}%`,
-                }}
-                title={`${pt.mean != null ? `Mean: $${pt.mean.toFixed(2)}` : ''}${pt.mean != null && pt.median != null ? ' ' : ''}${pt.median != null ? `Median: $${pt.median.toFixed(2)}` : ''}`}
-              />
+              {hasSpan && (pt.mean ?? pt.median) != null && (
+                <div
+                  className="absolute top-0 h-full w-1 bg-[var(--color-accent)] rounded"
+                  style={{
+                    left: `${Math.max(0, Math.min(100, (((pt.mean ?? pt.median) - pt.low) / span) * 100))}%`,
+                  }}
+                  title={`${pt.mean != null ? `Mean: $${pt.mean.toFixed(2)}` : ''}${pt.mean != null && pt.median != null ? ' ' : ''}${pt.median != null ? `Median: $${pt.median.toFixed(2)}` : ''}`}
+                />
+              )}
             </div>
           )}
 

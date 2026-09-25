@@ -4,14 +4,14 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { formatDollar, formatCompact } from '../lib/format';
+import { formatDollar, formatCompact, formatShortDate } from '../lib/format';
 
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
   return (
     <div className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-3 py-2 shadow-lg text-xs">
-      <p className="font-semibold text-[var(--color-text-primary)] mb-1">{d?.date}</p>
+      <p className="font-semibold text-[var(--color-text-primary)] mb-1">{formatShortDate(d?.date)}</p>
       <p className="tabular-nums" style={{ color: d?.netPremium >= 0 ? 'var(--color-bull)' : 'var(--color-bear)' }}>
         Daily Net: {formatDollar(d?.netPremium)}
       </p>
@@ -53,7 +53,7 @@ export default function FlowChart({ data, loading }) {
             Net Premium Flow (30d)
           </h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            Cumulative institutional premium direction. Trend depends on lookback window.
+            Cumulative premium traded (calls − puts, volume × mid). Trend depends on lookback window.
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
@@ -85,10 +85,7 @@ export default function FlowChart({ data, loading }) {
           <XAxis
             dataKey="date"
             tick={{ fontSize: 11, fill: 'var(--color-text-muted)' }}
-            tickFormatter={(v) => {
-              const d = new Date(v);
-              return `${d.getMonth() + 1}/${d.getDate()}`;
-            }}
+            tickFormatter={formatShortDate}
             axisLine={{ stroke: 'var(--color-border-subtle)' }}
             tickLine={false}
             interval="preserveStartEnd"

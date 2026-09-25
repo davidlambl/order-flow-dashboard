@@ -1,7 +1,9 @@
 // src/lib/mockData.js
-// Generates realistic mock data for development and demo purposes.
-// When the UW API is not configured or returns errors, the dashboard
-// falls back to this data so the UI is always demonstrable.
+// Generates realistic mock data for development and demo purposes. The dashboard shows it
+// under `npm run dev` (Vite alone, no Netlify Functions) and whenever market data fails
+// before anything real has loaded for a ticker, so the UI is always demonstrable.
+
+import { toLocalISODate } from './format.js';
 
 export function generateMockData(ticker = 'AVGO') {
   const basePrice = ticker === 'AVGO' ? 178.50 : 150 + Math.random() * 200;
@@ -28,7 +30,9 @@ export function generateMockData(ticker = 'AVGO') {
     });
   }
 
-  // 30-day net premium history
+  // 30-day net premium history, weekdays only. Rows are labelled with the local calendar
+  // date, the same day getDay() tested (toISOString() gives the UTC date, a day off near
+  // midnight in far time zones).
   const flowHistory = [];
   let date = new Date();
   date.setDate(date.getDate() - 30);
@@ -39,7 +43,7 @@ export function generateMockData(ticker = 'AVGO') {
     const dailyNet = (Math.random() - 0.45) * 10_000_000;
     runningPrem += dailyNet;
     flowHistory.push({
-      date: date.toISOString().split('T')[0],
+      date: toLocalISODate(date),
       netPremium: dailyNet,
       cumPremium: runningPrem,
       callVolume: Math.floor(5000 + Math.random() * 15000),
