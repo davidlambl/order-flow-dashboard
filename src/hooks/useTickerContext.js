@@ -20,6 +20,8 @@ function getCached(ticker) {
 }
 
 function setCache(ticker, data) {
+  // Delete first so a refreshed key moves to the end of insertion order (LRU-ish eviction)
+  cache.delete(ticker);
   cache.set(ticker, { data, ts: Date.now() });
   // Evict oldest entries when cache exceeds size limit to prevent memory leaks
   if (cache.size > MAX_CACHE_SIZE) {
