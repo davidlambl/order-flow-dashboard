@@ -3,6 +3,14 @@ import { useState, useRef, useEffect } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
 import { formatPrice } from '../lib/format';
 
+// Why getMarketData served CBOE although a Tradier key was available (payload `fallbackReason`).
+const FALLBACK_REASON_TEXT = {
+  'tradier-timeout': 'Tradier timed out',
+  'tradier-error': 'Tradier request failed',
+  'tradier-no-spot': 'Tradier returned no spot price',
+  'tradier-no-options': 'Tradier returned no options',
+};
+
 export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, onLogout, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh, liveQuote, spotPrice }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
@@ -28,6 +36,11 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
         second: '2-digit',
       })
     : '\u2014';
+
+  const fallbackText = !usingMock && data?.fallbackReason
+    ? FALLBACK_REASON_TEXT[data.fallbackReason] || data.fallbackReason
+    : null;
+  const cboeColorClass = fallbackText ? 'text-[var(--color-warn)]' : 'text-[var(--color-accent)]';
 
   return (
     <header className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
@@ -184,7 +197,12 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           </div>
         )}
         <span className="hidden md:inline tabular-nums">{timeStr}</span>
-        <div className="flex items-center gap-1 sm:gap-1.5" title={usingMock ? 'Using demo data' : `${data?.provider || 'CBOE'} \u2014 ${data?.delay || 'delayed'}`}>
+        <div
+          className="flex items-center gap-1 sm:gap-1.5"
+          title={usingMock
+            ? 'Using demo data'
+            : `${data?.provider || 'CBOE'} \u2014 ${data?.delay || 'delayed'}${fallbackText ? ` \u00b7 fallback: ${fallbackText}` : ''}`}
+        >
           {usingMock ? (
             <>
               <WifiOff size={12} className="text-[var(--color-warn)]" />
@@ -202,8 +220,8 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             </>
           ) : (
             <>
-              <Wifi size={12} className="text-[var(--color-accent)]" />
-              <span className="text-[var(--color-accent)] font-medium hidden sm:inline">CBOE</span>
+              <Wifi size={12} className={cboeColorClass} />
+              <span className={`${cboeColorClass} font-medium hidden sm:inline`}>CBOE</span>
             </>
           )}
         </div>

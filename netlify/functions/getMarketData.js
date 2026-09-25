@@ -7,8 +7,16 @@
 //   Tier 2 (Delayed):    CBOE public     — no key needed, 15-min delayed
 //                                           Always available as fallback; what anonymous callers get
 //
-// All providers feed into the same computation pipeline (GEX, Max Pain, P/C, Net Premium).
-// The frontend doesn't know or care which provider is active.
+// A provider's answer is validated before it is accepted: it needs a positive spot
+// price and at least one contract in the expiry window. When Tradier throws, times
+// out or answers with unusable data, the request falls back to CBOE and the payload's
+// `fallbackReason` says why (the Header shows it on the provider badge):
+//   null | 'tradier-timeout' | 'tradier-error' | 'tradier-no-spot' | 'tradier-no-options'
+//
+// Every provider's chain goes through normalizeChain (expiries already past in ET are
+// dropped, the EXPIRY_WINDOW nearest are kept), so GEX, Max Pain, P/C and Net Premium
+// are measured on the same expiries whichever provider served them. The payload's
+// `expiries` lists that window; `kpis.maxPainExpiry` is the expiry max pain used.
 
 import {
   preflight, jsonResponse, errorResponse, newRequestId,
@@ -19,6 +27,7 @@ import { parseTicker } from './lib/ticker.js';
 import {
   fetchCBOE,
   fetchTradier,
+  normalizeChain,
   computeGEX,
   computeMaxPain,
   computePutCallRatio,
@@ -91,32 +100,50 @@ export default async (req) => {
   }
 
   try {
-    let rawData;
+    // ── Provider selection: validate each answer BEFORE accepting it ──
+    const now = new Date();
+    const cboeAttempt = { name: 'cboe', run: () => fetchCBOE(ticker, req.signal) };
+    const attempts = tradierKey
+      ? [{ name: 'tradier', run: () => fetchTradier(ticker, tradierKey, req.signal) }, cboeAttempt]
+      : [cboeAttempt];
+
+    let rawData = null;
+    let chain = null;
     let fallbackReason = null;
-    if (tradierKey) {
+    for (const attempt of attempts) {
       try {
-        rawData = await fetchTradier(ticker, tradierKey, req.signal);
-      } catch (tradierErr) {
-        console.warn(`[${requestId}] Tradier (${keySource} key) failed, falling back to CBOE:`, tradierErr.message);
-        fallbackReason = isTimeoutError(tradierErr) ? 'tradier-timeout' : 'tradier-error';
-        rawData = await fetchCBOE(ticker, req.signal);
+        const candidate = await attempt.run();
+        const spot = Number(candidate.spotPrice);
+        const normalized = Number.isFinite(spot) && spot > 0 ? normalizeChain(candidate.options, { now }) : null;
+        const problem = !normalized ? 'no-spot' : normalized.options.length === 0 ? 'no-options' : null;
+        if (!problem) {
+          rawData = candidate;
+          chain = normalized;
+          break;
+        }
+        if (attempt.name === 'tradier') {
+          fallbackReason = `tradier-${problem}`;
+          console.warn(`[${requestId}] Tradier (${keySource} key) ${problem}, falling back to CBOE`);
+          continue;
+        }
+        // CBOE is the last resort: report its unusable answer, plus why Tradier was skipped.
+        return problem === 'no-spot'
+          ? jsonResponse(req, { error: `No valid spot price for ${ticker}`, code: 'NO_SPOT_PRICE', provider: candidate.provider, fallbackReason, requestId }, 502)
+          : jsonResponse(req, { error: `No options data found for ${ticker}`, code: 'NO_OPTIONS', provider: candidate.provider, fallbackReason, requestId }, 404);
+      } catch (err) {
+        if (attempt.name !== 'tradier') throw err; // CBOE failed too → outer catch (504 / 502)
+        fallbackReason = isTimeoutError(err) ? 'tradier-timeout' : 'tradier-error';
+        console.warn(`[${requestId}] Tradier (${keySource} key) failed, falling back to CBOE:`, err.message);
       }
-    } else {
-      rawData = await fetchCBOE(ticker, req.signal);
     }
 
-    const { options, spotPrice: rawSpotPrice, provider, delay } = rawData;
-    const spotPrice = Number(rawSpotPrice);
-
-    if (!Number.isFinite(spotPrice) || spotPrice <= 0) {
-      return jsonResponse(req, { error: `No valid spot price for ${ticker}`, code: 'NO_SPOT_PRICE', provider, requestId }, 502);
-    }
-    if (!options || options.length === 0) {
-      return jsonResponse(req, { error: `No options data found for ${ticker}`, code: 'NO_OPTIONS', provider, requestId }, 404);
-    }
+    const { provider, delay } = rawData;
+    const spotPrice = Number(rawData.spotPrice);
+    // Metrics are computed on the normalized expiry window only (identical for every provider).
+    const { options, expiries } = chain;
 
     const gexByStrike = computeGEX(options, spotPrice);
-    const maxPain = computeMaxPain(options);
+    const maxPain = computeMaxPain(options, { now });
     const pcRatio = computePutCallRatio(options);
     const premium = computeNetPremium(options);
     const darkPoolPct = estimateDarkPoolPct(rawData.volume, rawData.iv30);
@@ -137,12 +164,14 @@ export default async (req) => {
       iv30: rawData.iv30,
       lastTradeTime: rawData.lastTradeTime,
       totalOptionsCount: options.length,
+      expiries,
       kpis: {
         netPremium: premium.netPremium,
         callPremium: premium.callPremium,
         putPremium: premium.putPremium,
         darkPoolPct,
-        maxPain,
+        maxPain: maxPain?.strike ?? null,
+        maxPainExpiry: maxPain?.expiry ?? null,
         putCallRatio: pcRatio.volumeRatio,
         putCallOIRatio: pcRatio.oiRatio,
         callVolume: pcRatio.callVolume,

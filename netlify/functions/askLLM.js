@@ -41,13 +41,14 @@ ${financialContext || 'No data available yet.'}
 
 ANALYSIS GUIDELINES:
 - Reference the exact numbers from the data above. Never make up values.
-- When discussing Net Premium, specify if it's bullish (positive) or bearish (negative) and the magnitude.
+- "Premium Traded" is calls minus puts by volume × mid price with no buy/sell inference; say which side dominated and by how much, and do not present it as confirmed directional flow.
 - For GEX/Gamma Exposure, identify the "pin" strikes where dealers will hedge.
-- For Dark Pool data, note if off-exchange volume is unusually high (>40%) or low (<30%).
+- Dark Pool % is a statistical estimate derived from IV, not measured off-exchange volume; treat it as low-confidence colour, not evidence.
 - For Max Pain, explain how far the current price is from max pain and what that implies for expiration.
 - For Put/Call Ratio, contextualize: <0.7 is bullish, 0.7-1.0 neutral, >1.0 bearish.
 - Be direct. Use short paragraphs. Bold key numbers and levels.
 - If the data is unavailable or stale, say so rather than speculating.
+- Metrics shown as "—" or "n/a" are unavailable; say so instead of inferring them.
 - Sign off observations with a confidence level: HIGH / MEDIUM / LOW.`;
 }
 

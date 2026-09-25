@@ -40,7 +40,7 @@ function buildFinancialContext(data, costBasis, shares, tickerCtx, strategicCont
   if (!data) return 'Dashboard data not yet loaded.';
 
   const { ticker, kpis, gexByStrike, flowHistory, lastUpdated, spotPrice,
-    iv30, totalOptionsCount, priceChange, priceChangePct, provider, delay } = data;
+    iv30, totalOptionsCount, expiries, priceChange, priceChangePct, provider, delay } = data;
   const k = kpis || {};
   const now = new Date().toISOString();
   
@@ -358,16 +358,16 @@ ${rec.reasons.map((r) => `  • ${r}`).join('\n')}`;
 
   return `TICKER: ${ticker}
 TIMESTAMP: ${now}
-DATA LAST UPDATED: ${lastUpdated}${staleness}${sourceNote ? `\n${sourceNote}` : ''}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
+DATA LAST UPDATED: ${lastUpdated}${staleness}${sourceNote ? `\n${sourceNote}` : ''}${totalOptionsCount ? `\nCONTRACTS ANALYZED: ${totalOptionsCount.toLocaleString()}` : ''}${Array.isArray(expiries) && expiries.length > 0 ? `\nEXPIRIES ANALYZED: ${expiries.join(', ')}` : ''}${iv30 != null ? `\nIV30: ${iv30.toFixed(1)}%` : ''}
 SPOT PRICE: ${formatPrice(spotPrice)}${priceChangeNote}
 ${positionBlock}
 KPI SUMMARY:
-  Net Premium: ${formatDollar(k.netPremium)} (${k.netPremium >= 0 ? 'BULLISH' : 'BEARISH'})
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): ${formatDollar(k.netPremium)} (${k.netPremium == null ? 'n/a' : k.netPremium >= 0 ? 'call-heavy' : 'put-heavy'})
     Call Premium: ${formatDollar(k.callPremium)}
     Put Premium: ${formatDollar(k.putPremium)}
-  Dark Pool Volume: ${formatPct(k.darkPoolPct)} — ${dpLevel}
-  Max Pain (Weekly): ${formatPrice(k.maxPain)}${maxPainDist}
-  Put/Call Ratio: ${formatRatio(k.putCallRatio)} (${k.putCallRatio > 1 ? 'Bearish' : k.putCallRatio < 0.7 ? 'Bullish' : 'Neutral'})
+  Dark Pool Volume (statistical estimate from IV, not reported data): ${formatPct(k.darkPoolPct)} — ${dpLevel}
+  Max Pain (${k.maxPainExpiry || 'nearest open expiry'}): ${formatPrice(k.maxPain)}${maxPainDist}
+  Put/Call Ratio: ${formatRatio(k.putCallRatio)} (${k.putCallRatio == null ? 'n/a' : k.putCallRatio > 1 ? 'Bearish' : k.putCallRatio < 0.7 ? 'Bullish' : 'Neutral'})
 
 TOP 5 GEX STRIKES (by magnitude):
 ${topGex || '  No GEX data'}${gexStructure}

@@ -1,9 +1,9 @@
 // netlify/functions/lib/marketDataHelpers.js
 // Shared computation functions for options data — used by getMarketData and collectFlowHistory.
 
-import { fetchWithTimeout } from './http.js';
+import { fetchWithTimeout, isTimeoutError } from './http.js';
 import { parseTicker } from './ticker.js';
-import { etDateString } from '../../../shared/marketCalendar.js';
+import { etDateString, isExpiryClosed } from '../../../shared/marketCalendar.js';
 
 /** Number of nearest expiries every provider is measured on (see normalizeChain). */
 export const EXPIRY_WINDOW = 6;
@@ -44,7 +44,7 @@ export async function fetchCBOE(rawTicker, signal = null) {
     spotPrice: data.current_price ?? 0,
     priceChange: data.price_change ?? 0,
     priceChangePct: data.price_change_percent ?? 0,
-    iv30: data.iv30 ?? 0,
+    iv30: data.iv30 ?? null,
     volume: data.volume ?? 0,
     lastTradeTime: data.last_trade_time || null,
     options: (data.options || []).map((opt) => ({
@@ -72,6 +72,7 @@ export async function fetchTradier(rawTicker, apiKey, signal = null) {
 
   let expirations = [];
   let baseUrl = bases[0];
+  let baseTimeout = null;
 
   for (const base of bases) {
     try {
@@ -89,10 +90,14 @@ export async function fetchTradier(rawTicker, apiKey, signal = null) {
           break;
         }
       }
-    } catch { /* try next base */ }
+    } catch (err) {
+      // Try the next base; remember a timeout so it is reported as one if no base answers.
+      if (isTimeoutError(err)) baseTimeout = err;
+    }
   }
 
   if (expirations.length === 0) {
+    if (baseTimeout) throw baseTimeout;
     throw new Error('Tradier: no expiration dates found');
   }
 
@@ -116,7 +121,16 @@ export async function fetchTradier(rawTicker, apiKey, signal = null) {
     ).then((r) => (r.ok ? r.json() : null)).catch(() => null)
   );
 
+  // null = that chain fetch failed (non-OK status, network error, timeout or bad JSON).
   const chainResults = await Promise.all(chainPromises);
+  const failedChains = chainResults.filter((r) => r == null).length;
+  if (failedChains === chainResults.length) {
+    // Nothing usable: throw so the handler falls back to CBOE instead of serving an empty chain.
+    throw new Error('Tradier: all chain fetches failed');
+  }
+  if (failedChains > 0) {
+    console.warn(`Tradier: ${failedChains} of ${chainResults.length} chain fetches failed for ${ticker}; using the rest`);
+  }
 
   const allOptions = [];
   for (const result of chainResults) {
@@ -147,7 +161,7 @@ export async function fetchTradier(rawTicker, apiKey, signal = null) {
     spotPrice: quote.last ?? quote.close ?? 0,
     priceChange: quote.change ?? 0,
     priceChangePct: quote.change_percentage ?? 0,
-    iv30: 0,
+    iv30: null, // Tradier quotes carry no IV30; null renders as "—", never "0.0%"
     volume: quote.volume ?? 0,
     lastTradeTime: quote.trade_date || null,
     options: allOptions,
@@ -223,48 +237,63 @@ export function computeGEX(options, spotPrice) {
     .sort((a, b) => a.strike - b.strike);
 }
 
-export function computeMaxPain(options) {
-  const expiries = new Set();
-  for (const opt of options) {
-    const parsed = parseOptionSymbol(opt.symbol);
-    if (parsed) expiries.add(parsed.expiry);
-  }
-  const nearest = [...expiries].sort()[0];
-  if (!nearest) return 0;
-
-  const strikeOI = {};
-  for (const opt of options) {
-    const parsed = parseOptionSymbol(opt.symbol);
-    if (!parsed || parsed.expiry !== nearest) continue;
-    const oi = opt.openInterest || 0;
-    if (oi === 0) continue;
-
-    const s = parsed.strike;
-    if (!strikeOI[s]) strikeOI[s] = { callOI: 0, putOI: 0 };
-    if (parsed.type === 'call') strikeOI[s].callOI += oi;
-    else strikeOI[s].putOI += oi;
-  }
-
-  const strikes = Object.keys(strikeOI).map(Number).sort((a, b) => a - b);
-  if (strikes.length === 0) return 0;
-
-  let minPain = Infinity;
-  let maxPainStrike = 0;
-
-  for (const testStrike of strikes) {
-    let totalPain = 0;
-    for (const s of strikes) {
-      const { callOI, putOI } = strikeOI[s];
-      if (testStrike > s) totalPain += (testStrike - s) * callOI * 100;
-      if (testStrike < s) totalPain += (s - testStrike) * putOI * 100;
+/**
+ * Max pain for the nearest expiry that can still trade. Expiries are tried in
+ * ascending order, skipping any already closed at `now` (Eastern Time — e.g. a
+ * 0DTE after the 4:15 PM options close) and any with no open interest.
+ *
+ * @returns {{ strike: number, expiry: string } | null}  null when no open expiry has OI
+ */
+export function computeMaxPain(options, { now = new Date() } = {}) {
+  const byExpiry = new Map();
+  for (const opt of options || []) {
+    const parsed = typeof opt?.symbol === 'string' ? parseOptionSymbol(opt.symbol) : null;
+    if (!parsed) continue;
+    let bucket = byExpiry.get(parsed.expiry);
+    if (!bucket) {
+      bucket = [];
+      byExpiry.set(parsed.expiry, bucket);
     }
-    if (totalPain < minPain) {
-      minPain = totalPain;
-      maxPainStrike = testStrike;
-    }
+    bucket.push({ opt, parsed });
   }
 
-  return maxPainStrike;
+  for (const expiry of [...byExpiry.keys()].sort()) {
+    if (isExpiryClosed(expiry, now)) continue;
+
+    const strikeOI = {};
+    for (const { opt, parsed } of byExpiry.get(expiry)) {
+      const oi = opt.openInterest || 0;
+      if (oi === 0) continue;
+
+      const s = parsed.strike;
+      if (!strikeOI[s]) strikeOI[s] = { callOI: 0, putOI: 0 };
+      if (parsed.type === 'call') strikeOI[s].callOI += oi;
+      else strikeOI[s].putOI += oi;
+    }
+
+    const strikes = Object.keys(strikeOI).map(Number).sort((a, b) => a - b);
+    if (strikes.length === 0) continue; // no open interest on this expiry: try the next
+
+    let minPain = Infinity;
+    let maxPainStrike = 0;
+
+    for (const testStrike of strikes) {
+      let totalPain = 0;
+      for (const s of strikes) {
+        const { callOI, putOI } = strikeOI[s];
+        if (testStrike > s) totalPain += (testStrike - s) * callOI * 100;
+        if (testStrike < s) totalPain += (s - testStrike) * putOI * 100;
+      }
+      if (totalPain < minPain) {
+        minPain = totalPain;
+        maxPainStrike = testStrike;
+      }
+    }
+
+    return { strike: maxPainStrike, expiry };
+  }
+
+  return null;
 }
 
 export function computePutCallRatio(options) {
@@ -283,9 +312,10 @@ export function computePutCallRatio(options) {
     }
   }
 
+  // No call volume / OI means the ratio is undefined, not 0 (which would read as very bullish).
   return {
-    volumeRatio: callVol > 0 ? putVol / callVol : 0,
-    oiRatio: callOI > 0 ? putOI / callOI : 0,
+    volumeRatio: callVol > 0 ? putVol / callVol : null,
+    oiRatio: callOI > 0 ? putOI / callOI : null,
     callVolume: callVol,
     putVolume: putVol,
     callOI,

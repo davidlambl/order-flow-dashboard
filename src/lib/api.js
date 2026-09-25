@@ -25,7 +25,8 @@ function apiError(body, status, fallback) {
 
 /**
  * Fetch computed market data from our serverless function.
- * Supports BYOK Tradier for real-time data; falls back to free CBOE delayed quotes.
+ * Supports BYOK Tradier for real-time data (or the server's key for access-token holders,
+ * hence the Authorization header); falls back to free CBOE delayed quotes.
  * @param {string} ticker - Stock symbol
  * @param {AbortSignal|null} [signal] - Optional abort signal for cancellation
  */
@@ -33,7 +34,7 @@ export async function fetchMarketData(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getMarketData?${params}`;
 
-  const headers = {};
+  const headers = { ...getAuthHeaders() };
   const tradierKey = getPreference('data_tradier_key');
   if (tradierKey) headers['x-tradier-key'] = tradierKey;
 
@@ -143,7 +144,7 @@ export async function fetchTickerContext(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getTickerContext?${params}`;
 
-  const headers = {};
+  const headers = { ...getAuthHeaders() };
   const finnhubKey = getPreference('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
@@ -184,16 +185,16 @@ export async function fetchModels(userApiKey = null, provider = 'anthropic') {
 
 /**
  * Fetches real-time stock quote via Netlify function.
- * Uses Yahoo Finance (including extended hours and futures-implied pricing where available) and falls back to Finnhub.
+ * Uses Yahoo Finance (including extended hours where available) and falls back to Finnhub.
  * @param {string} ticker - Stock symbol
  * @param {AbortSignal|null} [signal] - Optional abort signal for request cancellation
- * @returns {Promise<Object>} Quote data with source indicator (yahoo-post, yahoo-pre, futures-implied, yahoo-regular, or finnhub)
+ * @returns {Promise<Object>} Quote data with source indicator (yahoo-post, yahoo-pre, yahoo-regular, or finnhub)
  */
 export async function fetchLiveQuote(ticker, signal = null) {
   const params = new URLSearchParams({ ticker });
   const url = `${FUNCTION_BASE}/getLiveQuote?${params}`;
 
-  const headers = {};
+  const headers = { ...getAuthHeaders() };
   const finnhubKey = getPreference('data_finnhub_key');
   if (finnhubKey) headers['x-finnhub-key'] = finnhubKey;
 
