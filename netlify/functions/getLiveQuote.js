@@ -126,6 +126,38 @@ async function fetchNasdaqFutures() {
 }
 
 /**
+ * Get current Eastern-Time hour, minute, and weekday from Intl.DateTimeFormat.
+ * Shared by isPreMarketWindow / isUSMarketOpen to avoid duplicating the
+ * Intl.DateTimeFormat ceremony in two IIFEs.
+ *
+ * Returns { h, m, mins, weekday } where weekday is en-US short form ('Mon' … 'Sun')
+ * and mins is h*60+m, or null when the formatter throws.
+ */
+function getETTimeParts() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: '2-digit',
+      minute: '2-digit',
+      weekday: 'short',
+      hour12: false,
+    }).formatToParts(new Date());
+    const partMap = {};
+    for (const p of parts) {
+      if (p.type === 'hour' || p.type === 'minute' || p.type === 'weekday') {
+        partMap[p.type] = p.value;
+      }
+    }
+    const h = Number(partMap.hour);
+    const m = Number(partMap.minute);
+    if (Number.isNaN(h) || Number.isNaN(m) || !partMap.weekday) return null;
+    return { h, m, mins: h * 60 + m, weekday: partMap.weekday };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extract the latest extended-hours price from Yahoo chart time series candles.
  * When meta.postMarketPrice / meta.preMarketPrice are not populated (common),
  * the actual after-hours or pre-market candles still appear in the 1-minute
@@ -134,10 +166,13 @@ async function fetchNasdaqFutures() {
  * Skips extraction when `now` falls inside the regular trading session to avoid
  * returning a stale pre-market candle during market hours.
  *
+ * @param {object} result  Yahoo chart result object
+ * @param {boolean} preferPre  When true, scan pre-market candles before post-market
+ *
  * Returns { price, timestamp, session } or null if no extended-hours candle is found.
  *   session: 'post' | 'pre'
  */
-function extractExtendedHoursPrice(result) {
+function extractExtendedHoursPrice(result, preferPre = false) {
   const meta = result.meta;
   const timestamps = result.timestamp || [];
   const closes = result.indicators?.quote?.[0]?.close || [];
@@ -166,30 +201,25 @@ function extractExtendedHoursPrice(result) {
   const preStart  = tradingPeriods.pre?.start;
   const preEnd    = tradingPeriods.pre?.end;
 
-  // Try post-market first (more common: user checks after close).
-  // Scan whenever we're outside regular hours — candles in the post-market
-  // window are still valid even after the session formally ends (e.g., 8:05pm ET).
-  if (postStart && postEnd) {
+  // Helper: scan a single session window for the latest candle.
+  const scanSession = (start, end, label) => {
+    if (!start || !end) return null;
     for (let i = timestamps.length - 1; i >= 0; i--) {
       const ts = timestamps[i];
-      if (ts >= postStart && ts <= postEnd && ts <= now && isFiniteNum(closes[i])) {
-        return { price: Number(closes[i]), timestamp: ts, session: 'post' };
+      if (ts >= start && ts <= end && ts <= now && isFiniteNum(closes[i])) {
+        return { price: Number(closes[i]), timestamp: ts, session: label };
       }
     }
-  }
+    return null;
+  };
 
-  // Try pre-market with the same logic: use the latest candle in the pre
-  // window that is not in the future.
-  if (preStart && preEnd) {
-    for (let i = timestamps.length - 1; i >= 0; i--) {
-      const ts = timestamps[i];
-      if (ts >= preStart && ts <= preEnd && ts <= now && isFiniteNum(closes[i])) {
-        return { price: Number(closes[i]), timestamp: ts, session: 'pre' };
-      }
-    }
-  }
+  // During pre-market, scan pre candles first so we don't return a stale
+  // post-market candle from the previous evening.
+  const first  = preferPre ? ['pre', preStart, preEnd] : ['post', postStart, postEnd];
+  const second = preferPre ? ['post', postStart, postEnd] : ['pre', preStart, preEnd];
 
-  return null;
+  return scanSession(first[1], first[2], first[0])
+      || scanSession(second[1], second[2], second[0]);
 }
 
 /**
@@ -223,29 +253,43 @@ async function fetchYahooQuote(ticker) {
   let currentTimestamp = null;
   let source = 'yahoo-regular';
   
-  // 1. Check for post-market (after-hours) price from meta fields
-  if (isFiniteNum(meta.postMarketPrice) && isFiniteNum(meta.postMarketTime)) {
+  // Determine which extended-hours session to prioritize based on current ET time.
+  // During pre-market (4:00-9:30 AM ET on weekdays), prefer preMarketPrice over
+  // stale postMarketPrice.  Uses shared helper to avoid duplicating DateTimeFormat logic.
+  const etParts = getETTimeParts();
+  const isPreMarketWindow = etParts != null
+    && etParts.weekday !== 'Sat' && etParts.weekday !== 'Sun'
+    && etParts.mins >= 240 && etParts.mins < 570; // 4:00 AM - 9:30 AM ET, weekdays only
+
+  // 1. During pre-market window, check pre-market first
+  if (isPreMarketWindow && isFiniteNum(meta.preMarketPrice) && isFiniteNum(meta.preMarketTime)) {
+    currentPrice = Number(meta.preMarketPrice);
+    currentTimestamp = Number(meta.preMarketTime);
+    source = 'yahoo-pre';
+  }
+  // 2. Check for post-market (after-hours) price
+  else if (isFiniteNum(meta.postMarketPrice) && isFiniteNum(meta.postMarketTime)) {
     currentPrice = Number(meta.postMarketPrice);
     currentTimestamp = Number(meta.postMarketTime);
     source = 'yahoo-post';
   }
-  // 2. Check for pre-market price from meta fields
+  // 3. Check for pre-market price (outside pre-market window, as fallback)
   else if (isFiniteNum(meta.preMarketPrice) && isFiniteNum(meta.preMarketTime)) {
     currentPrice = Number(meta.preMarketPrice);
     currentTimestamp = Number(meta.preMarketTime);
     source = 'yahoo-pre';
   }
-  // 3. Extract extended-hours price from time series candles
+  // 4. Extract extended-hours price from time series candles
   //    (meta fields are often unpopulated even when candles exist)
   else {
-    const extHours = extractExtendedHoursPrice(result);
+    const extHours = extractExtendedHoursPrice(result, isPreMarketWindow);
     if (extHours) {
       currentPrice = extHours.price;
       currentTimestamp = extHours.timestamp;
       source = extHours.session === 'pre' ? 'yahoo-pre' : 'yahoo-post';
     }
   }
-  // 4. Fall back to regular market price
+  // 5. Fall back to regular market price
   if (!isFiniteNum(currentPrice) && isFiniteNum(meta.regularMarketPrice) && isFiniteNum(meta.regularMarketTime)) {
     currentPrice = Number(meta.regularMarketPrice);
     currentTimestamp = Number(meta.regularMarketTime);
@@ -275,34 +319,10 @@ async function fetchYahooQuote(ticker) {
   // Only apply when US equity market is closed to avoid overriding actual traded prices.
   if (source === 'yahoo-regular' && Number.isFinite(previousClose) && previousClose !== 0 && NASDAQ_100_CONSTITUENTS.has(ticker)) {
     // Check if US equity market is currently open (9:30 AM - 4:00 PM ET weekdays)
-    const isUSMarketOpen = (() => {
-      try {
-        const now = new Date();
-        const formatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/New_York',
-          hour: '2-digit',
-          minute: '2-digit',
-          weekday: 'short',
-          hour12: false,
-        });
-        const parts = formatter.formatToParts(now);
-        const partMap = {};
-        for (const p of parts) {
-          if (p.type === 'hour' || p.type === 'minute' || p.type === 'weekday') {
-            partMap[p.type] = p.value;
-          }
-        }
-        const h = Number(partMap.hour);
-        const m = Number(partMap.minute);
-        if (Number.isNaN(h) || Number.isNaN(m) || !partMap.weekday) {
-          return false;
-        }
-        const mins = h * 60 + m;
-        // US weekdays in 'en-US' short form: Mon, Tue, Wed, Thu, Fri
-        const isWeekday = partMap.weekday !== 'Sat' && partMap.weekday !== 'Sun';
-        return isWeekday && mins >= 570 && mins < 960;
-      } catch { return false; }
-    })();
+    // Reuses etParts computed earlier to avoid a second Intl.DateTimeFormat call.
+    const isUSMarketOpen = etParts != null
+      && etParts.weekday !== 'Sat' && etParts.weekday !== 'Sun'
+      && etParts.mins >= 570 && etParts.mins < 960;
 
     if (!isUSMarketOpen) {
       try {

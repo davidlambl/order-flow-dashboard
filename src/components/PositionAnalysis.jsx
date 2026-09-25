@@ -355,10 +355,16 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
   const handleSharesChange = (e) => {
     const val = e.target.value === '' ? null : parseFloat(e.target.value);
     if (val !== null && isNaN(val)) return;
-    onUpdate(costBasis, val);
+    onUpdate(costBasisNum ?? null, val);
   };
 
-  if (loading) return null;
+  if (loading) return (
+    <div className="space-y-3">
+      <div className="skeleton h-8 w-48" />
+      <div className="skeleton h-24 w-full" />
+      <div className="skeleton h-16 w-full" />
+    </div>
+  );
 
   return (
     <div>
