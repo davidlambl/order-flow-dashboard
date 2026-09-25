@@ -1,143 +1,242 @@
 // src/lib/recommend.js
 // Algorithmic position recommendation engine.
-// Scores 5 market factors and aggregates into a BUY / HOLD / SELL signal.
+// Scores up to 5 market factors (P&L vs basis, max-pain pull, GEX positioning, premium traded,
+// put/call ratio) and aggregates them into a BUY / HOLD / SELL signal. A factor whose input is
+// missing or invalid is skipped rather than scored neutral, and the bar for a directional call
+// scales with the number of factors actually scored (RECOMMENDATION in shared/thresholds.js).
+// Pure and Node-loadable (scripts/verify/recommend.mjs imports it), so relative imports carry
+// their extension.
 
-// Minimum gap percentage to trigger dual recommendation mode
-export const GAP_DUAL_REC_THRESHOLD_PCT = 0.5;
+import {
+  PUT_CALL, PNL_PCT, MAX_PAIN_PULL_PCT, GEX_NEAR_SPOT_PCT, RECOMMENDATION, GAP_DUAL_REC_THRESHOLD_PCT,
+} from '../../shared/thresholds.js';
+
+// Minimum live-vs-snapshot gap (percent) that triggers dual recommendation mode. Re-exported
+// because PositionAnalysis and ChatBot import it from here.
+export { GAP_DUAL_REC_THRESHOLD_PCT };
+
+/** Factors the engine can score; fewer are scored when inputs are missing. */
+const FACTOR_COUNT = 5;
+
+/** How many of the largest-|GEX| strikes the GEX factor looks at. */
+const GEX_FACTOR_STRIKES = 5;
+
+/** How many of the largest-|GEX| strikes the price-level bar picks its walls from. */
+const GEX_LEVEL_STRIKES = 8;
 
 /**
- * @param {{ costBasis: number, shares: number, spotPrice: number, kpis: object, gexByStrike: Array }} params
- * @returns {{ signal: 'BUY'|'HOLD'|'SELL', confidence: 'HIGH'|'MEDIUM'|'LOW', reasons: string[], pnl: { dollars: number, percent: number } }}
+ * Number(v) for numbers and numeric strings; NaN for null, undefined, '' and anything else.
+ * (Number(null) and Number('') are 0, which would score a missing input as a real one: a null
+ * put/call ratio would read as bullish.)
  */
-export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike }) {
-  if (!costBasis || !spotPrice || !kpis) return null;
+function toNumber(v) {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && v.trim() !== '') return Number(v);
+  return NaN;
+}
 
-  const k = kpis;
-  const numShares = Math.max(0, Number(shares) || 0);
-  const pnlDollars = (spotPrice - costBasis) * numShares;
-  const pnlPercent = ((spotPrice - costBasis) / costBasis) * 100;
-  const pnl = { dollars: pnlDollars, percent: pnlPercent };
+const isPositive = (n) => Number.isFinite(n) && n > 0;
 
-  const scores = [];
-  const reasons = [];
-
-  // Factor 1: P&L position
-  if (pnlPercent > 15) {
-    scores.push(-1);
-    reasons.push(`Up ${pnlPercent.toFixed(1)}% — consider taking profits`);
-  } else if (pnlPercent > 5) {
-    scores.push(0);
-    reasons.push(`Up ${pnlPercent.toFixed(1)}% — moderate gain`);
-  } else if (pnlPercent > -5) {
-    scores.push(0);
-    reasons.push(`Near breakeven (${pnlPercent > 0 ? '+' : ''}${pnlPercent.toFixed(1)}%)`);
-  } else if (pnlPercent > -15) {
-    scores.push(1);
-    reasons.push(`Down ${Math.abs(pnlPercent).toFixed(1)}% — potential recovery zone`);
-  } else {
-    scores.push(-1);
-    reasons.push(`Down ${Math.abs(pnlPercent).toFixed(1)}% — significant loss, reassess thesis`);
+/** Rows of gexByStrike with a positive finite strike and a finite gex, coerced; junk rows are dropped. */
+function finiteGexRows(gexByStrike) {
+  if (!Array.isArray(gexByStrike)) return [];
+  const rows = [];
+  for (const row of gexByStrike) {
+    const strike = toNumber(row?.strike);
+    const gex = toNumber(row?.gex);
+    if (isPositive(strike) && Number.isFinite(gex)) rows.push({ strike, gex });
   }
+  return rows;
+}
 
-  // Factor 2: Max pain magnet
-  if (k.maxPain) {
-    const distToMaxPain = ((spotPrice - k.maxPain) / k.maxPain) * 100;
-    if (distToMaxPain > 3) {
-      scores.push(-1);
-      reasons.push(`Spot is ${distToMaxPain.toFixed(1)}% above max pain ($${k.maxPain}) — likely pull toward it`);
-    } else if (distToMaxPain < -3) {
-      scores.push(1);
-      reasons.push(`Spot is ${Math.abs(distToMaxPain).toFixed(1)}% below max pain ($${k.maxPain}) — likely push toward it`);
-    } else {
-      scores.push(0);
-      reasons.push(`Spot near max pain ($${k.maxPain}) — pinning expected`);
-    }
-  }
-
-  // Factor 3: GEX positioning
-  if (gexByStrike && gexByStrike.length > 0) {
-    const sorted = [...gexByStrike].sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
-    const biggestStrikes = sorted.slice(0, 5);
-    const positiveGexAbove = biggestStrikes.some((s) => s.gex > 0 && s.strike > spotPrice);
-    const positiveGexBelow = biggestStrikes.some((s) => s.gex > 0 && s.strike < spotPrice);
-    const negativeGexNearby = biggestStrikes.some(
-      (s) => s.gex < 0 && Math.abs(s.strike - spotPrice) / spotPrice < 0.03
-    );
-
-    if (positiveGexBelow && !negativeGexNearby) {
-      scores.push(1);
-      reasons.push('Positive GEX below spot — dealer hedging provides support');
-    } else if (negativeGexNearby) {
-      scores.push(-1);
-      reasons.push('Negative GEX near spot — volatile, dealers amplify moves');
-    } else if (positiveGexAbove) {
-      scores.push(0);
-      reasons.push('Positive GEX above spot — resistance zone overhead');
-    } else {
-      scores.push(0);
-      reasons.push('GEX positioning neutral');
-    }
-  }
-
-  // Factor 4: Net premium flow
-  if (k.netPremium != null) {
-    if (k.netPremium > 0) {
-      scores.push(1);
-      reasons.push('Net premium is bullish — institutional call buying');
-    } else if (k.netPremium < 0) {
-      scores.push(-1);
-      reasons.push('Net premium is bearish — institutional put buying');
-    } else {
-      scores.push(0);
-      reasons.push('Net premium is neutral — balanced call/put flow');
-    }
-  }
-
-  // Factor 5: Put/Call ratio
-  if (k.putCallRatio != null) {
-    if (k.putCallRatio < 0.7) {
-      scores.push(1);
-      reasons.push(`P/C ratio ${k.putCallRatio.toFixed(2)} — bullish sentiment`);
-    } else if (k.putCallRatio > 1.0) {
-      scores.push(-1);
-      reasons.push(`P/C ratio ${k.putCallRatio.toFixed(2)} — bearish sentiment`);
-    } else {
-      scores.push(0);
-      reasons.push(`P/C ratio ${k.putCallRatio.toFixed(2)} — neutral`);
-    }
-  }
-
-  const sum = scores.reduce((a, b) => a + b, 0);
-  const signal = sum >= 2 ? 'BUY' : sum <= -2 ? 'SELL' : 'HOLD';
-
-  const dissents = scores.filter((s) => (sum >= 0 && s < 0) || (sum < 0 && s > 0)).length;
-  const confidence = dissents === 0 ? 'HIGH' : dissents <= 1 ? 'MEDIUM' : 'LOW';
-
-  return { signal, confidence, reasons, pnl };
+/** The `count` rows with the largest |gex|, largest first. */
+function largestByAbsGex(rows, count) {
+  return [...rows].sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex)).slice(0, count);
 }
 
 /**
- * Extract key price levels from market data for the position chart.
+ * Score a stock position against the current options positioning.
+ *
+ * Factors, each +1 (bullish), 0 (neutral) or -1 (bearish), skipped when its input is missing or invalid:
+ *   1. P&L vs cost basis in PNL_PCT bands (only with a positive cost basis)
+ *   2. Max-pain pull: spot more than MAX_PAIN_PULL_PCT away from a positive max pain
+ *   3. GEX positioning of the largest-|GEX| strikes (negative GEX within GEX_NEAR_SPOT_PCT of spot)
+ *   4. Premium traded, calls − puts by volume × mid (which side traded more, not aggressor-signed)
+ *   5. Put/call ratio in PUT_CALL bands
+ *
+ * Aggregation: with fewer than RECOMMENDATION.minFactors scored factors the result is HOLD / LOW
+ * with `threshold: null`. Otherwise the net score must reach
+ * `max(minDirectionalScore, ceil(directionalFraction × factorsUsed))` for BUY, or its negative for
+ * SELL. Confidence counts the factors dissenting from the call (for HOLD, the smaller of the
+ * bullish and bearish camps): 0 → HIGH, 1 → MEDIUM, 2+ → LOW, so mirrored inputs give the mirrored
+ * signal with the same confidence.
+ *
+ * @param {{ costBasis?: number|string|null, shares?: number|string|null, spotPrice: number|string,
+ *   kpis: { maxPain?: number|null, netPremium?: number|null, putCallRatio?: number|null },
+ *   gexByStrike?: Array<{ strike: number, gex: number }> }} params  numeric strings are coerced
+ * @returns {{
+ *   signal: 'BUY'|'HOLD'|'SELL',
+ *   confidence: 'HIGH'|'MEDIUM'|'LOW',
+ *   reasons: string[],
+ *   pnl: { dollars: number|null, percent: number|null, marketValue: number },
+ *   factorsUsed: number,
+ *   threshold: number|null,
+ *   score: number,
+ * } | null}  null unless spot is a positive number and kpis is present. `pnl.dollars` and
+ *   `pnl.percent` are null without a positive cost basis; `threshold` is the net score a BUY needs
+ *   (null when too few factors were scored); `score` is the net score.
+ */
+export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike }) {
+  const spot = toNumber(spotPrice);
+  if (!isPositive(spot) || !kpis) return null;
+
+  const k = kpis;
+  const basis = toNumber(costBasis);
+  const hasBasis = isPositive(basis);
+  const numShares = Math.max(0, Number(shares) || 0);
+  const pnl = {
+    dollars: hasBasis ? (spot - basis) * numShares : null,
+    percent: hasBasis ? ((spot - basis) / basis) * 100 : null,
+    marketValue: spot * numShares,
+  };
+
+  const scores = [];
+  const reasons = [];
+  const add = (score, reason) => {
+    scores.push(score);
+    reasons.push(reason);
+  };
+
+  // Factor 1: P&L position (needs a cost basis)
+  if (hasBasis) {
+    const pct = pnl.percent;
+    if (pct > PNL_PCT.takeProfitAbove) {
+      add(-1, `Up ${pct.toFixed(1)}% — consider taking profits`);
+    } else if (pct > PNL_PCT.moderateGainAbove) {
+      add(0, `Up ${pct.toFixed(1)}% — moderate gain`);
+    } else if (pct > -PNL_PCT.breakevenBand) {
+      add(0, `Near breakeven (${pct > 0 ? '+' : ''}${pct.toFixed(1)}%)`);
+    } else if (pct > PNL_PCT.recoveryZoneAbove) {
+      add(1, `Down ${Math.abs(pct).toFixed(1)}% — potential recovery zone`);
+    } else {
+      add(-1, `Down ${Math.abs(pct).toFixed(1)}% — significant loss, reassess thesis`);
+    }
+  }
+
+  // Factor 2: Max pain magnet (a max pain of 0 means "unknown", not a $0 strike)
+  const maxPain = toNumber(k.maxPain);
+  if (isPositive(maxPain)) {
+    const distToMaxPain = ((spot - maxPain) / maxPain) * 100;
+    if (distToMaxPain > MAX_PAIN_PULL_PCT) {
+      add(-1, `Spot is ${distToMaxPain.toFixed(1)}% above max pain ($${maxPain}) — likely pull toward it`);
+    } else if (distToMaxPain < -MAX_PAIN_PULL_PCT) {
+      add(1, `Spot is ${Math.abs(distToMaxPain).toFixed(1)}% below max pain ($${maxPain}) — likely push toward it`);
+    } else {
+      add(0, `Spot near max pain ($${maxPain}) — pinning expected`);
+    }
+  }
+
+  // Factor 3: GEX positioning of the largest strikes
+  const gexRows = finiteGexRows(gexByStrike);
+  if (gexRows.length > 0) {
+    const biggestStrikes = largestByAbsGex(gexRows, GEX_FACTOR_STRIKES);
+    const nearSpot = GEX_NEAR_SPOT_PCT / 100;
+    const positiveGexAbove = biggestStrikes.some((s) => s.gex > 0 && s.strike > spot);
+    const positiveGexBelow = biggestStrikes.some((s) => s.gex > 0 && s.strike < spot);
+    const negativeGexNearby = biggestStrikes.some(
+      (s) => s.gex < 0 && Math.abs(s.strike - spot) / spot < nearSpot
+    );
+
+    if (positiveGexBelow && !negativeGexNearby) {
+      add(1, 'Positive GEX below spot — dealer hedging provides support');
+    } else if (negativeGexNearby) {
+      add(-1, 'Negative GEX near spot — volatile, dealers amplify moves');
+    } else if (positiveGexAbove) {
+      add(0, 'Positive GEX above spot — resistance zone overhead');
+    } else {
+      add(0, 'GEX positioning neutral');
+    }
+  }
+
+  // Factor 4: Premium traded. Calls − puts by volume × mid says which side traded more premium,
+  // not who initiated the trades, so it is a tilt rather than signed "institutional buying".
+  const netPremium = toNumber(k.netPremium);
+  if (Number.isFinite(netPremium)) {
+    if (netPremium > 0) {
+      add(1, 'Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)');
+    } else if (netPremium < 0) {
+      add(-1, 'Premium traded is put-heavy (calls − puts by volume × mid, not aggressor-signed)');
+    } else {
+      add(0, 'Premium traded is balanced between calls and puts');
+    }
+  }
+
+  // Factor 5: Put/call ratio (null when there was no call volume: skipped, never read as bullish)
+  const pc = toNumber(k.putCallRatio);
+  if (Number.isFinite(pc)) {
+    if (pc < PUT_CALL.bullishBelow) {
+      add(1, `P/C ratio ${pc.toFixed(2)} — bullish sentiment`);
+    } else if (pc > PUT_CALL.bearishAbove) {
+      add(-1, `P/C ratio ${pc.toFixed(2)} — bearish sentiment`);
+    } else {
+      add(0, `P/C ratio ${pc.toFixed(2)} — neutral`);
+    }
+  }
+
+  // Aggregate: the bar for a directional call scales with the number of factors scored.
+  const n = scores.length;
+  const sum = scores.reduce((a, b) => a + b, 0);
+  if (n < RECOMMENDATION.minFactors) {
+    reasons.push(`Only ${n} of ${FACTOR_COUNT} factors available — not enough for a directional call`);
+    return { signal: 'HOLD', confidence: 'LOW', reasons, pnl, factorsUsed: n, threshold: null, score: sum };
+  }
+
+  const threshold = Math.max(
+    RECOMMENDATION.minDirectionalScore,
+    Math.ceil(RECOMMENDATION.directionalFraction * n)
+  );
+  const signal = sum >= threshold ? 'BUY' : sum <= -threshold ? 'SELL' : 'HOLD';
+  // Dissent = factors against the call; for HOLD, the smaller camp (an even split is low confidence).
+  const bulls = scores.filter((s) => s > 0).length;
+  const bears = scores.filter((s) => s < 0).length;
+  const dissent = signal === 'BUY' ? bears : signal === 'SELL' ? bulls : Math.min(bulls, bears);
+  const confidence = dissent === 0 ? 'HIGH' : dissent === 1 ? 'MEDIUM' : 'LOW';
+
+  return { signal, confidence, reasons, pnl, factorsUsed: n, threshold, score: sum };
+}
+
+/**
+ * Key price levels for the position bar: basis, spot, max pain, and the nearest positive-GEX walls
+ * on either side of spot among the GEX_LEVEL_STRIKES largest-|GEX| strikes (support = the highest
+ * such strike at or below spot, resistance = the lowest above it). A level is included only when
+ * its price is a positive number (numeric strings are coerced); the GEX walls also need a spot.
+ * @param {{ costBasis?: number|string|null, spotPrice?: number|string|null,
+ *   kpis?: { maxPain?: number|string|null }|null, gexByStrike?: Array<{ strike: number, gex: number }> }} params
+ * @returns {Array<{ price: number, label: string, color: string }>} ascending by price
  */
 export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) {
   const levels = [];
+  const basis = toNumber(costBasis);
+  const spot = toNumber(spotPrice);
+  const maxPain = toNumber(kpis?.maxPain);
 
-  if (costBasis) levels.push({ price: costBasis, label: 'Basis', color: 'var(--color-cyan)' });
-  if (spotPrice) levels.push({ price: spotPrice, label: 'Spot', color: 'var(--color-warn)' });
-  if (kpis?.maxPain) levels.push({ price: kpis.maxPain, label: 'Max Pain', color: 'var(--color-purple)' });
+  if (isPositive(basis)) levels.push({ price: basis, label: 'Basis', color: 'var(--color-cyan)' });
+  if (isPositive(spot)) levels.push({ price: spot, label: 'Spot', color: 'var(--color-warn)' });
+  if (isPositive(maxPain)) levels.push({ price: maxPain, label: 'Max Pain', color: 'var(--color-purple)' });
 
-  if (gexByStrike && gexByStrike.length > 0) {
-    const sorted = [...gexByStrike].sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex));
-    const topStrikes = sorted.slice(0, 4);
-    const support = topStrikes.filter((s) => s.gex > 0 && s.strike <= (spotPrice || Infinity));
-    const resistance = topStrikes.filter((s) => s.gex > 0 && s.strike > (spotPrice || 0));
-
-    if (support.length > 0) {
-      levels.push({ price: support[0].strike, label: 'GEX Support', color: 'var(--color-bull)' });
+  if (isPositive(spot)) {
+    let support = null;
+    let resistance = null;
+    for (const row of largestByAbsGex(finiteGexRows(gexByStrike), GEX_LEVEL_STRIKES)) {
+      if (row.gex <= 0) continue;
+      if (row.strike <= spot) {
+        if (!support || row.strike > support.strike) support = row;
+      } else if (!resistance || row.strike < resistance.strike) {
+        resistance = row;
+      }
     }
-    if (resistance.length > 0) {
-      levels.push({ price: resistance[0].strike, label: 'GEX Resist.', color: 'var(--color-bear)' });
-    }
+    if (support) levels.push({ price: support.strike, label: 'GEX Support', color: 'var(--color-bull)' });
+    if (resistance) levels.push({ price: resistance.strike, label: 'GEX Resist.', color: 'var(--color-bear)' });
   }
 
   return levels.sort((a, b) => a.price - b.price);
@@ -146,9 +245,9 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
 /**
  * Compute dual recommendations for when options market is closed and spot price has diverged.
  * @param {{ costBasis: number|string, shares: number, optionsSnapshotPrice: number|string, livePrice: number|string, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
- *   - costBasis: Entry price per share (number or numeric string; coerced internally)
- *   - optionsSnapshotPrice: Delayed CBOE quote (15-min delayed current_price from options data feed; coerced internally)
- *   - livePrice: Real-time price from Yahoo/Finnhub (extended hours or futures-implied; coerced internally)
+ *   - costBasis: Entry price per share (number or numeric string; coerced internally; must be > 0)
+ *   - optionsSnapshotPrice: Spot from the options feed at the snapshot (CBOE ~15-min delayed, or Tradier; coerced internally)
+ *   - livePrice: Real-time price from Yahoo/Finnhub (regular, pre- or post-market session; coerced internally)
  * @returns {{ primary: object, secondary: object|null, optionsSnapshotPrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
  *   Returned `optionsSnapshotPrice` and `livePrice` are normalized to numbers regardless of input type.
  */
