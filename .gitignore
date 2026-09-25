@@ -26,3 +26,7 @@ build/
 
 # Local Netlify folder
 .netlify
+
+# Test / analysis output
+coverage/
+dist/stats.html

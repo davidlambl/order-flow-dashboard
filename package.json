@@ -1,10 +1,11 @@
 {
   "name": "order-flow-dashboard",
   "private": true,
+  "license": "MIT",
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12"
   },
   "scripts": {
     "dev": "vite",
@@ -15,26 +16,26 @@
   "dependencies": {
     "@netlify/functions": "^5.1.2",
     "@supabase/supabase-js": "^2.98.0",
-    "@tailwindcss/vite": "^4.2.1",
-    "dotenv": "^17.3.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
-    "remark-gfm": "^4.0.1",
-    "tailwindcss": "^4.2.1"
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.2.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "dotenv": "^17.3.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "tailwindcss": "^4.2.1",
     "vite": "^7.3.1"
   }
 }

@@ -10,7 +10,7 @@
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 // Allowed ticker format: 1-10 uppercase letters/digits, optional dot/hyphen
-const TICKER_REGEX = /^[A-Z0-9][A-Z0-9.\-]{0,9}$/;
+const TICKER_REGEX = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
