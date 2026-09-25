@@ -559,9 +559,9 @@ export default async function run(ctx) {
       store.setPosition('NVDA', { costBasis: 5, shares: 5 }); // through the backend, while the network is down
       await settle();
       assert.deepEqual(syncKeys(storage), ['sync_meta_user-a', 'sync_outbox_user-a'], 'a write waits in the outbox, dated');
-      const attempts = client.upserts.length;
       let asked = null;
       const result = await session.signOut({ client, confirm: (message) => { asked = message; return true; } });
+      const attempts = client.upserts.length; // the sign-out tried once more to send the queued write (network still down)
       assert.deepEqual(result, { signedOut: true, error: null });
       assert.equal(asked, session.SIGN_OUT_CONFIRM);
       assert.equal(client.signOuts, 1);
@@ -576,7 +576,29 @@ export default async function run(ctx) {
       await settle();
       assert.equal(client.upserts.length, attempts, 'the SupabaseBackend is gone: its queued write was dropped, later writes stay in this browser');
       assert.equal(storage.getItem('position_MSFT'), JSON.stringify({ costBasis: 1, shares: 1 }));
-      assert.deepEqual(warnings, [], 'a network failure is retried, not reported');
+      assert.equal(warnings.length, 1, `a network failure is retried, not reported; only the sign-out names the dropped write: ${JSON.stringify(warnings)}`);
+      assert.match(String(warnings[0][0]), /1 change\(s\) could not be sent/, 'the write the sign-out dropped is reported once');
+    });
+  });
+
+  await t('signOut sends writes still queued first (a retry waiting for its backoff goes at once), so the account really keeps the copy', async () => {
+    await inBrowser(async ({ storage, warnings, store, SupabaseBackend, session, local }) => {
+      const clock = fakeClock(Date.parse(T1));
+      let online = false;
+      const client = fakeSupabase({ respond: () => (online ? undefined : NETWORK) });
+      store.setBackend(new SupabaseBackend(local, U, client, onClock(clock)));
+      store.setPosition('NVDA', { costBasis: 5, shares: 5 });
+      await settle();
+      assert.equal(client.tables.positions.length, 0, 'the first attempt failed; a retry waits for its backoff');
+      assert.ok(clock.queued > 0, 'a retry is scheduled');
+      online = true;
+      const result = await session.signOut({ client, confirm: () => true });
+      assert.deepEqual(result, { signedOut: true, error: null });
+      assert.deepEqual(client.tables.positions.map((r) => [r.ticker, r.cost_basis]), [['NVDA', 5]], 'sent before the sign-out, without waiting for the backoff');
+      assert.equal(client.signOuts, 1);
+      assert.deepEqual(syncKeys(storage), [], 'outbox and dates gone afterwards');
+      assert.equal(storage.getItem('position_NVDA'), null, 'this browser is cleared as before');
+      assert.deepEqual(warnings, [], 'nothing was dropped, nothing to report');
     });
   });
 

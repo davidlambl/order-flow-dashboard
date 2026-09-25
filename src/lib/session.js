@@ -14,10 +14,13 @@
 //
 // Node-loadable (the verify harness drives it with a fake client): no top-level browser access.
 import { supabase } from './supabase.js';
-import { clearAll, emitStoreChanged, setBackend, LocalStorageBackend } from './store.js';
+import { clearAll, emitStoreChanged, flushPendingWrites, setBackend, LocalStorageBackend } from './store.js';
 import { clearToken } from './auth.js';
 
 export const SIGN_OUT_CONFIRM = "Sign out and remove this browser's copy of your data? Positions, chats, settings, API keys and the access token on this device are removed; your account's cloud copy is kept.";
+
+/** How long a sign-out waits for writes still queued for the account to be sent. */
+const SIGN_OUT_FLUSH_MS = 5000;
 
 /** localStorage key: the id of the account whose data this browser holds (absent: nobody's). */
 export const LOCAL_OWNER_KEY = 'local_data_owner';
@@ -92,6 +95,15 @@ export function claimLocalData(userId, { previousUserId } = {}) {
  */
 export async function signOut({ client = supabase, confirm = (message) => globalThis.confirm(message) } = {}) {
   if (!confirm(SIGN_OUT_CONFIRM)) return { signedOut: false, error: null };
+
+  // Writes still queued for the account (made offline, or a moment ago) go out first, so its copy really
+  // is kept. A network that is down or a request that hangs holds the sign-out for at most a few seconds;
+  // whatever could not be sent is dropped with the rest of this browser's copy below.
+  let unsent = 0;
+  try {
+    unsent = await flushPendingWrites({ timeoutMs: SIGN_OUT_FLUSH_MS });
+  } catch { /* best effort */ }
+  if (unsent > 0) console.warn(`Sign-out: ${unsent} change(s) could not be sent to the account and were dropped.`);
 
   let error = null;
   if (client) {

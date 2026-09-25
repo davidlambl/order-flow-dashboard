@@ -290,6 +290,15 @@ export function setPreference(key, value) { backend.setPreference(key, value); }
  */
 export function clearAll(opts) { backend.clearAll(opts); }
 
+/**
+ * Send the cloud writes still queued for the signed-in account (SupabaseBackend#flushPendingWrites),
+ * waiting at most `opts.timeoutMs`. Resolves to how many are still waiting; 0 on a local-only backend.
+ * @param {{ timeoutMs?: number }} [opts]
+ */
+export async function flushPendingWrites(opts) {
+  return typeof backend.flushPendingWrites === 'function' ? backend.flushPendingWrites(opts) : 0;
+}
+
 export function exportAll() {
   return {
     version: SCHEMA_VERSION,

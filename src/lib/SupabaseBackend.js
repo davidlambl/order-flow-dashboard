@@ -686,6 +686,20 @@ export class SupabaseBackend {
     return this._outbox.flush({ force }).then(() => this._syncInterval());
   }
 
+  /**
+   * Send the writes still queued for this account now (a retry waiting for its backoff goes at once),
+   * waiting at most `timeoutMs`: for a sign-out, whose confirm says the account's copy is kept. A network
+   * that is down ends the wait as soon as the retry is rescheduled; a request that hangs ends it at the
+   * timeout. Never rejects.
+   * @param {{ timeoutMs?: number }} [opts]
+   * @returns {Promise<number>} how many writes are still waiting afterwards (0 without an outbox)
+   */
+  async flushPendingWrites({ timeoutMs = 5000 } = {}) {
+    if (!this._outbox || this._disposed) return 0;
+    await this._outboxSettled(timeoutMs);
+    return this._disposed ? 0 : this._outbox.size();
+  }
+
   /** A forced flush, waited for at most `ms`. */
   _outboxSettled(ms) {
     let timer;
