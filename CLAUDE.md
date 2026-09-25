@@ -37,7 +37,8 @@ should:
 
 ## Layout
 - `src/lib/` pure helpers + storage (`store.js` localStorage backend, `SupabaseBackend.js` cloud sync with an
-  injectable client, `supabase.js` Node-safe client factory, `session.js` the one sign-out, `debouncedSaver.js`
+  injectable client, `syncOutbox.js` its persistent write queue, `supabase.js` Node-safe client factory, `session.js`
+  the one sign-out plus the `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js`
   baseline-compared debounce behind `useAutoSave`, `deepEqual.js`, `api.js` fetchers incl. SSE streaming, `sse.js`
   stream framing/events, `recommend.js`, `format.js`, `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.js`
   JWT client side). Modules the Node harness loads use explicit `.js` relative imports (Vite resolves both) and no
@@ -53,7 +54,7 @@ should:
   early closes, session windows, `isExpiryClosed`; `thresholds.js`: the P/C, dark-pool, P&L, GEX, staleness and
   recommendation cut-offs used by the engine, the KPI cards, the chat context and the LLM prompt). No Node or
   browser APIs, no `console`, injectable `now`; `netlify.toml` lists it in `included_files`.
-- `supabase/migrations/` — run 001→004 in order in the SQL editor; all idempotent (see `supabase/README.md`).
+- `supabase/migrations/` — run 001→005 in order in the SQL editor; all idempotent (see `supabase/README.md`).
 - `types/` (planned) shared JSON contracts between `src/` and `netlify/` — `netlify/` must never import `src/`.
 - `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
   Phase 8) Terraform for AWS. See the roadmap's Phase 7/8 for the skill-building rationale.
@@ -65,9 +66,12 @@ should:
 - Persistence: the Supabase backend is keyed on the signed-in user (`App.jsx` `activeUserIdRef`); `hydrate()` never
   pushes into a non-empty cloud — it pulls into an empty browser, pushes into an empty account, and otherwise reports
   `conflict` so App shows `SyncChoice` (merge / cloud / local) and nothing is written until the user picks. Sign-out
-  is `signOut()` in `src/lib/session.js` (confirm, Supabase sign-out, clear local user data + secrets + JWT, reset
-  the backend); a `local_data_owner` mark records whose data the browser holds, and `claimLocalData()` clears another
+  is `signOut()` in `src/lib/session.js` (confirm, send queued cloud writes for up to 5 s, Supabase sign-out, clear
+  local user data + secrets + JWT, reset the backend); a `local_data_owner` mark records whose data the browser holds, and `claimLocalData()` clears another
   account's data (secrets kept) before a new account's backend exists. Replacing a backend disposes it.
+  Cloud writes go through a per-user outbox persisted in localStorage (`src/lib/syncOutbox.js`, `sync_outbox_<uid>`)
+  that retries network failures (a returned `{ error }` without a code) with backoff; deletes are tombstones
+  (`deleted_at`, migration 005); where both sides changed an item, the newer `updated_at` wins (`sync_meta_<uid>`).
   `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything".
 - Functions accept BYOK via headers/body (`x-tradier-key`, `x-finnhub-key`, `userApiKey`); server keys are
   only for access-token holders (`netlify/functions/lib/auth.js`), and refused with 503 if `TOKEN_SECRET`
