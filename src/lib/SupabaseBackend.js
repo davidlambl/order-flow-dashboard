@@ -3,14 +3,16 @@
 // Wraps LocalStorageBackend with write-through async sync to Supabase.
 // Secret keys (API keys) are NEVER sent to Supabase.
 // All queries are scoped to the authenticated user via user_id.
+// The client is injectable (tests pass a fake); the default is the app's client.
 
-import { supabase } from './supabase';
-import { SECRET_KEYS } from './store';
+import { supabase } from './supabase.js';
+import { SECRET_KEYS } from './store.js';
 
 export class SupabaseBackend {
-  constructor(localBackend, userId) {
+  constructor(localBackend, userId, client = supabase) {
     this.local = localBackend;
     this.userId = userId;
+    this.client = client;
     this._syncQueue = [];
     this._flushing = false;
   }
@@ -25,19 +27,19 @@ export class SupabaseBackend {
     this.local.setPosition(ticker, data);
     if (data.costBasis != null || data.shares != null) {
       this._enqueue(() =>
-        supabase.from('positions').upsert(
+        this.client.from('positions').upsert(
           { user_id: this.userId, ticker, cost_basis: data.costBasis, shares: data.shares, updated_at: new Date().toISOString() },
           { onConflict: 'user_id,ticker' }
         )
       );
     } else {
-      this._enqueue(() => supabase.from('positions').delete().eq('user_id', this.userId).eq('ticker', ticker));
+      this._enqueue(() => this.client.from('positions').delete().eq('user_id', this.userId).eq('ticker', ticker));
     }
   }
 
   deletePosition(ticker) {
     this.local.deletePosition(ticker);
-    this._enqueue(() => supabase.from('positions').delete().eq('user_id', this.userId).eq('ticker', ticker));
+    this._enqueue(() => this.client.from('positions').delete().eq('user_id', this.userId).eq('ticker', ticker));
   }
 
   getAllPositions() {
@@ -55,11 +57,11 @@ export class SupabaseBackend {
     if (SECRET_KEYS.has(name)) return; // Never sync secrets
     this._enqueue(() =>
       value != null
-        ? supabase.from('preferences').upsert(
+        ? this.client.from('preferences').upsert(
             { user_id: this.userId, key: name, value, updated_at: new Date().toISOString() },
             { onConflict: 'user_id,key' }
           )
-        : supabase.from('preferences').delete().eq('user_id', this.userId).eq('key', name)
+        : this.client.from('preferences').delete().eq('user_id', this.userId).eq('key', name)
     );
   }
 
@@ -77,17 +79,17 @@ export class SupabaseBackend {
     this.local.setChatHistory(ticker, messages);
     this._enqueue(() =>
       messages?.length
-        ? supabase.from('chat_histories').upsert(
+        ? this.client.from('chat_histories').upsert(
             { user_id: this.userId, ticker, messages, updated_at: new Date().toISOString() },
             { onConflict: 'user_id,ticker' }
           )
-        : supabase.from('chat_histories').delete().eq('user_id', this.userId).eq('ticker', ticker)
+        : this.client.from('chat_histories').delete().eq('user_id', this.userId).eq('ticker', ticker)
     );
   }
 
   deleteChatHistory(ticker) {
     this.local.deleteChatHistory(ticker);
-    this._enqueue(() => supabase.from('chat_histories').delete().eq('user_id', this.userId).eq('ticker', ticker));
+    this._enqueue(() => this.client.from('chat_histories').delete().eq('user_id', this.userId).eq('ticker', ticker));
   }
 
   getAllChatHistories() {
@@ -105,7 +107,7 @@ export class SupabaseBackend {
   // ── Background Sync Queue ──────────────────────────────────────────────────
 
   _enqueue(fn) {
-    if (!supabase) return;
+    if (!this.client) return;
     this._syncQueue.push(fn);
     this._flush();
   }
@@ -143,10 +145,10 @@ export class SupabaseBackend {
   // Pull from Supabase into localStorage for keys missing locally (local wins).
 
   async hydrate() {
-    if (!supabase || !this.userId) return;
+    if (!this.client || !this.userId) return;
 
     try {
-      const { data: positions, error: posErr } = await supabase
+      const { data: positions, error: posErr } = await this.client
         .from('positions').select('*').eq('user_id', this.userId);
       if (posErr) console.warn('Hydrate positions error:', posErr.message);
       if (positions) {
@@ -161,7 +163,7 @@ export class SupabaseBackend {
         }
       }
 
-      const { data: prefs, error: prefErr } = await supabase
+      const { data: prefs, error: prefErr } = await this.client
         .from('preferences').select('*').eq('user_id', this.userId);
       if (prefErr) console.warn('Hydrate preferences error:', prefErr.message);
       if (prefs) {
@@ -174,7 +176,7 @@ export class SupabaseBackend {
         }
       }
 
-      const { data: chats, error: chatErr } = await supabase
+      const { data: chats, error: chatErr } = await this.client
         .from('chat_histories').select('*').eq('user_id', this.userId);
       if (chatErr) console.warn('Hydrate chat_histories error:', chatErr.message);
       if (chats) {
@@ -198,7 +200,7 @@ export class SupabaseBackend {
   }
 
   async _pushLocal() {
-    if (!supabase || !this.userId) return;
+    if (!this.client || !this.userId) return;
 
     try {
       // Push positions
@@ -207,7 +209,7 @@ export class SupabaseBackend {
         .filter(([, p]) => p.costBasis != null || p.shares != null)
         .map(([ticker, p]) => ({ user_id: this.userId, ticker, cost_basis: p.costBasis, shares: p.shares, updated_at: new Date().toISOString() }));
       if (posRows.length > 0) {
-        const { error } = await supabase.from('positions').upsert(posRows, { onConflict: 'user_id,ticker', ignoreDuplicates: true });
+        const { error } = await this.client.from('positions').upsert(posRows, { onConflict: 'user_id,ticker', ignoreDuplicates: true });
         if (error) console.warn('Push positions error:', error.message);
       }
 
@@ -217,7 +219,7 @@ export class SupabaseBackend {
         .filter(([key]) => !SECRET_KEYS.has(key))
         .map(([key, value]) => ({ user_id: this.userId, key, value, updated_at: new Date().toISOString() }));
       if (prefRows.length > 0) {
-        const { error } = await supabase.from('preferences').upsert(prefRows, { onConflict: 'user_id,key', ignoreDuplicates: true });
+        const { error } = await this.client.from('preferences').upsert(prefRows, { onConflict: 'user_id,key', ignoreDuplicates: true });
         if (error) console.warn('Push preferences error:', error.message);
       }
 
@@ -227,7 +229,7 @@ export class SupabaseBackend {
         .filter(([, msgs]) => msgs?.length > 0)
         .map(([ticker, msgs]) => ({ user_id: this.userId, ticker, messages: msgs, updated_at: new Date().toISOString() }));
       if (chatRows.length > 0) {
-        const { error } = await supabase.from('chat_histories').upsert(chatRows, { onConflict: 'user_id,ticker', ignoreDuplicates: true });
+        const { error } = await this.client.from('chat_histories').upsert(chatRows, { onConflict: 'user_id,ticker', ignoreDuplicates: true });
         if (error) console.warn('Push chat_histories error:', error.message);
       }
     } catch (err) {

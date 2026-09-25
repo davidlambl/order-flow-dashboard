@@ -3,49 +3,11 @@
 // useMarketData itself is React-bound and has no check here; the backoff it schedules with does. Browser
 // globals are stubbed per check with defineProperty (ES modules are strict) and always restored.
 
+import { memoryStorage, withGlobals } from './helpers.mjs';
+
 const RETRY_URL = new URL('../../src/lib/retry.js', import.meta.url);
 const STORE_URL = new URL('../../src/lib/store.js', import.meta.url);
 const THRESHOLDS_URL = new URL('../../shared/thresholds.js', import.meta.url);
-
-/** A Map-backed Storage stand-in; with `full`, every setItem throws the browser's quota error. */
-function memoryStorage({ full = false } = {}) {
-  const map = new Map();
-  return {
-    map,
-    get length() { return map.size; },
-    key: (i) => [...map.keys()][i] ?? null,
-    getItem: (k) => (map.has(String(k)) ? map.get(String(k)) : null),
-    setItem: (k, v) => {
-      if (full) throw Object.assign(new Error('quota'), { name: 'QuotaExceededError', code: 22 });
-      map.set(String(k), String(v));
-    },
-    removeItem: (k) => { map.delete(String(k)); },
-  };
-}
-
-/**
- * Runs fn with the named globals replaced (a value of undefined removes the global) and console.warn
- * captured into the array fn receives. Globals and console.warn are restored afterwards, pass or fail.
- */
-async function withGlobals(overrides, fn) {
-  const saved = Object.keys(overrides).map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
-  const originalWarn = console.warn;
-  const warnings = [];
-  console.warn = (...args) => { warnings.push(args); };
-  try {
-    for (const [name, value] of Object.entries(overrides)) {
-      if (value === undefined) delete globalThis[name];
-      else Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
-    }
-    return await fn(warnings);
-  } finally {
-    console.warn = originalWarn;
-    for (const [name, descriptor] of saved) {
-      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-      else delete globalThis[name];
-    }
-  }
-}
 
 export default async function run(ctx) {
   const { t, assert } = ctx;

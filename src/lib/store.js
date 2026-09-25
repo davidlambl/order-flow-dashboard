@@ -31,6 +31,14 @@ const SECRET_KEYS = new Set([
   'data_tradier_key', 'data_finnhub_key',
 ]);
 
+// Keys that never leave this device: the secrets above plus per-browser flags.
+// Not synced to the cloud, not exported, not accepted from an import.
+const DEVICE_KEYS = new Set([...SECRET_KEYS, 'auth_skipped']);
+
+// Layout preferences: synced and exported like the rest, but a difference between
+// this browser and the cloud copy is not worth asking the user which one to keep.
+const LAYOUT_KEYS = new Set(['sidebarWidth', 'section_position', 'section_research', 'section_charts']);
+
 // Browsers disagree on how a full store reports itself: QuotaExceededError (code 22)
 // in most engines, NS_ERROR_DOM_QUOTA_REACHED (code 1014) in older Firefox.
 function isQuotaError(e) {
@@ -298,4 +306,4 @@ export function importAll(data) {
 }
 
 export function setBackend(newBackend) { backend = newBackend; }
-export { LocalStorageBackend, SECRET_KEYS };
+export { LocalStorageBackend, SECRET_KEYS, DEVICE_KEYS, LAYOUT_KEYS };
