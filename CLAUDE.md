@@ -2,7 +2,7 @@
 
 ## What this is
 Institutional order-flow dashboard: React 19 + Vite + Tailwind 4 + Recharts 3 frontend, Netlify
-Functions backend (Tradier → CBOE → mock market data; multi-provider LLM proxy; Yahoo live quotes;
+Functions backend (Tradier → CBOE market data with validated fallback, mock data only client-side; multi-provider LLM proxy; Yahoo live quotes;
 Finnhub / Alpha Vantage ticker context; nightly flow-history collector), Supabase for auth + persistence.
 
 ## Roadmap-driven work
@@ -14,7 +14,8 @@ should:
 2. Work on a branch named `roadmap/phase-<n>-<slug>`, one PR per phase (split large phases as the
    issue suggests). Reference the issue in the PR body (`Closes #<n>`).
 3. Keep each PR minimal to its phase; don't pull later-phase work forward.
-4. Before pushing: `npm run lint` (see known baseline below), `npm run build`, and `npm test` once it exists.
+4. Before pushing: `npm run lint` (see known baseline below), `npm run verify:functions`, `npm run build`, and
+   `npm test` once it exists.
 5. Line numbers in the roadmap were taken at commit `9cf9ccd` + the Phase 0 merge; re-grep before editing.
 
 ## Commands
@@ -23,6 +24,9 @@ should:
 - `npm run build` — must pass. `npm run lint` — baseline after Phase 4a: 7 errors + 1 warning, all
   `react-hooks/*` or `react-refresh/*` in `src/` and owned by Phases 2/5; don't add new ones. CI runs lint
   non-blocking until that count is zero, then it becomes required.
+- `npm run verify:functions` — drives every function in-process with a stubbed `fetch` (blocking in CI). The runner
+  is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's helpers
+  via `ctx`. Time-dependent code takes an injectable `now`, so checks never depend on the wall clock.
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
@@ -33,8 +37,11 @@ should:
 - `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are
   large and scheduled for decomposition (Phase 5) along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
-  `validateToken`) and v1 `handler(event)` ones (`getMarketData`, `getModels`, `collectFlowHistory`);
-  shared code in `netlify/functions/lib/`.
+  `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
+  with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
+- `shared/` pure modules imported by both `src/` and `netlify/` (`marketCalendar.js`: ET clock, NYSE holidays and
+  early closes, session windows, `isExpiryClosed`). No Node or browser APIs, no `console`, injectable `now`;
+  `netlify.toml` lists it in `included_files`.
 - `supabase/migrations/` — run 001→004 in order in the SQL editor; all idempotent (see `supabase/README.md`).
 - `types/` (planned) shared JSON contracts between `src/` and `netlify/` — `netlify/` must never import `src/`.
 - `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
@@ -46,6 +53,7 @@ should:
   only for access-token holders (`netlify/functions/lib/auth.js`), and refused with 503 if `TOKEN_SECRET`
   is unset. New functions must use `lib/http.js` (CORS allowlist, `fetchWithTimeout`, `errorResponse`
   with a request id, `rateLimit`) and `lib/ticker.js` before touching an upstream URL.
-- Market-hours logic is Eastern Time; never use local `Date` for market decisions.
+- Market-hours logic is Eastern Time via `shared/marketCalendar.js` (holidays and early closes included); never
+  use local `Date` for market decisions.
 - `generateMockData` is random — memoize/stub in tests.
 - Commit messages: imperative subject, body explains *why*.

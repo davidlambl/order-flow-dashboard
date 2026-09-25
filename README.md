@@ -98,8 +98,9 @@ See `.env.example` for every variable with defaults, and `supabase/README.md` fo
 ```
 ├── netlify.toml                  # Build config + /api/* redirect
 ├── .env.example                  # Template for environment variables
+├── shared/marketCalendar.js      # ET clock, NYSE holidays/early closes, sessions (used by src/ and functions)
 ├── netlify/functions/
-│   ├── getMarketData.js          # Tiered provider: Tradier → CBOE → fallback
+│   ├── getMarketData.js          # Tiered provider: Tradier → CBOE, validated fallback, shared expiry window
 │   ├── askLLM.js                 # Claude proxy with SSE streaming support
 │   └── getModels.js              # Fetches available Anthropic models
 ├── src/
