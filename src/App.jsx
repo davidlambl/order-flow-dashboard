@@ -15,7 +15,7 @@ import LoginForm from './components/LoginForm';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
-import { hasValidToken, getTokenTier, daysRemaining, clearToken } from './lib/auth';
+import { hasValidToken, getTokenTier, daysRemaining, clearToken, verifyStoredToken, AUTH_EVENT } from './lib/auth';
 import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend } from './lib/store';
 import { supabase } from './lib/supabase';
 import { SupabaseBackend } from './lib/SupabaseBackend';
@@ -73,8 +73,19 @@ export default function App() {
   const [costBasis, setCostBasis] = useState(null);
   const [shares, setShares] = useState(null);
   const [isPremium, setIsPremium] = useState(() => hasValidToken());
+  // Research data needs either an access token or the user's own Finnhub key.
+  const [hasFinnhubKey, setHasFinnhubKey] = useState(() => Boolean(getPreference('data_finnhub_key')));
+  useEffect(() => {
+    const handler = () => setHasFinnhubKey(Boolean(getPreference('data_finnhub_key')));
+    window.addEventListener('data-source-changed', handler);
+    window.addEventListener('store-changed', handler);
+    return () => {
+      window.removeEventListener('data-source-changed', handler);
+      window.removeEventListener('store-changed', handler);
+    };
+  }, []);
   const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
-  const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker);
+  const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
   const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -132,6 +143,15 @@ export default function App() {
     setTokenTier(getTokenTier());
     setDaysLeft(daysRemaining());
   }, []);
+
+  // Keep premium state in sync with the stored token: any set/clear (including a
+  // server-side rejection during an API call) dispatches AUTH_EVENT. On startup,
+  // ask the server whether the stored token is still valid (expired/revoked/re-signed).
+  useEffect(() => {
+    window.addEventListener(AUTH_EVENT, refreshAuth);
+    verifyStoredToken().then(refreshAuth);
+    return () => window.removeEventListener(AUTH_EVENT, refreshAuth);
+  }, [refreshAuth]);
 
   const handleLogout = useCallback(() => {
     clearToken();

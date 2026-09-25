@@ -80,9 +80,18 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `TRADIER_API_KEY` | No | Tradier API token (sandbox or production) |
-| `ANTHROPIC_API_KEY` | No | Anthropic Claude API key for AI Co-Pilot |
-| `TOKEN_SECRET` | No | JWT secret for premium access tokens |
+| `TOKEN_SECRET` | **Yes** (to use any server-side key) | ≥32-char secret for signing access tokens. Functions refuse to spend a server key without a valid token, and return 503 if this is unset. |
+| `ANTHROPIC_API_KEY` | No | Shared Claude key for the AI Co-Pilot (token holders only; see `ALLOWED_MODELS`, `MAX_OUTPUT_TOKENS`, `DAILY_REQUEST_QUOTA_*`) |
+| `TRADIER_API_KEY` | No | Real-time options data for token holders; anonymous callers get CBOE delayed data |
+| `FINNHUB_API_KEY`, `ALPHA_VANTAGE_KEY` | No | Ticker research for token holders (users can bring their own Finnhub key) |
+| `SITE_ORIGIN` | No | Extra origins allowed to call the API cross-origin (the app itself is same-origin) |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_KEY` | No | Server-side persistence: flow history, earnings cache, token revocation, usage quotas |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | No | Browser client: sign-in and cross-device sync |
+
+See `.env.example` for every variable with defaults, and `supabase/README.md` for the migrations.
+
+> **Upgrading from an earlier version?** Access tokens minted before the security hardening (no
+> issuer/audience/jti claims) are rejected. Mint a new one with `node scripts/generate-token.js`.
 
 ## Project Structure
 
