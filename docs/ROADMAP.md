@@ -525,19 +525,67 @@ muted-text contrast ≥ 4.5:1; `prefers-reduced-motion`; error/retry surfaces fo
 Header wrapping; settings tabs scroll; remember last ticker; ticker input validation; PositionAnalysis
 inputs stay visible while loading.
 
-### Phase 7 — Features, grouped by the owner's four priority areas (M–L each; pick per PR)
-**Data quality & reliability**: replace Dark Pool with FINRA ATS off-exchange share (free weekly data) or
-with IV rank; per-expiry GEX toggle + zero-gamma flip level + call/put walls; IV30 expected-move band on the
-GEX chart; provider health/fallback indicator; holiday calendar; server-side per-ticker cache.
-**AI co-pilot**: Stop button (Phase 2 gives the abort); Retry on error bubbles; export chat to Markdown;
-token/character budget in the context inspector; model allowlist surfaced in settings; per-sub usage view;
-prompt caching for the large system context (check the claude-api skill for current API shape).
-**Positions & recommendations**: multiple lots per ticker + portfolio view from `getAllPositions()`;
-"clear position" via the unused `deletePosition`; recommendation factor weights as settings; backtest-style
-"what changed since last snapshot" diff; daily P&L using `priceChange`.
-**Charts, UX & mobile**: Fundamentals & Technicals card (data already fetched); daily price change in Header;
-FlowChart as combo (signed daily bars + cumulative line, 2 axes); recent-tickers / watchlist switcher;
-`?ticker=` URL sync for deep links; PWA manifest + install prompt.
+### Phase 7 — New-technology track: WebGL, Python quant service, ops console (L)
+Reframed (owner decision, 2026-09-25) to build skills the current stack doesn't exercise: WebGL-based UI,
+Python numeric/algorithmic backend, real data pipelines, and human-in-the-loop operations tooling.
+Phases 0–6 are unchanged and remain prerequisites (TypeScript + decomposition before the WebGL work;
+Phase 1's auth before any new service is exposed). Each item is its own PR.
+
+1. **WebGL options-chain visualization with deck.gl** (`@deck.gl/core`, `@deck.gl/layers`, `@deck.gl/react`,
+   `OrthographicView`, no basemap). New `src/components/chain/ChainHeatmap.tsx`: strike × expiry grid of
+   gamma exposure / open interest / volume (toggle), one GPU-instanced `SolidPolygonLayer` or
+   `ScatterplotLayer` cell per contract (tens of thousands), GPU-side color scale, zoom/pan, hover tooltip
+   with the contract's greeks, spot / max-pain / gamma-flip reference lines as a `LineLayer`. Needs the full
+   chain (not the ±20 % trimmed `gexByStrike`) → the server returns `chain` (compact typed arrays) behind a
+   `?full=1` flag with the Phase 1 token check. Keep Recharts for the small charts; swap `GexChart` for a
+   deck.gl strike profile only if the heatmap proves the approach. Perf budget: first paint < 100 ms for
+   20k cells, 60 fps pan on a laptop GPU; measure with `performance.mark`.
+   Optional stretch: react-three-fiber 3D gamma / IV surface (strike × expiry × value) as a second view.
+2. **Python quant service** (`services/quant/`, FastAPI + numpy + Polars, `uv` for deps, Ruff + mypy + pytest):
+   ports `computeGEX`, `computeMaxPain`, `computePutCallRatio`, `computeNetPremium` and adds what the JS
+   never had — per-expiry GEX, gamma-flip level, IV rank/percentile from history, Wilder RSI, expected-move
+   bands. Typed API (`/v1/metrics/{ticker}`, `/v1/chain/{ticker}`, `/v1/history/{ticker}`) with OpenAPI schema
+   consumed by the React app through a generated client (`openapi-typescript`). Golden tests: the Python
+   metrics must match the JS helpers on a fixture chain before the JS is deleted.
+3. **Nightly data pipeline** replacing `collectFlowHistory` (H4/D16 closed for good): scheduled job ingests
+   full chains for the tracked tickers into Postgres (Supabase) or Parquet on S3 with a `runs` table
+   (ticker, started, finished, status, row_count, error), idempotent per (ticker, date), holiday-aware,
+   per-ticker timeouts and concurrency, backfill command. Pipeline steps are pure functions with unit tests.
+4. **Ops console** (`src/pages/Ops.tsx`, premium-gated): data freshness per ticker, last run status and
+   duration, anomaly flags from validation rules (empty chain, spot jump > 20 %, OI collapse, duplicate
+   session), and human-in-the-loop actions — re-run, backfill a date range, mark a row as reviewed with a
+   note. Validation rules live in the Python service; the console is the "data repair / validation
+   workflow" pattern in miniature.
+5. **UX craft**: Storybook for the decomposed components (Phase 5 output) with stories for loading / error /
+   empty states; Playwright visual-regression screenshots in CI for the dashboard and the heatmap.
+6. **Quick wins kept from the old feature list** (do opportunistically, one PR each): daily price change in
+   Header; Fundamentals & Technicals card (data already fetched); chat export to Markdown; `?ticker=` URL
+   sync; recent-tickers switcher; multiple lots per ticker; "clear position" via the unused `deletePosition`;
+   FINRA ATS off-exchange share replacing the synthetic Dark Pool %.
+
+### Phase 8 — Cloud infrastructure, containers, observability (M–L)
+Runs alongside Phase 7 once the Python service exists. Goal: honest hands-on AWS, containers, IaC and
+monitoring/alerting, without paying for a managed Kubernetes cluster for a hobby app.
+
+1. **Containerize** `services/quant` (multi-stage Dockerfile, non-root user, `uv` lockfile, healthcheck);
+   `docker compose` for local dev with Postgres. Frontend stays on Netlify.
+2. **AWS deploy with Terraform** (`infra/`): ECR, ECS Fargate service (or App Runner, whichever is cheaper
+   at this scale) behind an ALB with TLS, Parameter Store / Secrets Manager for provider keys, EventBridge
+   schedule → the nightly pipeline task, CloudWatch log groups, a budget alarm. State in S3 + DynamoDB lock.
+   GitHub Actions: build → push image → `terraform plan` on PR, `apply` on main with OIDC (no long-lived keys).
+3. **Kubernetes as a learning track, not production**: Helm chart for the service + a CronJob for the
+   pipeline, run on local k3d; `kubectl`/Helm workflows documented in `services/quant/README.md`. Revisit a
+   managed cluster only if there's a real reason.
+4. **Observability**: OpenTelemetry in FastAPI (traces + metrics), OTLP export to Grafana Cloud free tier
+   (or Sentry for errors); dashboards for request latency, pipeline run duration, rows ingested; alerts:
+   nightly run failed / missed, any ticker stale > 36 h, error rate > 2 %, ALB 5xx. Netlify functions get
+   structured JSON logs with a request id (closes L7).
+5. **Runbook**: `docs/RUNBOOK.md` — how to backfill, rotate a key, roll back a deploy, read an alert.
+
+Skill map vs the target role: WebGL/React (7.1), Python algorithms + API design (7.2), data pipelines +
+scaling workflows (7.3), validation/repair tooling and UX for operations (7.4, 7.5), AWS/containers/IaC/
+CI-CD (8.1–8.2), Kubernetes (8.3), monitoring/alerting (8.4). Geospatial specifically is out of scope for
+this repo; a follow-on project (MapLibre + deck.gl + PostGIS + shapely) can reuse the 7.2/8.x patterns.
 
 ## Suggested PR sequence (one PR per line unless noted)
 1. Phase 0: "chore: land March fix PRs (#20–#26) + #29 ordering fix" — closes the seven PRs on merge.
@@ -549,7 +597,9 @@ FlowChart as combo (signed daily bars + cumulative line, 2 axes); recent-tickers
 6. Phase 4 steps 3–5, 7–10: dep minors → ESLint 10 → Vitest + first tests → Vite 8 → lucide 1 → README.
 7. Phase 5: TS scaffolding + lib conversions → TanStack Query (+ hook tests first) → storeEvents →
    decomposition (one PR per component) → code-splitting.
-8. Phase 6: UX/a11y/mobile. 9. Phase 7: features, one PR each, in the owner's priority order.
+8. Phase 6: UX/a11y/mobile.
+9. Phase 7: deck.gl heatmap → Python service (golden tests) → pipeline → ops console → Storybook/VRT; quick wins as they fit.
+10. Phase 8: Dockerfile/compose → Terraform + ECS + OIDC CI → k3d/Helm → OpenTelemetry + alerts → runbook.
 
 ## Verification (per PR, and end-to-end)
 - Local gate on every PR: `npm run lint && npm run build`, then `npm run test` once Vitest exists, then
@@ -574,5 +624,11 @@ FlowChart as combo (signed daily bars + cumulative line, 2 axes); recent-tickers
   the TanStack rewrite pass unchanged after it.
 - Phase 6: keyboard-only walkthrough (open settings, tab through tabs, Esc closes and focus returns);
   Lighthouse a11y ≥ 90; 375 px viewport shows chat as overlay with main content still usable.
+- Phase 7: golden test — Python metrics equal the JS helpers on the fixture chain to 1e-9 before the JS
+  path is removed; heatmap perf marks (< 100 ms first paint at 20k cells) recorded in the PR; ops console
+  re-run triggers a pipeline run visible in the `runs` table; Storybook builds in CI; VRT baseline committed.
+- Phase 8: `terraform plan` clean on PR and `apply` from main via OIDC; `curl https://<alb>/healthz` 200;
+  EventBridge run appears in CloudWatch and Grafana; force a failed run and confirm the alert fires;
+  `helm install` on k3d serves the same image.
 - Not verifiable here: live provider behavior (Tradier/CBOE/Yahoo/Finnhub/AV) and the Netlify scheduled
   function timing (H4) — verify on the deploy preview / function logs after Phase 2.

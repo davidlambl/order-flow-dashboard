@@ -35,6 +35,8 @@ should:
   shared code in `netlify/functions/lib/`.
 - `supabase/migrations/` — run in order in the SQL editor (003 currently has invalid policy SQL; Phase 1 fixes).
 - `types/` (planned) shared JSON contracts between `src/` and `netlify/` — `netlify/` must never import `src/`.
+- `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
+  Phase 8) Terraform for AWS. See the roadmap's Phase 7/8 for the skill-building rationale.
 
 ## Conventions
 - Secrets: BYOK keys live only in localStorage (`SECRET_KEYS` in `store.js`) and are never synced or exported.
