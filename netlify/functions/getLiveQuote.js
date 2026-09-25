@@ -1,11 +1,24 @@
 // netlify/functions/getLiveQuote.js
 //
-// Lightweight endpoint for fetching real-time stock quotes with extended hours support.
-// Uses Yahoo Finance for accurate overnight/pre-market/after-hours pricing.
-// Falls back to Finnhub if Yahoo Finance is unavailable.
+// Lightweight endpoint for real-time stock quotes with extended-hours support.
+// Yahoo Finance is the primary source; Finnhub is the fallback if Yahoo fails.
 // Short cache TTL (60 seconds) to ensure fresh price data for gap detection.
 //
-// BYOK: accepts x-finnhub-key header for Finnhub fallback, falls back to FINNHUB_API_KEY env var.
+// Price selection: every price Yahoo reports (the regular, post-market and
+// pre-market meta fields, plus the newest pre- and post-market 1-minute candles)
+// is a candidate, and the one with the newest timestamp wins. A stale
+// post-market print from last night never beats a live regular-session trade.
+//
+// `current` is always a real traded price, never an estimate. For Nasdaq-100
+// members outside the regular session, the NQ futures move is attached as
+// `futuresContext` for context only.
+//
+// Response: { ticker, current, previousClose, changePercent, timestamp (ms of
+// the price itself, or null if unknown), source: 'yahoo-regular' | 'yahoo-post'
+// | 'yahoo-pre' | 'finnhub', futuresContext? }.
+//
+// BYOK: accepts the x-finnhub-key header for the Finnhub fallback; the server's
+// FINNHUB_API_KEY is used only for access-token holders.
 
 import {
   preflight, jsonResponse, errorResponse, newRequestId,
@@ -13,23 +26,32 @@ import {
 } from './lib/http.js';
 import { verifyRequestToken } from './lib/auth.js';
 import { parseTicker } from './lib/ticker.js';
+import { getMarketSession } from '../../shared/marketCalendar.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const ALLOWED_HEADERS = 'x-finnhub-key';
 const UPSTREAM_TIMEOUT_MS = 6000;
 const RATE_LIMIT = { limit: 120, windowMs: 60 * 1000 };
 
+/** Candidates stamped more than this far past "now" are bogus (clock skew beyond it is not). */
+const MAX_CLOCK_SKEW_SEC = 120;
+
+/** Tie-break between candidates with the same timestamp: lower rank wins. */
+const SOURCE_RANK = { 'yahoo-regular': 0, 'yahoo-post': 1, 'yahoo-pre': 2 };
+
 /**
- * Check whether a value is a usable finite number.
- * Normalizes to Number first, then checks Number.isFinite.
+ * Check whether a value is a usable finite number: a finite number or a numeric
+ * string. Blank strings, booleans, arrays and null are rejected, where a bare
+ * Number() would quietly turn them into 0.
  */
 function isFiniteNum(v) {
-  return v != null && Number.isFinite(Number(v));
+  if (typeof v === 'number') return Number.isFinite(v);
+  return typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v));
 }
 
 /**
  * Curated subset of major Nasdaq-100 components (high correlation with NQ futures).
- * Only these tickers should use futures-implied pricing.
+ * Only these tickers get NQ futures context (`futuresContext`) outside the regular session.
  * Not exhaustive — update periodically as the index rebalances.
  */
 const NASDAQ_100_CONSTITUENTS = new Set([
@@ -121,107 +143,99 @@ async function fetchNasdaqFutures(signal = null) {
 }
 
 /**
- * Get current Eastern-Time hour, minute, and weekday from Intl.DateTimeFormat.
- * Shared by isPreMarketWindow / isUSMarketOpen to avoid duplicating the
- * Intl.DateTimeFormat ceremony in two IIFEs.
+ * Newest pre- and post-market candles from the 1-minute series (requested with
+ * includePrePost=true). Yahoo often leaves meta.preMarketPrice / postMarketPrice
+ * unpopulated even when those candles exist.
  *
- * Returns { h, m, mins, weekday } where weekday is en-US short form ('Mon' … 'Sun')
- * and mins is h*60+m, or null when the formatter throws.
+ * Session windows come from Yahoo's meta.currentTradingPeriod (pre ≈ 4:00–9:30 AM
+ * ET, post ≈ 4:00–8:00 PM ET; Yahoo adjusts them on special days). They are
+ * half-open [start, end) because they abut the regular session: the candle
+ * stamped exactly at pre.end is the 9:30 regular-session candle.
+ *
+ * No "inside regular hours" guard is needed: selectQuoteCandidate orders every
+ * candidate by timestamp, so a live regular-session price outranks these.
+ *
+ * @param {object} result  Yahoo chart result (`chart.result[0]`)
+ * @param {number} nowSec  current Unix time in seconds; later candles are ignored
+ * @returns {Array<{ source: 'yahoo-pre'|'yahoo-post', price: number, timestamp: number }>}
+ *   at most one candidate per window (its newest finite candle); timestamp in Unix seconds
  */
-function getETTimeParts() {
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/New_York',
-      hour: '2-digit',
-      minute: '2-digit',
-      weekday: 'short',
-      hour12: false,
-    }).formatToParts(new Date());
-    const partMap = {};
-    for (const p of parts) {
-      if (p.type === 'hour' || p.type === 'minute' || p.type === 'weekday') {
-        partMap[p.type] = p.value;
-      }
-    }
-    const h = Number(partMap.hour);
-    const m = Number(partMap.minute);
-    if (Number.isNaN(h) || Number.isNaN(m) || !partMap.weekday) return null;
-    return { h, m, mins: h * 60 + m, weekday: partMap.weekday };
-  } catch {
-    return null;
-  }
-}
+function extractExtendedHoursCandles(result, nowSec) {
+  const periods = result?.meta?.currentTradingPeriod;
+  const timestamps = Array.isArray(result?.timestamp) ? result.timestamp : [];
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (!periods || !timestamps.length || !Array.isArray(closes)) return [];
 
-/**
- * Extract the latest extended-hours price from Yahoo chart time series candles.
- * When meta.postMarketPrice / meta.preMarketPrice are not populated (common),
- * the actual after-hours or pre-market candles still appear in the 1-minute
- * time series if includePrePost=true was requested.
- *
- * Skips extraction when `now` falls inside the regular trading session to avoid
- * returning a stale pre-market candle during market hours.
- *
- * @param {object} result  Yahoo chart result object
- * @param {boolean} preferPre  When true, scan pre-market candles before post-market
- *
- * Returns { price, timestamp, session } or null if no extended-hours candle is found.
- *   session: 'post' | 'pre'
- */
-function extractExtendedHoursPrice(result, preferPre = false) {
-  const meta = result.meta;
-  const timestamps = result.timestamp || [];
-  const closes = result.indicators?.quote?.[0]?.close || [];
-
-  if (!timestamps.length || !closes.length) return null;
-
-  const tradingPeriods = meta.currentTradingPeriod;
-  if (!tradingPeriods) return null;
-
-  const now = Math.floor(Date.now() / 1000);
-
-  // Regular session boundaries — skip extraction if we're inside regular hours
-  const regStart = tradingPeriods.regular?.start;
-  const regEnd   = tradingPeriods.regular?.end;
-  if (regStart && regEnd && now >= regStart && now < regEnd) {
-    return null;
-  }
-
-  // Post-market session, as defined by Yahoo's meta.currentTradingPeriod.post
-  // (typically ~4:00 PM – 8:00 PM ET for US equities, but may vary on special days).
-  const postStart = tradingPeriods.post?.start;
-  const postEnd   = tradingPeriods.post?.end;
-
-  // Pre-market session, as defined by Yahoo's meta.currentTradingPeriod.pre
-  // (typically ~4:00 AM – 9:30 AM ET for US equities, but may vary on special days).
-  const preStart  = tradingPeriods.pre?.start;
-  const preEnd    = tradingPeriods.pre?.end;
-
-  // Helper: scan a single session window for the latest candle.
-  const scanSession = (start, end, label) => {
-    if (!start || !end) return null;
+  const newestIn = (period, source) => {
+    if (!isFiniteNum(period?.start) || !isFiniteNum(period?.end)) return null;
+    const start = Number(period.start);
+    const end = Number(period.end);
     for (let i = timestamps.length - 1; i >= 0; i--) {
       const ts = timestamps[i];
-      if (ts >= start && ts <= end && ts <= now && isFiniteNum(closes[i])) {
-        return { price: Number(closes[i]), timestamp: ts, session: label };
+      if (isFiniteNum(ts) && ts >= start && ts < end && ts <= nowSec && isFiniteNum(closes[i])) {
+        return { source, price: Number(closes[i]), timestamp: Number(ts) };
       }
     }
     return null;
   };
 
-  // During pre-market, scan pre candles first so we don't return a stale
-  // post-market candle from the previous evening.
-  const first  = preferPre ? ['pre', preStart, preEnd] : ['post', postStart, postEnd];
-  const second = preferPre ? ['post', postStart, postEnd] : ['pre', preStart, preEnd];
-
-  return scanSession(first[1], first[2], first[0])
-      || scanSession(second[1], second[2], second[0]);
+  return [newestIn(periods.pre, 'yahoo-pre'), newestIn(periods.post, 'yahoo-post')].filter(Boolean);
 }
 
 /**
- * Fetch live quote from Yahoo Finance (includes extended hours).
- * Returns both actual quote and optional futures data for context.
+ * Pick the price to report from a Yahoo chart result: the candidate with the
+ * newest timestamp among the meta regular / post-market / pre-market prices and
+ * the newest pre- and post-market candles. A candidate needs a finite price > 0
+ * and a finite timestamp no later than nowSec + 120 s (tolerates clock skew,
+ * drops bogus future stamps). Ties prefer regular, then post, then pre.
+ *
+ * @param {object} result  Yahoo chart result (`chart.result[0]`)
+ * @param {number} [nowSec]  current Unix time in seconds
+ * @returns {{ source: 'yahoo-regular'|'yahoo-post'|'yahoo-pre', price: number, timestamp: number } | null}
+ *   timestamp in Unix seconds; null when no candidate is valid
  */
-async function fetchYahooQuote(ticker, signal = null) {
+export function selectQuoteCandidate(result, nowSec = Math.floor(Date.now() / 1000)) {
+  const meta = result?.meta ?? {};
+  const candidates = [
+    { source: 'yahoo-regular', price: meta.regularMarketPrice, timestamp: meta.regularMarketTime },
+    { source: 'yahoo-post', price: meta.postMarketPrice, timestamp: meta.postMarketTime },
+    { source: 'yahoo-pre', price: meta.preMarketPrice, timestamp: meta.preMarketTime },
+    ...extractExtendedHoursCandles(result, nowSec),
+  ];
+
+  let best = null;
+  for (const c of candidates) {
+    if (!isFiniteNum(c.price) || !isFiniteNum(c.timestamp)) continue;
+    const price = Number(c.price);
+    const timestamp = Number(c.timestamp);
+    if (price <= 0 || timestamp > nowSec + MAX_CLOCK_SKEW_SEC) continue;
+    const better = !best || timestamp > best.timestamp
+      || (timestamp === best.timestamp && SOURCE_RANK[c.source] < SOURCE_RANK[best.source]);
+    if (better) best = { source: c.source, price, timestamp };
+  }
+  return best;
+}
+
+/**
+ * Fetch a live quote from Yahoo Finance (regular + extended hours).
+ *
+ * `current` is the newest real price (see selectQuoteCandidate) and is never
+ * replaced by an estimate. When that price is the last regular-session trade,
+ * the ticker is a Nasdaq-100 member and the equity session is closed (evenings,
+ * pre-market, weekends, holidays, after an early close), the NQ futures move since
+ * NQ's prior close is attached as `futuresContext` for context only:
+ * `impliedPrice` = previousClose × (1 + nqChangePercent / 100), an estimate
+ * anchored on the stock's prior close.
+ *
+ * @param {string} ticker  validated ticker (see lib/ticker.js)
+ * @param {AbortSignal|null} [signal]  the incoming request's signal
+ * @param {{ now?: Date }} [options]  injectable clock (defaults to the current time)
+ * @returns {Promise<{ ticker: string, current: number, previousClose: number|null,
+ *   changePercent: number|null, timestamp: number, source: 'yahoo-regular'|'yahoo-post'|'yahoo-pre',
+ *   futuresContext?: { nqChangePercent: number, impliedPrice: number, nqCurrent: number, nqPreviousClose: number } }>}
+ *   timestamp in ms
+ */
+export async function fetchYahooQuote(ticker, signal = null, { now = new Date() } = {}) {
   // Use query2 endpoint which has more reliable extended hours data
   const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1m&range=1d&includePrePost=true`;
   const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, UPSTREAM_TIMEOUT_MS, signal);
@@ -237,112 +251,50 @@ async function fetchYahooQuote(ticker, signal = null) {
     throw new Error('Yahoo Finance: No data returned');
   }
   
-  const meta = result.meta;
-  
-  // Try to get current price from multiple sources in order of preference
-  let currentPrice = null;
-  let currentTimestamp = null;
-  let source = 'yahoo-regular';
-  
-  // Determine which extended-hours session to prioritize based on current ET time.
-  // During pre-market (4:00-9:30 AM ET on weekdays), prefer preMarketPrice over
-  // stale postMarketPrice.  Uses shared helper to avoid duplicating DateTimeFormat logic.
-  const etParts = getETTimeParts();
-  const isPreMarketWindow = etParts != null
-    && etParts.weekday !== 'Sat' && etParts.weekday !== 'Sun'
-    && etParts.mins >= 240 && etParts.mins < 570; // 4:00 AM - 9:30 AM ET, weekdays only
+  const best = selectQuoteCandidate(result, Math.floor(now.getTime() / 1000));
+  if (!best) {
+    throw new Error('Yahoo Finance: No valid price found');
+  }
 
-  // 1. During pre-market window, check pre-market first
-  if (isPreMarketWindow && isFiniteNum(meta.preMarketPrice) && isFiniteNum(meta.preMarketTime)) {
-    currentPrice = Number(meta.preMarketPrice);
-    currentTimestamp = Number(meta.preMarketTime);
-    source = 'yahoo-pre';
-  }
-  // 2. Check for post-market (after-hours) price
-  else if (isFiniteNum(meta.postMarketPrice) && isFiniteNum(meta.postMarketTime)) {
-    currentPrice = Number(meta.postMarketPrice);
-    currentTimestamp = Number(meta.postMarketTime);
-    source = 'yahoo-post';
-  }
-  // 3. Check for pre-market price (outside pre-market window, as fallback)
-  else if (isFiniteNum(meta.preMarketPrice) && isFiniteNum(meta.preMarketTime)) {
-    currentPrice = Number(meta.preMarketPrice);
-    currentTimestamp = Number(meta.preMarketTime);
-    source = 'yahoo-pre';
-  }
-  // 4. Extract extended-hours price from time series candles
-  //    (meta fields are often unpopulated even when candles exist)
-  else {
-    const extHours = extractExtendedHoursPrice(result, isPreMarketWindow);
-    if (extHours) {
-      currentPrice = extHours.price;
-      currentTimestamp = extHours.timestamp;
-      source = extHours.session === 'pre' ? 'yahoo-pre' : 'yahoo-post';
-    }
-  }
-  // 5. Fall back to regular market price
-  if (!isFiniteNum(currentPrice) && isFiniteNum(meta.regularMarketPrice) && isFiniteNum(meta.regularMarketTime)) {
-    currentPrice = Number(meta.regularMarketPrice);
-    currentTimestamp = Number(meta.regularMarketTime);
-    source = 'yahoo-regular';
-  }
-  
+  const meta = result.meta ?? {};
   const previousClose = Number(
     meta.chartPreviousClose ?? meta.previousClose ?? meta.regularMarketPreviousClose
   );
-  
-  if (!Number.isFinite(currentPrice)) {
-    throw new Error('Yahoo Finance: No valid price found');
-  }
+  const hasPreviousClose = Number.isFinite(previousClose) && previousClose !== 0;
   
   const quote = {
     ticker,
-    current: currentPrice,
+    current: best.price,
     previousClose: Number.isFinite(previousClose) ? previousClose : null,
-    changePercent: Number.isFinite(previousClose) && previousClose !== 0
-      ? ((currentPrice - previousClose) / previousClose) * 100
+    changePercent: hasPreviousClose
+      ? ((best.price - previousClose) / previousClose) * 100
       : null,
-    timestamp: currentTimestamp != null ? currentTimestamp * 1000 : null,
-    source,
+    timestamp: best.timestamp * 1000,
+    source: best.source,
   };
   
-  // If only regular price and ticker is Nasdaq-100 constituent, fetch futures for context.
-  // Only apply when US equity market is closed to avoid overriding actual traded prices.
-  if (source === 'yahoo-regular' && Number.isFinite(previousClose) && previousClose !== 0 && NASDAQ_100_CONSTITUENTS.has(ticker)) {
-    // Check if US equity market is currently open (9:30 AM - 4:00 PM ET weekdays)
-    // Reuses etParts computed earlier to avoid a second Intl.DateTimeFormat call.
-    const isUSMarketOpen = etParts != null
-      && etParts.weekday !== 'Sat' && etParts.weekday !== 'Sun'
-      && etParts.mins >= 570 && etParts.mins < 960;
+  // NQ futures context for a Nasdaq-100 member whose newest price is the last
+  // regular-session trade while the equity session is closed. Context only:
+  // current, timestamp, source and changePercent stay the stock's own.
+  if (quote.source === 'yahoo-regular' && hasPreviousClose
+      && NASDAQ_100_CONSTITUENTS.has(ticker) && !getMarketSession(now).equityOpen) {
+    try {
+      const futures = await fetchNasdaqFutures(signal);
 
-    if (!isUSMarketOpen) {
-      try {
-        const futures = await fetchNasdaqFutures(signal);
-        
-        // Only include futures if they've moved meaningfully (>0.1%)
-        if (Math.abs(futures.changePercent) > 0.1) {
-          const impliedPrice = previousClose * (1 + futures.changePercent / 100);
-          
-          // Add futures context to the response (don't override actual price)
-          quote.futuresContext = {
-            nqChangePercent: futures.changePercent,
-            impliedPrice: impliedPrice,
-            nqCurrent: futures.current,
-            nqPreviousClose: futures.previousClose,
-          };
-          
-          // Only use implied price if it differs meaningfully
-          if (Math.abs(impliedPrice - currentPrice) / currentPrice > 0.001) {
-            quote.current = impliedPrice;
-            quote.timestamp = Date.now();
-            quote.source = 'futures-implied';
-            quote.changePercent = ((impliedPrice - previousClose) / previousClose) * 100;
-          }
-        }
-      } catch (futuresErr) {
-        // Futures fetch failed, continue with regular price only
-        console.warn('Futures fetch failed:', futuresErr.message);
+      // Only include futures if they've moved meaningfully (>0.1%)
+      if (Math.abs(futures.changePercent) > 0.1) {
+        const impliedPrice = previousClose * (1 + futures.changePercent / 100);
+
+        quote.futuresContext = {
+          nqChangePercent: futures.changePercent,
+          impliedPrice: impliedPrice,
+          nqCurrent: futures.current,
+          nqPreviousClose: futures.previousClose,
+        };
       }
+    } catch (futuresErr) {
+      // Futures fetch failed, continue with regular price only
+      console.warn('Futures fetch failed:', futuresErr.message);
     }
   }
   
@@ -351,6 +303,8 @@ async function fetchYahooQuote(ticker, signal = null) {
 
 /**
  * Fetch live quote from Finnhub (fallback, regular hours only).
+ * Finnhub answers an unknown symbol with 200 `{ c: 0, pc: 0, t: 0 }`, so a
+ * missing, non-numeric or non-positive `c` means "no data", not a price of 0.
  */
 async function fetchFinnhubQuote(ticker, finnhubKey, signal = null) {
   const url = new URL(`${FINNHUB_BASE}/quote`);
@@ -362,16 +316,22 @@ async function fetchFinnhubQuote(ticker, finnhubKey, signal = null) {
   
   const q = await res.json();
   
-  if (!q || q.c == null) {
+  if (!q || !isFiniteNum(q.c) || Number(q.c) <= 0) {
     throw new Error('Finnhub: No data returned');
   }
+
+  const current = Number(q.c);
+  const previousClose = isFiniteNum(q.pc) ? Number(q.pc) : null;
   
   return {
     ticker,
-    current: q.c,
-    previousClose: q.pc ?? null,
-    changePercent: q.pc != null && Number.isFinite(q.pc) && q.pc !== 0 ? ((q.c - q.pc) / q.pc) * 100 : null,
-    timestamp: q.t ? q.t * 1000 : Date.now(),
+    current,
+    previousClose,
+    changePercent: previousClose != null && previousClose !== 0
+      ? ((current - previousClose) / previousClose) * 100
+      : null,
+    // q.t is Unix seconds. Without it the time is unknown (null), never "now".
+    timestamp: isFiniteNum(q.t) && Number(q.t) > 0 ? Number(q.t) * 1000 : null,
     source: 'finnhub',
   };
 }
