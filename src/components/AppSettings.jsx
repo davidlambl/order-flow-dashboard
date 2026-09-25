@@ -44,8 +44,11 @@ function SavedIndicator({ show }) {
   );
 }
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 // ── Main Component ──
-export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource, userEmail, onSignOut }) {
+// onSignIn: back to the sign-in screen; passed only when cloud sign-in is configured.
+export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource, userEmail, onSignOut, onSignIn }) {
   const [activeTab, setActiveTab] = useState('ai');
 
   // AI state
@@ -76,6 +79,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState(null);
   const [importError, setImportError] = useState('');
+  const [importReport, setImportReport] = useState(null); // { positions, chats, prefs, skipped } after a success
   const [contextEditorOpen, setContextEditorOpen] = useState(false);
   const [contextPreview, setContextPreview] = useState('');
 
@@ -171,6 +175,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     setTokenError('');
     setImportStatus(null);
     setImportError('');
+    setImportReport(null);
     setContextPreview(getPreference('strategic_context') ?? '');
     setContextEditorOpen(false);
     setActiveTab('ai');
@@ -283,6 +288,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     }
   }, [tokenInput, onAuthChange]);
 
+  // "Remove access token": deletes this browser's copy of the premium JWT (it is not revoked on the
+  // server, D9). The account sign-in is separate: "Sign out" above ends both.
   const handleRevokeToken = useCallback(() => {
     clearToken();
     setTokenStatus(null);
@@ -334,7 +341,23 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     reader.onload = () => {
       try {
         const data = JSON.parse(reader.result);
-        importAll(data);
+        // An import replaces what is here (and, signed in, the account's copy): ask first. A "no"
+        // changes nothing and shows nothing.
+        const where = userEmail ? ' and in your cloud account' : '';
+        if (!window.confirm(`Import replaces the positions, chat histories and settings on this device${where}. API keys on this device are kept. Continue?`)) {
+          setImportStatus(null);
+          setImportError('');
+          setImportReport(null);
+          return;
+        }
+        const result = importAll(data);
+        const imported = result?.imported ?? {};
+        setImportReport({
+          positions: imported.positions ?? 0,
+          chats: imported.chats ?? 0,
+          prefs: imported.prefs ?? 0,
+          skipped: result?.skipped ?? [],
+        });
         setImportStatus('success');
         setImportError('');
         // Reload strategic context preview from newly imported data
@@ -349,8 +372,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
       setImportError('Failed to read file.');
     };
     reader.readAsText(file);
-    e.target.value = '';
-  }, []);
+    e.target.value = ''; // reset now, so picking the same file again (after a "no") fires onChange
+  }, [userEmail]);
 
   if (!isOpen) return null;
 
@@ -670,9 +693,20 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">
-                <p className="text-xs text-[var(--color-text-muted)]">
-                  Not signed in — data is stored locally only.
-                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    Not signed in — data is stored locally only.
+                  </p>
+                  {onSignIn && (
+                    <button
+                      type="button"
+                      onClick={() => { aiKeyFlush(); tradierFlush(); finnhubFlush(); onSignIn(); }}
+                      className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
+                    >
+                      Sign in
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -714,14 +748,18 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                   </li>
                 </ul>
 
-                {/* Revoke */}
-                <div className="pt-2 border-t border-[var(--color-border-subtle)]">
+                {/* Remove the token from this browser (not a sign-out: the account stays signed in) */}
+                <div className="pt-2 border-t border-[var(--color-border-subtle)] space-y-1">
                   <button
+                    type="button"
                     onClick={handleRevokeToken}
                     className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
                   >
-                    Revoke token
+                    Remove access token
                   </button>
+                  <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
+                    Deletes the token from this browser. Premium features lock until a token is activated again.
+                  </p>
                 </div>
               </div>
             ) : (
@@ -901,10 +939,19 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                 />
               </div>
 
-              {importStatus === 'success' && (
-                <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bull)]">
-                  <Check size={11} className="shrink-0" />
-                  <span>Data imported successfully.</span>
+              {importStatus === 'success' && importReport && (
+                <div role="status" className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+                  <Check size={11} className="shrink-0 mt-px text-[var(--color-bull)]" />
+                  <div className="min-w-0">
+                    <p className="text-[var(--color-bull)]">
+                      Imported {plural(importReport.positions, 'position')}, {plural(importReport.chats, 'chat')}, {plural(importReport.prefs, 'setting')}.
+                    </p>
+                    {importReport.skipped.length > 0 && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] break-words">
+                        Skipped unknown settings: {importReport.skipped.join(', ')}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
               {importStatus === 'error' && (
@@ -915,10 +962,10 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
               )}
 
               <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed">
-                Exports positions, chat histories, and preferences as JSON.
-                API keys are{' '}
-                <strong className="font-medium text-[var(--color-text-secondary)]">not</strong>{' '}
-                included for security. Import overwrites existing data.
+                Exports positions, chat histories and settings as JSON. API keys are{' '}
+                <strong className="font-medium text-[var(--color-text-secondary)]">never</strong>{' '}
+                exported, and an import keeps the ones on this device. An import replaces the data on this device
+                {userEmail ? ' and in your cloud account' : ''}.
               </p>
             </section>
 

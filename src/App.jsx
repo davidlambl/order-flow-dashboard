@@ -16,34 +16,71 @@ import SyncChoice from './components/SyncChoice';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
-import { hasValidToken, getTokenTier, daysRemaining, clearToken, verifyStoredToken, AUTH_EVENT } from './lib/auth';
+import { hasValidToken, getTokenTier, daysRemaining, verifyStoredToken, AUTH_EVENT } from './lib/auth';
 import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend, emitStoreChanged, subscribeCrossTab } from './lib/store';
 import { supabase } from './lib/supabase';
 import { SupabaseBackend } from './lib/SupabaseBackend';
-import { signOut, claimLocalData } from './lib/session';
+import { signOut, claimLocalData, isAuthSkipped, setAuthSkipped as persistAuthSkipped } from './lib/session';
+import { createSaver } from './lib/debouncedSaver';
 
 const SIDEBAR_DEFAULT = 384;
 const SIDEBAR_MIN = 280;
 const SIDEBAR_MAX = 640;
 
+// Position edits are written once typing pauses, not per keystroke: each write is a localStorage
+// write and, signed in, a cloud upsert (roadmap D10).
+const POSITION_SAVE_DELAY_MS = 300;
+// The value carries its ticker, so a save that runs after a ticker change still lands on the
+// ticker it was typed for.
+const savePosition = ({ ticker, costBasis, shares }) => storeSetPosition(ticker, { costBasis, shares });
+
+const AUTH_CHECK_FAILED = 'Could not check your sign-in status. You can retry or continue without signing in.';
+
 export default function App() {
   // ── Auth state ───────────────────────────────────────────────────────────
   const [authSession, setAuthSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(!!supabase); // only loading if Supabase is configured
-  const [authSkipped, setAuthSkipped] = useState(false);
+  // "Continue without signing in" is remembered on this browser (session.js), so a reload goes
+  // straight to the app; a sign-in, the Account tab's "Sign in" button and a sign-out clear it (D11).
+  const [authSkipped, setAuthSkipped] = useState(() => isAuthSkipped());
+  const [authNotice, setAuthNotice] = useState(null); // on the sign-in screen: the session check failed
 
-  // Check existing session + listen for auth changes (magic link callback, sign-out)
+  // Check existing session + listen for auth changes (magic link callback, sign-out). A failed check
+  // must not leave the spinner up: the sign-in screen shows with a notice and the skip button (F10).
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthSession(session);
-      setAuthLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        const session = data?.session ?? null;
+        // A network failure while refreshing an expired session resolves with this error and no
+        // session; the stored session is kept, and a later refresh signs the user back in.
+        if (!session && error?.name === 'AuthRetryableFetchError') {
+          console.warn('Could not check the sign-in status:', error.message);
+          setAuthNotice(AUTH_CHECK_FAILED);
+        }
+        setAuthSession(session);
+        setAuthLoading(false);
+      })
+      .catch((err) => {
+        console.warn('Could not check the sign-in status:', err?.message ?? err);
+        setAuthNotice(AUTH_CHECK_FAILED);
+        setAuthLoading(false);
+      });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthSession(session);
+      if (session) {
+        setAuthNotice(null);
+        // In step with the stored flag (the backend effect clears it): should this session end
+        // elsewhere, the sign-in screen shows rather than the app in local mode.
+        setAuthSkipped(false);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Position edits wait here until typing pauses (see updatePosition). One saver per mount; its pending
+  // save is flushed before anything that must see the stored position or that changes the backend.
+  const [positionSaver] = useState(() => createSaver({ delay: POSITION_SAVE_DELAY_MS }));
 
   // ── Storage backend, keyed on the signed-in account ──────────────────────
   // One SupabaseBackend per account, built when the account changes (StrictMode's second effect run
@@ -52,12 +89,18 @@ export default function App() {
   // never merges on its own: a conflict waits for the user's choice in SyncChoice (roadmap D1, D6).
   const activeUserIdRef = useRef(undefined);
   const backendRef = useRef(null);
+  const stopHydrateRetryRef = useRef(null); // removes the 'online' listener of a hydrate retry
   const [syncConflict, setSyncConflict] = useState(null); // { userId, report } from hydrate()
   const [syncBusy, setSyncBusy] = useState(false);
   useEffect(() => {
     migrateSessionToLocal();
     const userId = authSession?.user?.id;
     if (activeUserIdRef.current === userId) return;
+    // A position edit still inside its debounce was typed against the backend in use: it is written
+    // there, never through the next account's backend.
+    positionSaver.flush();
+    stopHydrateRetryRef.current?.(); // a retry still waiting for the previous account
+    stopHydrateRetryRef.current = null;
     const previous = activeUserIdRef.current;
     activeUserIdRef.current = userId;
     if (!supabase || !userId) {
@@ -65,6 +108,7 @@ export default function App() {
       setBackend(new LocalStorageBackend());
       return;
     }
+    persistAuthSkipped(false); // signed in: after a sign-out the sign-in screen shows again
     // The account changed without a sign-out (a magic link for another user opened in this browser),
     // or this browser still holds the data of an account whose session ended elsewhere: that data must
     // never reach this account, so it is cleared (API keys kept) before this account's backend exists.
@@ -73,11 +117,27 @@ export default function App() {
     setBackend(backend);
     backendRef.current = backend;
     if (cleared) emitStoreChanged();
-    backend.hydrate().then((report) => {
+    // 'offline': the account could not be read and nothing was synced. hydrate() runs once more when
+    // the browser is next online, and that report is handled the same way.
+    const handleReport = (report, retryWhenOnline) => {
       if (activeUserIdRef.current !== userId) return; // signed out or switched while hydrating
-      if (report?.status === 'conflict') setSyncConflict({ userId, report });
-    });
-  }, [authSession]);
+      if (report?.status === 'conflict') {
+        setSyncConflict({ userId, report });
+      } else if (report?.status === 'offline' && retryWhenOnline) {
+        const retry = () => {
+          window.removeEventListener('online', retry);
+          stopHydrateRetryRef.current = null;
+          backend.hydrate().then((next) => handleReport(next, false));
+        };
+        window.addEventListener('online', retry);
+        stopHydrateRetryRef.current = () => window.removeEventListener('online', retry);
+      }
+    };
+    backend.hydrate().then((report) => handleReport(report, true));
+  }, [authSession, positionSaver]);
+
+  // Unmounting drops a hydrate retry still waiting for the network.
+  useEffect(() => () => stopHydrateRetryRef.current?.(), []);
 
   // (No `finally` here: the React Compiler lint skips a whole component that has one.)
   const handleSyncChoice = useCallback(async (choice) => {
@@ -92,13 +152,16 @@ export default function App() {
   }, []);
 
   // One sign-out for both logins: Supabase session, access token and this browser's copy of the data.
+  // The Header's icon and the Account tab's button both call it. A position edit still inside its
+  // debounce is saved first, while the account's backend is still the one in use.
   const handleSignOut = useCallback(async () => {
+    positionSaver.flush();
     const { signedOut } = await signOut({ client: supabase });
     if (!signedOut) return;
     setSyncConflict(null);
     setAuthSession(null);
     setAuthSkipped(false);
-  }, []);
+  }, [positionSaver]);
 
   // Edits made in another tab reach this one as store-changed.
   useEffect(() => subscribeCrossTab(), []);
@@ -189,13 +252,6 @@ export default function App() {
     return () => window.removeEventListener(AUTH_EVENT, refreshAuth);
   }, [refreshAuth]);
 
-  const handleLogout = useCallback(() => {
-    clearToken();
-    setIsPremium(false);
-    setTokenTier(null);
-    setDaysLeft(null);
-  }, []);
-
   useEffect(() => {
     const saved = getPosition(ticker);
     setCostBasis(saved.costBasis);
@@ -204,6 +260,9 @@ export default function App() {
 
   useEffect(() => {
     const handler = () => {
+      // A position edit still inside its debounce is newer than the stored copy: write it before
+      // re-reading, so the inputs never jump back to the old value while the store gets the new one.
+      positionSaver.flush();
       const saved = getPosition(ticker);
       setCostBasis(saved.costBasis);
       setShares(saved.shares);
@@ -212,17 +271,30 @@ export default function App() {
     };
     window.addEventListener('store-changed', handler);
     return () => window.removeEventListener('store-changed', handler);
-  }, [ticker]);
+  }, [ticker, positionSaver]);
 
+  // The inputs follow every keystroke; the store (and through it the cloud) gets the value once
+  // typing pauses (roadmap D10).
   const updatePosition = useCallback((newCost, newShares) => {
     setCostBasis(newCost);
     setShares(newShares);
-    storeSetPosition(ticker, { costBasis: newCost, shares: newShares });
-  }, [ticker]);
+    positionSaver.schedule({ ticker, costBasis: newCost, shares: newShares }, savePosition);
+  }, [ticker, positionSaver]);
+
+  // Closing the tab or unmounting inside the debounce saves the edit instead of dropping it.
+  useEffect(() => {
+    const onPageHide = () => { positionSaver.flush(); };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      positionSaver.flush();
+    };
+  }, [positionSaver]);
 
   const handleTickerChange = useCallback((newTicker) => {
+    positionSaver.flush(); // the old ticker's edit is stored before the new ticker's position loads
     setTicker(newTicker);
-  }, []);
+  }, [positionSaver]);
 
   const handleRefresh = useCallback(() => {
     refresh();
@@ -231,6 +303,20 @@ export default function App() {
 
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+
+  // "Continue without signing in", remembered on this browser.
+  const handleSkipSignIn = useCallback(() => {
+    persistAuthSkipped(true);
+    setAuthSkipped(true);
+  }, []);
+
+  // The Account tab's "Sign in": back to the sign-in screen (which can still be skipped).
+  const handleSignIn = useCallback(() => {
+    persistAuthSkipped(false);
+    setAuthNotice(null);
+    setSettingsOpen(false);
+    setAuthSkipped(false);
+  }, []);
 
   const dataSource = usingMock ? 'mock' : (data?.provider || 'cboe');
 
@@ -245,7 +331,7 @@ export default function App() {
 
   // Show login form if Supabase is available but user hasn't signed in or skipped
   if (supabase && !authSession && !authSkipped) {
-    return <LoginForm onSkip={() => setAuthSkipped(true)} />;
+    return <LoginForm onSkip={handleSkipSignIn} notice={authNotice} />;
   }
 
   // Keyed on the account: switching accounts without a sign-out remounts everything below, so no
@@ -263,7 +349,8 @@ export default function App() {
         isPremium={isPremium}
         tokenTier={tokenTier}
         daysLeft={daysLeft}
-        onLogout={handleLogout}
+        signedIn={Boolean(authSession)}
+        onSignOut={handleSignOut}
         onOpenSettings={openSettings}
         earnings={tickerContext?.earnings}
         autoRefresh={autoRefresh}
@@ -427,6 +514,7 @@ export default function App() {
         dataSource={dataSource}
         userEmail={authSession?.user?.email}
         onSignOut={handleSignOut}
+        onSignIn={supabase ? handleSignIn : undefined}
       />
 
       {/* Sign-in found different data here and in the account: nothing syncs until the user picks */}
