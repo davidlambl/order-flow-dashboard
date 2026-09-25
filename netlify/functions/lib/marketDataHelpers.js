@@ -3,6 +3,10 @@
 
 import { fetchWithTimeout } from './http.js';
 import { parseTicker } from './ticker.js';
+import { etDateString } from '../../../shared/marketCalendar.js';
+
+/** Number of nearest expiries every provider is measured on (see normalizeChain). */
+export const EXPIRY_WINDOW = 6;
 
 const CBOE_BASE = 'https://cdn.cboe.com/api/global/delayed_quotes/options';
 const CBOE_TIMEOUT_MS = 8000;
@@ -103,7 +107,7 @@ export async function fetchTradier(rawTicker, apiKey, signal = null) {
   const quoteData = await quoteRes.json();
   const quote = quoteData?.quotes?.quote || {};
 
-  const nearbyExpiries = expirations.slice(0, 6);
+  const nearbyExpiries = expirations.slice(0, EXPIRY_WINDOW);
   const chainPromises = nearbyExpiries.map((exp) =>
     fetchWithTimeout(
       tradierUrl(baseUrl, 'options/chains', { symbol: ticker, expiration: exp, greeks: 'true' }),
@@ -148,6 +152,33 @@ export async function fetchTradier(rawTicker, apiKey, signal = null) {
     lastTradeTime: quote.trade_date || null,
     options: allOptions,
   };
+}
+
+/**
+ * Normalize a raw chain to the expiry window every provider is measured on: drop
+ * contracts whose expiry is already in the past (Eastern Time) and keep only the
+ * `window` nearest expiries, so CBOE (which serves every expiry) and Tradier (which
+ * we fetch for the nearest few) feed identical inputs to the metric computations.
+ * Contracts come back grouped in ascending expiry order.
+ *
+ * @returns {{ options: object[], expiries: string[] }}
+ */
+export function normalizeChain(options, { now = new Date(), window = EXPIRY_WINDOW } = {}) {
+  const today = etDateString(now);
+  const byExpiry = new Map();
+  for (const opt of options || []) {
+    const parsed = typeof opt?.symbol === 'string' ? parseOptionSymbol(opt.symbol) : null;
+    if (!parsed) continue;
+    if (today && parsed.expiry < today) continue;
+    let bucket = byExpiry.get(parsed.expiry);
+    if (!bucket) {
+      bucket = [];
+      byExpiry.set(parsed.expiry, bucket);
+    }
+    bucket.push(opt);
+  }
+  const expiries = [...byExpiry.keys()].sort().slice(0, window);
+  return { options: expiries.flatMap((e) => byExpiry.get(e)), expiries };
 }
 
 export function parseOptionSymbol(sym) {

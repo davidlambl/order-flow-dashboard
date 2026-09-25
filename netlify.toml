@@ -14,3 +14,8 @@
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
+
+[functions]
+  # shared/ holds pure modules imported by both src/ and netlify/functions/ (e.g. the
+  # market calendar). Static imports are traced automatically; this keeps it explicit.
+  included_files = ["shared/**"]
