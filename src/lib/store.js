@@ -276,8 +276,10 @@ export function setPosition(ticker, data) { backend.setPosition(ticker, data); }
 export function deletePosition(ticker) { backend.deletePosition(ticker); }
 
 export function getChatHistory(ticker) { return backend.getChatHistory(ticker); }
-export function setChatHistory(ticker, messages) { backend.setChatHistory(ticker, messages); }
-export function deleteChatHistory(ticker) { backend.deleteChatHistory(ticker); }
+// No ticker, no write, whatever the backend: ChatBot saves the previous ticker's chat on every ticker change,
+// and the first one (market data arriving, from no ticker to the first) must reach neither storage nor the cloud.
+export function setChatHistory(ticker, messages) { if (ticker) backend.setChatHistory(ticker, messages); }
+export function deleteChatHistory(ticker) { if (ticker) backend.deleteChatHistory(ticker); }
 
 export function getPreference(key) { return backend.getPreference(key); }
 export function setPreference(key, value) { backend.setPreference(key, value); }
@@ -345,6 +347,48 @@ export function migrateSessionToLocal() {
   } catch { /* sessionStorage unavailable — skip migration */ }
 }
 
+/** Dispatch a plain CustomEvent on window (no-op without one). */
+function emitWindowEvent(type) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(type));
+}
+
+/**
+ * Ask `target` to make the cloud copy match `snapshot`, when it keeps one (SupabaseBackend#replaceCloud).
+ * In the background: the import does not wait for the network, and a failure is only a warning (this browser
+ * already holds the imported data).
+ */
+function replaceCloudCopy(target, snapshot) {
+  if (typeof target?.replaceCloud !== 'function') return;
+  // Called inside the executor, so a synchronous throw ends up in .catch() like a rejection.
+  new Promise((resolve) => { resolve(target.replaceCloud(snapshot)); })
+    .catch((e) => console.warn('importAll: could not replace the cloud copy:', e?.message ?? e));
+}
+
+/**
+ * Replace this browser's positions, chats and preferences with a backup made by exportAll().
+ *
+ * Why it works this way (roadmap D8). The import used to clear with clearAll(), which also removed the API
+ * keys an export never contains, so restoring a backup wiped them; it wrote any preference name found in the
+ * file (an unknown one became a raw localStorage key); it told only `store-changed` listeners, so the AI
+ * settings and the data-source hooks kept their old values; and on a SupabaseBackend the cloud copy kept
+ * everything the file did not have, which came back with the next hydrate. Now:
+ *   - the file is checked before anything changes (a throw leaves this browser as it was), and the current
+ *     data is backed up under `_import_backup` until the import is written;
+ *   - positions, chats and preferences are cleared with the API keys kept, then the file's are written;
+ *   - a preference is taken only under a known name (PREF_MAP) that is not a device key: API keys and
+ *     per-browser flags in a file are never applied (exports never contain them, and a hand-edited file must
+ *     not replace this device's keys); every other name is reported in `skipped`;
+ *   - a backend with replaceCloud() is asked to make the cloud copy match what was imported (not awaited);
+ *   - `store-changed` (no detail), `ai-settings-changed` and `data-source-changed` are dispatched, so every
+ *     view, the AI settings and the market-data hooks re-read.
+ * Asking the user first is the caller's job (AppSettings).
+ *
+ * @param {object} data a parsed backup: { version, positions?, chatHistories?, preferences? }
+ * @returns {{ imported: { positions: number, chats: number, prefs: number }, skipped: string[] }} how many
+ *   items were written, and the preference names in the file that were not imported (file order, once each)
+ * @throws {Error} when `data` is not a backup this version can read; nothing has changed then
+ */
 export function importAll(data) {
   if (!data || typeof data !== 'object') throw new Error('Invalid data format.');
   if (typeof data.version !== 'number') throw new Error('Missing schema version.');
@@ -381,30 +425,60 @@ export function importAll(data) {
     console.warn('importAll: backup failed', e);
   }
 
-  backend.clearAll();
+  backend.clearAll({ keepSecrets: true });
 
+  // What is written, as [key, value] entries: the counts and the cloud snapshot come from these. An item the
+  // backend would not store (a position with neither field, an empty chat, a null preference) is left out.
+  const positions = [];
+  const chats = [];
+  const prefs = [];
+  const skipped = new Set();
   if (hasPositions) {
     for (const [ticker, pos] of Object.entries(migrated.positions)) {
-      if (pos != null && typeof pos === 'object' && !Array.isArray(pos)) {
-        backend.setPosition(ticker, pos);
-      }
+      if (!ticker || pos == null || typeof pos !== 'object' || Array.isArray(pos)) continue;
+      const value = { costBasis: pos.costBasis ?? null, shares: pos.shares ?? null };
+      if (value.costBasis == null && value.shares == null) continue;
+      backend.setPosition(ticker, value);
+      positions.push([ticker, value]);
     }
   }
   if (hasChats) {
     for (const [ticker, msgs] of Object.entries(migrated.chatHistories)) {
-      if (Array.isArray(msgs)) backend.setChatHistory(ticker, msgs);
+      if (!ticker || !Array.isArray(msgs) || msgs.length === 0) continue;
+      backend.setChatHistory(ticker, msgs);
+      chats.push([ticker, msgs]);
     }
   }
   if (hasPrefs) {
-    for (const [key, val] of Object.entries(migrated.preferences)) {
-      backend.setPreference(key, val);
+    for (const [name, value] of Object.entries(migrated.preferences)) {
+      if (!Object.hasOwn(PREF_MAP, name) || DEVICE_KEYS.has(name)) {
+        skipped.add(name);
+        continue;
+      }
+      if (value == null) continue;
+      backend.setPreference(name, value);
+      prefs.push([name, value]);
     }
   }
 
   // Clean up backup after successful import
   try { localStorage.removeItem('_import_backup'); } catch { /* ignore */ }
 
+  // Object.fromEntries defines own properties, so no ticker or name can reach a prototype.
+  replaceCloudCopy(backend, {
+    positions: Object.fromEntries(positions),
+    chatHistories: Object.fromEntries(chats),
+    preferences: Object.fromEntries(prefs),
+  });
+
   emitStoreChanged();
+  emitWindowEvent('ai-settings-changed'); // AppSettings and ChatBot re-read the provider and model
+  emitWindowEvent('data-source-changed'); // App and the market-data, quote and research hooks re-read
+
+  return {
+    imported: { positions: positions.length, chats: chats.length, prefs: prefs.length },
+    skipped: [...skipped],
+  };
 }
 
 /**

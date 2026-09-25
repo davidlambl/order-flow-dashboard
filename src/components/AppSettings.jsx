@@ -948,7 +948,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                     </p>
                     {importReport.skipped.length > 0 && (
                       <p className="text-[10px] text-[var(--color-text-muted)] break-words">
-                        Skipped unknown settings: {importReport.skipped.join(', ')}
+                        Not imported: {importReport.skipped.join(', ')}
                       </p>
                     )}
                   </div>

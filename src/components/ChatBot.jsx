@@ -652,10 +652,14 @@ function conversationWindow(turns) {
   return firstUser > 0 ? window.slice(firstUser) : window;
 }
 
-/** Chat history as persisted: no empty placeholder and no `pending` flag, even mid-stream. */
+/**
+ * Chat history as persisted: no empty placeholder and no `pending` flag, even mid-stream, and no error
+ * bubbles (D10: a failed request is shown, not stored or synced; it is not part of the conversation).
+ */
 function storableMessages(msgs) {
-  if (!msgs.some((m) => m.pending)) return msgs;
+  if (!msgs.some((m) => m.pending || m.role === 'error')) return msgs;
   return msgs.flatMap((m) => {
+    if (m.role === 'error') return [];
     if (!m.pending) return [m];
     const { pending: _pending, ...rest } = m;
     return rest.content ? [rest] : [];
@@ -665,7 +669,13 @@ function storableMessages(msgs) {
 export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen, liveQuote }) {
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
-  const skipSaveRef = useRef(false);
+  // D10: the chat is stored at a few persist points, never per streamed chunk (that was a localStorage write
+  // and a whole-history cloud upsert on every animation frame of a reply). The persist points are a reply
+  // settling (done, stopped or failed) and a message deleted, through setMessagesAndPersist, which raises this
+  // flag; the persist effect writes the state they committed. Clearing the history writes directly, a ticker
+  // change saves the old ticker's chat directly, and a page hidden or an unmount mid-reply saves it as far
+  // as it got (persistInFlight). A reload from the store (ticker change, store-changed) never writes.
+  const persistOnCommitRef = useRef(false);
   const [messages, setMessages] = useState(() => getChatHistory(currentTicker));
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -704,6 +714,26 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     return tail?.pending && !tail.content ? msgs.slice(0, -1) : msgs;
   }, []);
 
+  // A persist point: raise the flag, then set the messages; the persist effect writes what was committed.
+  // The update always yields a new array, so that commit (and the write) happens even when nothing changes
+  // on screen: a reply whose bubble was deleted mid-stream can end with text the store does not have yet.
+  const setMessagesAndPersist = useCallback((update) => {
+    persistOnCommitRef.current = true;
+    setMessages((prev) => {
+      const next = update(prev);
+      return next === prev ? [...prev] : next;
+    });
+  }, []);
+
+  // Save a reply that is still streaming as far as it got (the question and the text so far), for the page
+  // being hidden or the chat unmounting, where no settle follows. Nothing when no reply is live: after a
+  // settle the store already holds the latest, and writing this component's copy back then could restore
+  // data a sign-out has just cleared. A stream detached by a ticker change or a reset is not live either.
+  const persistInFlight = useCallback(() => {
+    const stream = streamRef.current;
+    if (stream && !stream.reason) setChatHistory(stream.ticker, storableMessages(getCompleteMessages()));
+  }, [getCompleteMessages]);
+
   useEffect(() => {
     if (currentTicker && currentTicker !== prevTickerRef.current) {
       // A reply still streaming belongs to the old ticker: stop it and keep what arrived there.
@@ -711,17 +741,23 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         streamRef.current.reason = 'ticker';
         streamRef.current.controller.abort();
       }
+      // The old ticker's chat as it stands. When market data first arrives there is no old ticker, and
+      // setChatHistory writes nothing for a falsy one.
       setChatHistory(prevTickerRef.current, storableMessages(getCompleteMessages()));
       if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = null; }
       chunkBuf.current = '';
       prevTickerRef.current = currentTicker;
-      skipSaveRef.current = true;
+      // The save above covers a persist still pending; the reload below only reads the store.
+      persistOnCommitRef.current = false;
       setMessages(getChatHistory(currentTicker));
     }
   }, [currentTicker, getCompleteMessages]);
 
+  // The persist effect. Declared after the ticker-change effect: in a commit that also changes the ticker,
+  // that effect saves the old chat and lowers the flag first, so old messages never land under the new ticker.
   useEffect(() => {
-    if (skipSaveRef.current) { skipSaveRef.current = false; return; }
+    if (!persistOnCommitRef.current) return;
+    persistOnCommitRef.current = false;
     setChatHistory(currentTicker, storableMessages(messages));
   }, [messages, currentTicker]);
 
@@ -729,8 +765,17 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     const handler = (e) => {
       const detail = e.detail;
       if (detail && !(detail.kind === 'chat' && detail.id === currentTicker)) return; // another item changed
-      if (streamRef.current) return; // a reply is streaming; keep the on-screen conversation
-      skipSaveRef.current = true;
+      const stream = streamRef.current;
+      if (stream) {
+        if (detail) return; // this chat changed elsewhere while a reply streams here: keep the on-screen one
+        // No detail: everything changed (an import, hydrate, conflict resolution, sign-out, account switch).
+        // The store is authoritative: the reply in flight is dropped and nothing of it is written.
+        stream.reason = 'reset';
+        stream.controller.abort();
+      }
+      if (rafId.current) { cancelAnimationFrame(rafId.current); rafId.current = null; }
+      chunkBuf.current = '';
+      persistOnCommitRef.current = false; // a reload only reads the store
       setMessages(getChatHistory(currentTicker));
     };
     window.addEventListener('store-changed', handler);
@@ -757,13 +802,20 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
 
+  // A tab closed or navigated away mid-reply keeps the question and the partial answer.
+  useEffect(() => {
+    window.addEventListener('pagehide', persistInFlight);
+    return () => window.removeEventListener('pagehide', persistInFlight);
+  }, [persistInFlight]);
+
   useEffect(() => () => {
     if (rafId.current) cancelAnimationFrame(rafId.current);
+    persistInFlight(); // before the abort: a stream aborted for 'unmount' returns without settling
     if (streamRef.current) {
       streamRef.current.reason = 'unmount';
       streamRef.current.controller.abort();
     }
-  }, []);
+  }, [persistInFlight]);
 
   const flushChunks = useCallback(() => {
     rafId.current = null;
@@ -790,8 +842,9 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
 
   // One streamed reply. A placeholder bubble goes up front, so the typing indicator
   // and the "suggest updates" reply have their own bubble from the start (F7); each
-  // stream has its own AbortController, aborted by the Stop button, a ticker change
-  // or unmount (F6); a reply that did not end normally gets a marker (F8).
+  // stream has its own AbortController, aborted by the Stop button, a ticker change,
+  // unmount or a store reset (F6); a reply that did not end normally gets a marker (F8).
+  // Settling is the persist point (D10): the chat is stored once per reply, not per chunk.
   const runStream = useCallback(async ({ apiMessages, failPrefix }) => {
     if (sendingRef.current) return;
     sendingRef.current = true;
@@ -799,6 +852,9 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     setMessages((prev) => [...prev, { role: 'assistant', content: '', pending: true }]);
     const stream = { controller: new AbortController(), ticker: data?.ticker, reason: null };
     streamRef.current = stream;
+    // Aborted by a ticker change, unmount or a store reset: the messages on screen are not this stream's any
+    // more, so it neither settles nor persists. (The Stop button aborts without a reason: that reply settles.)
+    const detached = () => stream.reason === 'ticker' || stream.reason === 'unmount' || stream.reason === 'reset';
 
     try {
       const financialContext = buildFinancialContext(data, costBasis, shares, tickerContext, getPreference('strategic_context'), marketOpen, optionsMarketOpen, liveQuote);
@@ -816,29 +872,31 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
         onStreamChunk,
         stream.controller.signal,
       );
+      if (detached()) return; // it finished just as it was detached
       flushChunks();
-      setMessages((prev) => settleReply(prev, stopMarker(result.stopReason)));
+      setMessagesAndPersist((prev) => settleReply(prev, stopMarker(result.stopReason)));
     } catch (err) {
-      // Aborted by a ticker change or unmount: the messages on screen are not this stream's any more.
-      if (stream.reason === 'ticker' || stream.reason === 'unmount') return;
+      if (detached()) return;
       flushChunks();
       if (err.name === 'AbortError') {
-        setMessages((prev) => settleReply(prev, '*(stopped)*'));
+        setMessagesAndPersist((prev) => settleReply(prev, '*(stopped)*'));
       } else {
+        // Stored: the question and any partial reply. The error bubble is shown, not stored (storableMessages).
         const content = `${failPrefix}: ${err.message}${err.requestId ? ` (ref ${err.requestId})` : ''}`;
-        setMessages((prev) => [...settleReply(prev, ''), { role: 'error', content }]);
+        setMessagesAndPersist((prev) => [...settleReply(prev, ''), { role: 'error', content }]);
       }
     } finally {
       if (streamRef.current === stream) streamRef.current = null;
       sendingRef.current = false;
       setSending(false);
     }
-  }, [data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks]);
+  }, [data, costBasis, shares, tickerContext, marketOpen, optionsMarketOpen, liveQuote, onStreamChunk, flushChunks, setMessagesAndPersist]);
 
   const sendMessage = useCallback((text) => {
     if (!text.trim() || sendingRef.current) return;
 
     const userMsg = { role: 'user', content: text.trim() };
+    // Not a persist point: the reply's settle stores the question with it (or without it, on failure).
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
@@ -876,14 +934,16 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   }, []);
 
   const deleteMessage = useCallback((index) => {
-    setMessages((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    setMessagesAndPersist((prev) => prev.filter((_, i) => i !== index));
+  }, [setMessagesAndPersist]);
 
   const clearHistory = useCallback(() => {
     const tickerLabel = currentTicker || 'this ticker';
     if (!window.confirm(`Clear all chat history for ${tickerLabel}? This cannot be undone.`)) {
       return;
     }
+    // Written here, once: the empty history supersedes a persist still pending, so the flag is lowered.
+    persistOnCommitRef.current = false;
     setMessages([]);
     setChatHistory(currentTicker, []);
   }, [currentTicker]);
