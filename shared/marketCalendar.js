@@ -54,8 +54,12 @@ function weekdayOf(dateStr) {
   return fromDateStr(dateStr).getUTCDay();
 }
 
+// Round-trips so impossible dates are rejected on every engine: V8 parses '2026-02-30'
+// as March 2 (and '2026-02-29' as Sunday March 1) where others return an Invalid Date.
 function isValidDateStr(dateStr) {
-  return typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr) && !Number.isNaN(fromDateStr(dateStr).getTime());
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const d = fromDateStr(dateStr);
+  return !Number.isNaN(d.getTime()) && dateStrOf(d) === dateStr;
 }
 
 /** nth (1-based) occurrence of `weekday` (0 = Sunday) in a month. */
