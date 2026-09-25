@@ -387,11 +387,12 @@ export default function TickerResearch({ context, loading, spotPrice }) {
     return () => window.removeEventListener('store-changed', handler);
   }, []);
 
-  const toggle = () => setOpen((v) => {
-    const next = !v;
+  // The write stays out of the state updater, which StrictMode runs twice (D12).
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
     setPreference('section_research', next);
-    return next;
-  });
+  };
 
   const hasTickerData = context && (
     (context.news?.length > 0) || context.earnings || context.analysts

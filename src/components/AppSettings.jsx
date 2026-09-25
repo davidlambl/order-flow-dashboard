@@ -100,9 +100,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
   }, []);
 
   const currentKey = keys[provider] || '';
-  const { saved: aiKeySaved, reset: aiKeyReset, flush: aiKeyFlush } = useAutoSave(currentKey, saveAiKey, 800);
-  const { saved: tradierSaved, reset: tradierReset, flush: tradierFlush } = useAutoSave(tradierKey, saveTradierKey, 800);
-  const { saved: finnhubSaved, reset: finnhubReset, flush: finnhubFlush } = useAutoSave(finnhubKey, saveFinnhubKey, 800);
+  // prime() on load, schedule() on edit, flush() before close / sign-out / provider switch. The stable
+  // callbacks are destructured so hook dependency lists name them rather than the per-render object.
+  const { saved: aiKeySaved, prime: aiKeyPrime, schedule: aiKeySchedule, flush: aiKeyFlush } = useAutoSave(saveAiKey, 800);
+  const { saved: tradierSaved, prime: tradierPrime, schedule: tradierSchedule, flush: tradierFlush } = useAutoSave(saveTradierKey, 800);
+  const { saved: finnhubSaved, prime: finnhubPrime, schedule: finnhubSchedule, flush: finnhubFlush } = useAutoSave(saveFinnhubKey, 800);
 
   // ── Model loading ──
   const loadModelsForProvider = useCallback(async (prov, key) => {
@@ -159,9 +161,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     setKeyTestError('');
     setShowApiKey(false);
     setShowTradierKey(false);
-    setTradierKey(getPreference('data_tradier_key') || '');
+    const loadedTradierKey = getPreference('data_tradier_key') || '';
+    setTradierKey(loadedTradierKey);
     setShowFinnhubKey(false);
-    setFinnhubKey(getPreference('data_finnhub_key') || '');
+    const loadedFinnhubKey = getPreference('data_finnhub_key') || '';
+    setFinnhubKey(loadedFinnhubKey);
     setTokenInput('');
     setTokenStatus(null);
     setTokenError('');
@@ -172,16 +176,13 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     setActiveTab('ai');
     setShowRequest(false);
 
-    loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
-  }, [isOpen, loadModelsForProvider]);
+    // Auto-save baselines: a loaded key is never written back, and the first edit that differs is saved.
+    aiKeyPrime(loadedKeys[savedProvider] || '');
+    tradierPrime(loadedTradierKey);
+    finnhubPrime(loadedFinnhubKey);
 
-  // Reset auto-save hooks when modal opens so they don't fire on loaded values
-  useEffect(() => {
-    if (!isOpen) return;
-    aiKeyReset();
-    tradierReset();
-    finnhubReset();
-  }, [isOpen, aiKeyReset, tradierReset, finnhubReset]);
+    loadModelsForProvider(savedProvider, loadedKeys[savedProvider]);
+  }, [isOpen, loadModelsForProvider, aiKeyPrime, tradierPrime, finnhubPrime]);
 
   // Reload models when provider/key changes
   const currentProviderKey = keys[provider];
@@ -210,15 +211,16 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
 
   // ── Immediate-save helpers (no debounce needed) ──
   const handleProviderChange = useCallback((id) => {
-    // Flush any pending AI key save for the previous provider before switching
+    // Save a pending key edit under the provider it was typed for, then compare edits with the new provider's key
     aiKeyFlush();
     setProvider(id);
+    aiKeyPrime(keys[id] || '');
     setKeyTestStatus(null);
     setKeyTestError('');
     setShowApiKey(false);
     setPreference('ai_provider', id);
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
-  }, [aiKeyFlush]);
+  }, [aiKeyFlush, aiKeyPrime, keys]);
 
   const handleModelChange = useCallback((modelId) => {
     setSelectedModel(modelId);
@@ -303,10 +305,14 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     setTradierKey('');
     setFinnhubKey('');
     setKeyTestStatus(null);
+    // Drop any key edit still in the debounce window so it cannot land after the reset
+    aiKeyPrime('');
+    tradierPrime('');
+    finnhubPrime('');
     window.dispatchEvent(new CustomEvent('ai-settings-changed'));
     window.dispatchEvent(new CustomEvent('data-source-changed'));
     loadModelsForProvider('anthropic', '');
-  }, [loadModelsForProvider]);
+  }, [loadModelsForProvider, aiKeyPrime, tradierPrime, finnhubPrime]);
 
   // ── Export / Import ──
   const handleExport = useCallback(() => {
@@ -431,7 +437,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                   <input
                     type={showApiKey ? 'text' : 'password'}
                     value={currentKey}
-                    onChange={(e) => { setKeys({ ...keys, [provider]: e.target.value }); setKeyTestStatus(null); setKeyTestError(''); }}
+                    onChange={(e) => { setKeys({ ...keys, [provider]: e.target.value }); aiKeySchedule(e.target.value); setKeyTestStatus(null); setKeyTestError(''); }}
                     placeholder={providerMeta?.hint || 'API key...'}
                     className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
                   />
@@ -577,7 +583,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                 <input
                   type={showTradierKey ? 'text' : 'password'}
                   value={tradierKey}
-                  onChange={(e) => setTradierKey(e.target.value)}
+                  onChange={(e) => { setTradierKey(e.target.value); tradierSchedule(e.target.value); }}
                   placeholder="Paste for real-time data..."
                   className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
                 />
@@ -613,7 +619,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                 <input
                   type={showFinnhubKey ? 'text' : 'password'}
                   value={finnhubKey}
-                  onChange={(e) => setFinnhubKey(e.target.value)}
+                  onChange={(e) => { setFinnhubKey(e.target.value); finnhubSchedule(e.target.value); }}
                   placeholder="Paste for news, earnings, analyst data..."
                   className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
                 />
@@ -651,7 +657,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                     <span className="text-xs font-medium text-[var(--color-text-primary)]">Signed in</span>
                   </div>
                   <button
-                    onClick={onSignOut}
+                    onClick={() => { aiKeyFlush(); tradierFlush(); finnhubFlush(); onSignOut(); }}
                     className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
                   >
                     Sign out
