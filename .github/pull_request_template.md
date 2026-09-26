@@ -14,7 +14,7 @@
 
 - [ ] `npm run lint` — no new errors
 - [ ] `npm run build` passes
-- [ ] `npm test` passes (once the test suite exists)
+- [ ] `npm test` passes
 - [ ] Verified in the Netlify deploy preview
 - [ ] Verified with and without `VITE_SUPABASE_URL` set (if auth/persistence is touched)
 

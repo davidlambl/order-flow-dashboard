@@ -1,11 +1,15 @@
-// scripts/verify/recommend.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// The recommendation engine (roadmap F15), the position panel's staleness rule (F17) and
-// shared/thresholds.js. All three are pure (no fetch, env or wall clock), so nothing is stubbed:
-// every `now` is a fixed instant and every input is built here.
+// src/lib/recommend.node.test.js — the recommendation engine (roadmap F15), the position panel's staleness rule
+// (F17) and shared/thresholds.js. All three are pure (no fetch, env or wall clock), so nothing is stubbed: every
+// `now` is a fixed instant and every input is built here.
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import * as rec from './recommend.js';
+import * as stale from './staleness.js';
+import * as th from '../../shared/thresholds.js';
 
-const RECOMMEND_URL = new URL('../../src/lib/recommend.js', import.meta.url);
-const STALENESS_URL = new URL('../../src/lib/staleness.js', import.meta.url);
+const RECOMMEND_URL = new URL('./recommend.js', import.meta.url);
+const STALENESS_URL = new URL('./staleness.js', import.meta.url);
 const THRESHOLDS_URL = new URL('../../shared/thresholds.js', import.meta.url);
 
 const HOST_GLOBALS = /\b(?:console|process|window|document|navigator|globalThis|fetch|require|localStorage|sessionStorage|Buffer|setTimeout|setInterval)\b/g;
@@ -68,15 +72,8 @@ function* allVectors(length = 5) {
   for (const head of [-1, 0, 1, null]) for (const tail of allVectors(length - 1)) yield [head, ...tail];
 }
 
-export default async function run(ctx) {
-  const { t, assert } = ctx;
-  console.log('recommend');
-
-  let rec = null;
-  let stale = null;
-  let th = null;
-  await t('modules: recommend.js, staleness.js and shared/thresholds.js load; gap threshold re-exported; no host globals or clock reads', async () => {
-    [rec, stale, th] = await Promise.all([import(RECOMMEND_URL), import(STALENESS_URL), import(THRESHOLDS_URL)]);
+describe('recommend', () => {
+  it('modules: recommend.js, staleness.js and shared/thresholds.js load; gap threshold re-exported; no host globals or clock reads', async () => {
     for (const name of ['computeRecommendation', 'extractPriceLevels', 'computeDualRecommendation']) {
       assert.equal(typeof rec[name], 'function', `recommend.js export ${name}`);
     }
@@ -89,9 +86,8 @@ export default async function run(ctx) {
       assert.deepEqual(code.match(CLOCK_READS), null, `${file} must take the time as an argument, not read the clock`);
     }
   });
-  if (!rec || !stale || !th) return; // every later check would only repeat the load failure
 
-  await t('guards: no or invalid cost basis still scores (P&L skipped, pnl null, market value kept); string basis coerced; bad spot or kpis → null', async () => {
+  it('guards: no or invalid cost basis still scores (P&L skipped, pnl null, market value kept); string basis coerced; bad spot or kpis → null', async () => {
     const kpis = { maxPain: 100, netPremium: 2e6, putCallRatio: 0.85 };
     for (const costBasis of [0, null, undefined, 'abc', '', -5, Number.NaN]) {
       const r = rec.computeRecommendation({ costBasis, shares: 10, spotPrice: 100, kpis, gexByStrike: [] });
@@ -112,7 +108,7 @@ export default async function run(ctx) {
     assert.equal(rec.computeRecommendation({ costBasis: 95, shares: 10, spotPrice: 100, kpis: null, gexByStrike: [] }), null, 'kpis null');
   });
 
-  await t('guards: missing or junk factor inputs are skipped, not scored (max pain 0/null/x, P/C null/NaN, premium null, junk GEX rows)', async () => {
+  it('guards: missing or junk factor inputs are skipped, not scored (max pain 0/null/x, P/C null/NaN, premium null, junk GEX rows)', async () => {
     // Cost basis 98 at spot 100 scores only the P&L factor (0, near breakeven).
     const scoreWith = (kpis, gexByStrike = []) => rec.computeRecommendation({ costBasis: 98, shares: 10, spotPrice: 100, kpis, gexByStrike });
     for (const maxPain of [0, null, 'x', undefined, '', -110]) {
@@ -150,7 +146,7 @@ export default async function run(ctx) {
     );
   });
 
-  await t('confidence is symmetric: all 1,024 score vectors (incl. skipped factors) mirror to the opposite signal at equal confidence', async () => {
+  it('confidence is symmetric: all 1,024 score vectors (incl. skipped factors) mirror to the opposite signal at equal confidence', async () => {
     // The fixtures score as intended, one factor at a time.
     for (let i = 0; i < 5; i++) {
       for (const s of [-1, 0, 1]) {
@@ -177,7 +173,7 @@ export default async function run(ctx) {
     assert.equal(vectors, 1024);
   });
 
-  await t('confidence: all neutral → HOLD/HIGH; 2 vs 2 split → HOLD/LOW; 2 vs 1 → HOLD/MEDIUM; dissent against a call lowers it', async () => {
+  it('confidence: all neutral → HOLD/HIGH; 2 vs 2 split → HOLD/LOW; 2 vs 1 → HOLD/MEDIUM; dissent against a call lowers it', async () => {
     for (const [v, signal, confidence] of [
       [[0, 0, 0, 0, 0], 'HOLD', 'HIGH'],
       [[1, 1, -1, -1, 0], 'HOLD', 'LOW'],
@@ -193,7 +189,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('threshold scales with factors: < 3 scored → HOLD/LOW "Only n of 5" (threshold null); 3 factors +1,+1,0 → BUY at 2; 5 factors: sum 2 → BUY, sum 1 → HOLD', async () => {
+  it('threshold scales with factors: < 3 scored → HOLD/LOW "Only n of 5" (threshold null); 3 factors +1,+1,0 → BUY at 2; 5 factors: sum 2 → BUY, sum 1 → HOLD', async () => {
     const two = rec.computeRecommendation(inputsFor([null, null, null, 1, 1])); // bullish premium + P/C only
     assert.deepEqual(summary(two), { signal: 'HOLD', confidence: 'LOW', factorsUsed: 2, threshold: null, score: 2 });
     assert.ok(two.reasons.some((x) => x.includes('Only 2 of 5')), two.reasons.join(' | '));
@@ -216,7 +212,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('price levels: nearest positive-GEX walls either side of spot (95 / 105, not the largest 90 / 120); basis or max pain ≤ 0 dropped; strings coerced; ascending', async () => {
+  it('price levels: nearest positive-GEX walls either side of spot (95 / 105, not the largest 90 / 120); basis or max pain ≤ 0 dropped; strings coerced; ascending', async () => {
     const gexByStrike = [
       { strike: 90, gex: 9e8 }, { strike: 95, gex: 5e8 }, { strike: 105, gex: 6e8 }, { strike: 120, gex: 8e8 }, { strike: 100, gex: -7e8 },
     ];
@@ -250,7 +246,7 @@ export default async function run(ctx) {
     assert.deepEqual(rec.extractPriceLevels({ kpis: null }), []);
   });
 
-  await t('put/call bands come from PUT_CALL: 0.69 bullish, 0.70 and 1.00 neutral (bounds inclusive), 1.01 bearish', async () => {
+  it('put/call bands come from PUT_CALL: 0.69 bullish, 0.70 and 1.00 neutral (bounds inclusive), 1.01 bearish', async () => {
     const pcOnly = (putCallRatio) => rec.computeRecommendation({ spotPrice: 100, kpis: { putCallRatio } });
     for (const [pc, score, reason] of [
       [0.69, 1, 'P/C ratio 0.69 — bullish sentiment'],
@@ -273,7 +269,7 @@ export default async function run(ctx) {
     assert.equal(pcOnly(bearishAbove + 1e-9).score, -1, 'just over PUT_CALL.bearishAbove is bearish');
   });
 
-  await t('shared/thresholds.js: constants only (no imports, host globals or clock); every exported object deep-frozen; bands ordered', async () => {
+  it('shared/thresholds.js: constants only (no imports, host globals or clock); every exported object deep-frozen; bands ordered', async () => {
     const code = codeOnly(await readFile(THRESHOLDS_URL, 'utf8'));
     assert.doesNotMatch(code, /\bimport\b/, 'shared/thresholds.js must not import anything');
     assert.deepEqual(code.match(HOST_GLOBALS), null, 'no host globals');
@@ -299,7 +295,7 @@ export default async function run(ctx) {
     assert.ok(GEX_NEAR_SPOT_CHAT_PCT <= GEX_NEAR_SPOT_PCT, 'chat GEX band is the tighter one');
   });
 
-  await t('isStaleData: stale after 60 min while a session is open, 240 min closed; ISO / epoch / Date agree; missing or invalid instants never stale', async () => {
+  it('isStaleData: stale after 60 min while a session is open, 240 min closed; ISO / epoch / Date agree; missing or invalid instants never stale', async () => {
     const NOW = Date.parse('2026-09-25T18:00:00Z');
     const minsAgo = (min) => NOW - min * 60_000;
     for (const [min, open, want] of [
@@ -320,7 +316,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('computeDualRecommendation: options closed → snapshot + live scenarios (gap ≈ 3 %); open → live only; basis ≤ 0 → null; strings coerced', async () => {
+  it('computeDualRecommendation: options closed → snapshot + live scenarios (gap ≈ 3 %); open → live only; basis ≤ 0 → null; strings coerced', async () => {
     const kpis = { maxPain: 100, netPremium: 2e6, putCallRatio: 0.85 };
     const gexByStrike = [{ strike: 95, gex: 5e8 }];
     const args = { costBasis: 90, shares: 10, optionsSnapshotPrice: 100, livePrice: 103, kpis, gexByStrike, optionsMarketOpen: false };
@@ -343,4 +339,4 @@ export default async function run(ctx) {
     assert.deepEqual(open.primary, single(103), 'options open: one recommendation at the live price');
     assert.equal(open.optionsMarketOpen, true);
   });
-}
+});

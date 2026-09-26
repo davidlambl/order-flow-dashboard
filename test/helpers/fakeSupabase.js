@@ -1,6 +1,5 @@
-// test/helpers/fakeSupabase.js — the recording fake supabase-js client the sync tests run SupabaseBackend, the
-// outbox and session.js against. Copied from scripts/verify/sync.mjs, which keeps its own until its checks have
-// moved to Vitest.
+// test/helpers/fakeSupabase.js — the recording fake supabase-js client the sync tests (src/lib/sync.node.test.js)
+// run SupabaseBackend, the outbox and session.js against.
 
 const KEY_COLUMN = { positions: 'ticker', preferences: 'key', chat_histories: 'ticker' };
 const clone = (v) => JSON.parse(JSON.stringify(v));

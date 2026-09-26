@@ -3,7 +3,7 @@
 // preferences, chat messages). Key order is ignored: Postgres hands JSONB objects
 // back with their keys reordered, so comparing JSON.stringify output would call
 // identical documents different. Pure and import-free, so it loads under Node
-// for the verify harness.
+// for the node test project (src/lib/store.node.test.js).
 
 /**
  * @param {unknown} a

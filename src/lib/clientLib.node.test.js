@@ -1,20 +1,15 @@
-// scripts/verify/clientLib.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// client-side helpers that must stay Node-loadable: retry backoff (F1), store quota containment (F18), threshold ordering.
-// useMarketData itself is React-bound and has no check here; the backoff it schedules with does. Browser
-// globals are stubbed per check with defineProperty (ES modules are strict) and always restored.
+// src/lib/clientLib.node.test.js — client-side helpers that must stay Node-loadable: retry backoff (F1), store quota
+// containment (F18), threshold ordering. useMarketData itself is React-bound and has no test here; the backoff it
+// schedules with does. Browser globals are stubbed per test with defineProperty (ES modules are strict) and always
+// restored; a test that needs a module loaded after its stand-ins calls vi.resetModules() and imports it fresh.
+import { describe, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
+import { backoffSeconds } from './retry.js';
+import { PUT_CALL, DARK_POOL_PCT, PNL_PCT, STALE_AFTER_MIN, RECOMMENDATION } from '../../shared/thresholds.js';
+import { memoryStorage, withGlobals } from '../../test/helpers/globals.js';
 
-import { memoryStorage, withGlobals } from './helpers.mjs';
-
-const RETRY_URL = new URL('../../src/lib/retry.js', import.meta.url);
-const STORE_URL = new URL('../../src/lib/store.js', import.meta.url);
-const THRESHOLDS_URL = new URL('../../shared/thresholds.js', import.meta.url);
-
-export default async function run(ctx) {
-  const { t, assert } = ctx;
-  console.log('clientLib');
-
-  await t('backoffSeconds: base × 2^failures, capped at 300 s by default or at capSecs', async () => {
-    const { backoffSeconds } = await import(RETRY_URL);
+describe('clientLib', () => {
+  it('backoffSeconds: base × 2^failures, capped at 300 s by default or at capSecs', async () => {
     const series = (...args) => [0, 1, 2, 3, 4, 5].map((n) => backoffSeconds(args[0], n, ...args.slice(1)));
     assert.deepEqual(series(60), [60, 120, 240, 300, 300, 300]);
     assert.deepEqual(series(30), [30, 60, 120, 240, 300, 300]);
@@ -22,8 +17,7 @@ export default async function run(ctx) {
     assert.equal(backoffSeconds(60, 1e6), 300, 'a huge count stays at the cap (never Infinity or NaN)');
   });
 
-  await t("backoffSeconds: negative, NaN, missing or non-numeric failures give the base; '2' coerces to 2; fractions floor", async () => {
-    const { backoffSeconds } = await import(RETRY_URL);
+  it("backoffSeconds: negative, NaN, missing or non-numeric failures give the base; '2' coerces to 2; fractions floor", async () => {
     for (const bad of [-1, -3.5, Number.NaN, undefined, null, 'abc', {}]) {
       assert.equal(backoffSeconds(60, bad), 60, `failures=${String(bad)} should count as 0`);
     }
@@ -31,9 +25,10 @@ export default async function run(ctx) {
     assert.equal(backoffSeconds(60, 1.9), 120, 'a fractional count is floored');
   });
 
-  await t('store: a full localStorage never throws; setPosition/setPreference/setChatHistory each warn once about the quota', async () => {
+  it('store: a full localStorage never throws; setPosition/setPreference/setChatHistory each warn once about the quota', async () => {
     await withGlobals({ localStorage: memoryStorage({ full: true }) }, async (warnings) => {
-      const store = await import(`${STORE_URL.href}?quota=1`); // fresh instance, loaded after the stub
+      vi.resetModules();
+      const store = await import('./store.js'); // fresh instance, loaded after the stub
       for (const [what, key, write] of [
         ['setPosition', 'position_AVGO', () => store.setPosition('AVGO', { costBasis: 1, shares: 1 })],
         ['setPreference', 'chat_sidebar_w', () => store.setPreference('sidebarWidth', 300)],
@@ -49,10 +44,11 @@ export default async function run(ctx) {
     });
   });
 
-  await t('store: with room to write, values round-trip and null / empty values remove the key', async () => {
+  it('store: with room to write, values round-trip and null / empty values remove the key', async () => {
     const storage = memoryStorage();
     await withGlobals({ localStorage: storage }, async (warnings) => {
-      const store = await import(`${STORE_URL.href}?roundtrip=1`);
+      vi.resetModules();
+      const store = await import('./store.js');
       store.setPosition('AVGO', { costBasis: 101.5, shares: 10 });
       assert.deepEqual(store.getPosition('AVGO'), { costBasis: 101.5, shares: 10 });
       store.setPreference('sidebarWidth', 300);
@@ -68,8 +64,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('thresholds: bands are ordered (P/C, dark pool, P&L, staleness); RECOMMENDATION.minFactors >= 1', async () => {
-    const { PUT_CALL, DARK_POOL_PCT, PNL_PCT, STALE_AFTER_MIN, RECOMMENDATION } = await import(THRESHOLDS_URL);
+  it('thresholds: bands are ordered (P/C, dark pool, P&L, staleness); RECOMMENDATION.minFactors >= 1', async () => {
     const ascending = (label, values) => {
       assert.ok(values.every((v) => Number.isFinite(v)), `${label}: every bound must be a finite number (got ${values.join(', ')})`);
       assert.ok(values.every((v, i) => i === 0 || values[i - 1] < v), `${label} (got ${values.join(', ')})`);
@@ -82,15 +77,16 @@ export default async function run(ctx) {
     assert.ok(RECOMMENDATION.minFactors >= 1, `RECOMMENDATION.minFactors must be >= 1 (got ${RECOMMENDATION.minFactors})`);
   });
 
-  await t('Node-loadable: retry.js and store.js import with no DOM (no window, no localStorage)', async () => {
+  it('Node-loadable: retry.js and store.js import with no DOM (no window, no localStorage)', async () => {
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
       assert.equal(typeof globalThis.localStorage, 'undefined');
-      const retry = await import(`${RETRY_URL.href}?nodom=1`);
-      const store = await import(`${STORE_URL.href}?nodom=1`);
+      vi.resetModules();
+      const retry = await import('./retry.js');
+      const store = await import('./store.js');
       assert.equal(typeof retry.backoffSeconds, 'function');
       for (const name of ['getPosition', 'setPosition', 'getChatHistory', 'setChatHistory', 'getPreference', 'setPreference', 'exportAll', 'importAll']) {
         assert.equal(typeof store[name], 'function', `store export ${name}`);
       }
     });
   });
-}
+});

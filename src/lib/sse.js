@@ -2,7 +2,7 @@
 // Server-sent-event parsing for the AI co-pilot stream: askLLM relays the provider's
 // SSE body untouched (Anthropic, OpenAI or Gemini), so the client splits the frames
 // and normalises each provider's text, error and stop events. Pure and import-free:
-// api.js owns the network side, and the Node harness loads this module directly.
+// api.js owns the network side, and src/lib/sse.test.js loads this module directly.
 
 /** Why a reply stopped, normalised across providers. */
 export const STOP_REASON = Object.freeze({

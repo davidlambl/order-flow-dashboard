@@ -12,7 +12,6 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "verify:functions": "node scripts/verify-functions.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

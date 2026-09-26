@@ -1,6 +1,5 @@
 // test/helpers/globals.js — browser-global stand-ins (storage, window, timers) for the client-side tests that
-// run without a DOM (the node project's src/**/*.node.test.js). A copy of scripts/verify/helpers.mjs, which the
-// verify harness keeps using until its checks have moved to Vitest.
+// run without a DOM (the node project's src/**/*.node.test.js).
 
 /** A Map-backed Storage stand-in; with `full`, every setItem throws the browser's quota error. */
 export function memoryStorage({ full = false } = {}) {

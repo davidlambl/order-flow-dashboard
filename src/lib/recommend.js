@@ -4,7 +4,7 @@
 // put/call ratio) and aggregates them into a BUY / HOLD / SELL signal. A factor whose input is
 // missing or invalid is skipped rather than scored neutral, and the bar for a directional call
 // scales with the number of factors actually scored (RECOMMENDATION in shared/thresholds.js).
-// Pure and Node-loadable (scripts/verify/recommend.mjs imports it), so relative imports carry
+// Pure and Node-loadable (src/lib/recommend.node.test.js imports it), so relative imports carry
 // their extension.
 
 import {

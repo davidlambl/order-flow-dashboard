@@ -1,5 +1,5 @@
-// test/helpers/functions.js — what the Netlify function tests share: the verify runner's ctx
-// (scripts/verify-functions.mjs) lifted into a module, so its checks move over unchanged. Function tests live in
+// test/helpers/functions.js — what the Netlify function tests share: the recording fetch, mint / req / json,
+// node:assert/strict and a reset of the functions' per-instance state before each test. Function tests live in
 // netlify/functions/__tests__/ (Netlify deploys every top-level file of netlify/functions/ as a function) and
 // call installFunctionHarness() once, at the top level of the file.
 // Imports the functions' own lib modules, never src/: the same module instances the functions under test use.
@@ -10,7 +10,7 @@ import { TOKEN_ISSUER, TOKEN_AUDIENCE, _resetRevocationCache } from '../../netli
 import { _resetRateLimiter } from '../../netlify/functions/lib/http.js';
 import { installFetchRecorder } from './fetch.js';
 
-/** node:assert/strict, the runner's assertion library (its checks move over as they are). */
+/** node:assert/strict, the assertion library the function tests use. */
 export { assert };
 
 /** The access-token secret tests set as TOKEN_SECRET and sign with (48 characters, above the 32 minimum). */
@@ -55,8 +55,7 @@ export const FUNCTION_ENV_KEYS = [
   'TOKEN_SECRET', 'ANTHROPIC_API_KEY', 'TRADIER_API_KEY', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_KEY', 'SITE_ORIGIN',
   'ALLOWED_MODELS', 'TRACKED_TICKERS', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY',
   'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY',
-  // Beyond the runner's list: the CORS allowlist (lib/http.js), the output cap (askLLM.js), the daily quotas
-  // (lib/quota.js).
+  // The CORS allowlist (lib/http.js), the output cap (askLLM.js), the daily quotas (lib/quota.js).
   'URL', 'DEPLOY_PRIME_URL', 'MAX_OUTPUT_TOKENS', 'DAILY_REQUEST_QUOTA_TRIAL', 'DAILY_REQUEST_QUOTA_PRO',
 ];
 

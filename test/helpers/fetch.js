@@ -1,6 +1,6 @@
 // test/helpers/fetch.js — a recording stand-in for globalThis.fetch: the code under test "calls the network",
-// the test decides what comes back, and every request is kept for assertions. The verify runner's fetch stub
-// (scripts/verify-functions.mjs) as a function; test/helpers/functions.js wires it into the function tests.
+// the test decides what comes back, and every request is kept for assertions. test/helpers/functions.js wires it
+// into the function tests; src/lib/api.test.js installs it over the dom setup's fetch for askLLMStream.
 // No Vitest import, so anything running under Node can install it.
 
 /**

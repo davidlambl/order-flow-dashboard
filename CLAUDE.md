@@ -14,8 +14,8 @@ should:
 2. Work on a branch named `roadmap/phase-<n>-<slug>`, one PR per phase (split large phases as the
    issue suggests). Reference the issue in the PR body (`Closes #<n>`).
 3. Keep each PR minimal to its phase; don't pull later-phase work forward.
-4. Before pushing: `npm run lint` (see known baseline below), `npm run verify:functions`, `npm run build`, and
-   `npm test` once it exists.
+4. Before pushing: `npm run check` (lint with the known baseline, test, build) and
+   `npm audit --omit=dev --audit-level=high`.
 5. Line numbers in the roadmap were taken at commit `9cf9ccd` + the Phase 0 merge; re-grep before editing.
 
 ## Commands
@@ -25,14 +25,17 @@ should:
   `react-hooks/set-state-in-effect` in `App`, `AppSettings`, `Header`, `StrategicContextEditor`, `useLiveQuote`,
   `useMarketData` and `useTickerContext`, one `react-refresh/only-export-components` in `AppSettings`), all owned by
   Phase 5; don't add new ones. CI runs lint non-blocking until that count is zero, then it becomes required.
-  `npm run check` = lint (non-blocking until the baseline is zero) + test + build.
-- `npm run verify:functions` — runs the client-side checks under Node with a stubbed `fetch` (blocking in CI). The
-  runner is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's
-  helpers via `ctx`. Areas (pure `src/lib` modules loaded under Node): `recommend`, `clientLib`, `charts`, `sse`,
-  `saver`, `store`, `sync`. The function and calendar checks now run under Vitest in `netlify/functions/__tests__/`
-  and `shared/`. `scripts/verify/helpers.mjs` has the browser-global stand-ins (`memoryStorage`, `withGlobals`,
-  `fakeWindow`, `settle`) and `sync.mjs` exports the recording fake supabase-js client. Time-dependent code takes an
-  injectable `now` (and the saver injectable timers), so checks never depend on the wall clock.
+- `npm test` — Vitest (`vitest.config.js`, two projects). `node`: `netlify/functions/__tests__/*.test.js` (every
+  function driven in-process with the recording `fetch` stub and helpers in `test/helpers/functions.js`),
+  `shared/*.test.js`, and `src/**/*.node.test.js` (pure `src/lib` modules loaded under Node with the browser-global
+  stand-ins in `test/helpers/globals.js` — `memoryStorage`, `withGlobals`, `fakeWindow`, `settle`, `fakeClock` — and
+  the recording fake supabase-js client in `test/helpers/fakeSupabase.js`). `dom`: `src/**/*.test.{js,jsx}` under
+  jsdom with Testing Library and an MSW server (`src/test/setup.js`; handlers target
+  `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there). `npm run test:watch`,
+  `npm run test:coverage` (CI), `npm run check` = lint (non-blocking until the baseline is zero) + test + build.
+  Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
+  only at file top level; never enable fake timers globally; time-dependent code takes an injectable `now` (and the
+  saver injectable timers), so tests never depend on the wall clock.
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
@@ -42,8 +45,8 @@ should:
   the one sign-out plus the `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js`
   baseline-compared debounce behind `useAutoSave`, `deepEqual.js`, `api.js` fetchers incl. SSE streaming, `sse.js`
   stream framing/events, `recommend.js`, `format.js`, `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.js`
-  JWT client side). Modules the Node harness loads use explicit `.js` relative imports (Vite resolves both) and no
-  top-level `window`/`localStorage` access.
+  JWT client side). Modules the `node` test project loads use explicit `.js` relative imports (Vite resolves both)
+  and no top-level `window`/`localStorage` access.
 - `src/hooks/` data hooks (`useMarketData`, `useLiveQuote`, `useTickerContext`, `useAutoSave(saveFn, delay)` →
   `{ prime, schedule, flush, saved }`: prime with the loaded value, schedule from `onChange`, flush before close).
 - `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are

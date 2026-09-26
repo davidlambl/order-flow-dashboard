@@ -34,8 +34,6 @@ jobs:
       # - run: npm run typecheck   # enable in Phase 5 (TypeScript)
       - name: Test (with coverage)
         run: npm run test:coverage
-      - name: Verify functions (auth, cost controls, validation)
-        run: npm run verify:functions
       - run: npm run build
       - uses: actions/upload-artifact@v7
         if: matrix.node == 22

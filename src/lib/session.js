@@ -12,7 +12,7 @@
 // account whose data this browser holds is recorded (LOCAL_OWNER_KEY), and claimLocalData() clears data
 // that belongs to a different account before that account's backend is built.
 //
-// Node-loadable (the verify harness drives it with a fake client): no top-level browser access.
+// Node-loadable (src/lib/sync.node.test.js drives it with a fake client): no top-level browser access.
 import { supabase } from './supabase.js';
 import { clearAll, emitStoreChanged, flushPendingWrites, setBackend, LocalStorageBackend } from './store.js';
 import { clearToken } from './auth.js';

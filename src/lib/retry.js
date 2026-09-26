@@ -3,7 +3,7 @@
 // auto-refreshes with this after failures: each consecutive failure doubles the
 // wait, and the cap keeps a long outage retrying every few minutes instead of
 // hammering the function or giving up. Pure and import-free, so it loads under
-// Node for the verify harness.
+// Node for the node test project (src/lib/clientLib.node.test.js).
 
 /**
  * Seconds to wait before the next background attempt.

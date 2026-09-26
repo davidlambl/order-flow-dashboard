@@ -1,13 +1,13 @@
-// scripts/verify/store.mjs — Phase 3 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// store.js persistence rules: the key sets that decide what syncs, exports or clears, clearAll
-// options, cross-tab notifications, import (D8: secrets kept, names validated, events, replaceCloud)
-// and the no-ticker chat-write guard. deepEqual (used by hydrate) lives here too.
-// store.js is imported unsuffixed (the instance sync.mjs and session.js share); browser globals are
-// swapped per check and every check that touches the store starts from a fresh LocalStorageBackend.
-import { memoryStorage, withGlobals, fakeWindow, settle } from './helpers.mjs';
-
-const STORE_URL = new URL('../../src/lib/store.js', import.meta.url);
-const DEEP_EQUAL_URL = new URL('../../src/lib/deepEqual.js', import.meta.url);
+// src/lib/store.node.test.js — store.js persistence rules: the key sets that decide what syncs, exports or clears,
+// clearAll options, cross-tab notifications, import (D8: secrets kept, names validated, events, replaceCloud) and
+// the no-ticker chat-write guard. deepEqual (used by hydrate) lives here too.
+// Each test imports store.js inside its stand-ins; the module registry caches it, so every test gets the same
+// instance on purpose (store.js reads localStorage and window when called, never at import). Browser globals are
+// swapped per test and every test that touches the store starts from a fresh LocalStorageBackend.
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { deepEqual } from './deepEqual.js';
+import { memoryStorage, withGlobals, fakeWindow, settle } from '../../test/helpers/globals.js';
 
 // Every localStorage key PREF_MAP writes, by preference name.
 const PREF_STORAGE_KEYS = {
@@ -76,13 +76,10 @@ const IMPORTED_SNAPSHOT = {
 };
 const IMPORT_SKIPPED = ['foo', 'data_tradier_key', 'access_token', 'ai_key_openai', 'constructor', 'auth_skipped', '__proto__', 'ai_key_anthropic'];
 
-export default async function run(ctx) {
-  console.log('store');
-  const { t, assert } = ctx;
-
-  await t('key sets: DEVICE_KEYS is the five secrets plus auth_skipped; LAYOUT_KEYS are the four layout prefs', async () => {
+describe('store', () => {
+  it('key sets: DEVICE_KEYS is the five secrets plus auth_skipped; LAYOUT_KEYS are the four layout prefs', async () => {
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const { SECRET_KEYS, DEVICE_KEYS, LAYOUT_KEYS } = await import(STORE_URL);
+      const { SECRET_KEYS, DEVICE_KEYS, LAYOUT_KEYS } = await import('./store.js');
       assert.deepEqual([...SECRET_KEYS].sort(), ['ai_key_anthropic', 'ai_key_gemini', 'ai_key_openai', 'data_finnhub_key', 'data_tradier_key']);
       for (const key of SECRET_KEYS) assert.ok(DEVICE_KEYS.has(key), `${key} must be a device key`);
       assert.ok(DEVICE_KEYS.has('auth_skipped'), 'auth_skipped never leaves the device');
@@ -92,8 +89,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('deepEqual: key order ignored, arrays by index, nested values, primitives and null/undefined', async () => {
-    const { deepEqual } = await import(DEEP_EQUAL_URL);
+  it('deepEqual: key order ignored, arrays by index, nested values, primitives and null/undefined', async () => {
     assert.equal(deepEqual({ role: 'user', content: 'x' }, { content: 'x', role: 'user' }), true, 'JSONB reorders keys');
     assert.equal(deepEqual([{ a: 1, b: [1, 2] }], [{ b: [1, 2], a: 1 }]), true);
     assert.equal(deepEqual([1, 2], [2, 1]), false, 'array order matters');
@@ -107,11 +103,11 @@ export default async function run(ctx) {
     assert.equal(deepEqual(NaN, NaN), true);
   });
 
-  await t('clearAll({ keepSecrets: true }) keeps exactly the five API keys; clearAll() removes them too; other keys untouched', async () => {
+  it('clearAll({ keepSecrets: true }) keeps exactly the five API keys; clearAll() removes them too; other keys untouched', async () => {
     for (const via of ['store', 'backend']) {
       const storage = filledStorage();
       await withGlobals({ localStorage: storage, window: undefined }, async () => {
-        const store = await import(STORE_URL);
+        const store = await import('./store.js');
         store.setBackend(new store.LocalStorageBackend());
         const clear = via === 'store' ? store.clearAll : (opts) => new store.LocalStorageBackend().clearAll(opts);
 
@@ -126,9 +122,9 @@ export default async function run(ctx) {
     }
   });
 
-  await t('describeStorageKey: position_X, chat_history_X, PREF_MAP storage keys (reverse lookup), anything else → null', async () => {
+  it('describeStorageKey: position_X, chat_history_X, PREF_MAP storage keys (reverse lookup), anything else → null', async () => {
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const { describeStorageKey } = await import(STORE_URL);
+      const { describeStorageKey } = await import('./store.js');
       assert.deepEqual(describeStorageKey('position_AVGO'), { kind: 'position', id: 'AVGO' });
       assert.deepEqual(describeStorageKey('chat_history_BRK.B'), { kind: 'chat', id: 'BRK.B' });
       assert.deepEqual(describeStorageKey('chat_sidebar_w'), { kind: 'pref', id: 'sidebarWidth' }, 'storage key → preference name');
@@ -142,10 +138,10 @@ export default async function run(ctx) {
     });
   });
 
-  await t('emitStoreChanged: store-changed with the detail when given, without one otherwise; no window → no-op', async () => {
+  it('emitStoreChanged: store-changed with the detail when given, without one otherwise; no window → no-op', async () => {
     const win = fakeWindow();
     await withGlobals({ localStorage: memoryStorage(), window: win }, async () => {
-      const { emitStoreChanged } = await import(STORE_URL);
+      const { emitStoreChanged } = await import('./store.js');
       emitStoreChanged();
       emitStoreChanged({ kind: 'chat', id: 'AVGO' });
       const [all, one] = storeEvents(win);
@@ -154,16 +150,16 @@ export default async function run(ctx) {
       assert.deepEqual(one.detail, { kind: 'chat', id: 'AVGO' });
     });
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const { emitStoreChanged } = await import(STORE_URL);
+      const { emitStoreChanged } = await import('./store.js');
       assert.doesNotThrow(() => emitStoreChanged({ kind: 'pref', id: 'ai_model' }));
     });
   });
 
-  await t('subscribeCrossTab: one store key → one event with its detail; unknown key → nothing; a burst of several or a clear → one event without detail; unsubscribe stops it', async () => {
+  it('subscribeCrossTab: one store key → one event with its detail; unknown key → nothing; a burst of several or a clear → one event without detail; unsubscribe stops it', async () => {
     const storage = memoryStorage();
     const win = fakeWindow();
     await withGlobals({ localStorage: storage, window: win }, async () => {
-      const { subscribeCrossTab } = await import(STORE_URL);
+      const { subscribeCrossTab } = await import('./store.js');
       const storageEvent = (key, storageArea = storage) => win.dispatchEvent({ type: 'storage', key, storageArea });
       const unsubscribe = subscribeCrossTab();
       assert.equal(win.listenerCount('storage'), 1);
@@ -210,18 +206,18 @@ export default async function run(ctx) {
       assert.equal(win.listenerCount('storage'), 0);
     });
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const { subscribeCrossTab } = await import(STORE_URL);
+      const { subscribeCrossTab } = await import('./store.js');
       const unsubscribe = subscribeCrossTab();
       assert.equal(typeof unsubscribe, 'function', 'no window: a no-op unsubscribe');
       unsubscribe();
     });
   });
 
-  await t('importAll (D8): the API keys here are kept; API keys, auth_skipped and unknown names in the file are not imported and are listed in skipped (file order, once each); positions, chats and known prefs written and counted; store-changed, ai-settings-changed, data-source-changed', async () => {
+  it('importAll (D8): the API keys here are kept; API keys, auth_skipped and unknown names in the file are not imported and are listed in skipped (file order, once each); positions, chats and known prefs written and counted; store-changed, ai-settings-changed, data-source-changed', async () => {
     const storage = filledStorage();
     const win = fakeWindow();
     await withGlobals({ localStorage: storage, window: win }, async (warnings) => {
-      const store = await import(STORE_URL);
+      const store = await import('./store.js');
       store.setBackend(new store.LocalStorageBackend());
       const result = store.importAll(JSON.parse(IMPORT_FILE));
       assert.deepEqual(result, { imported: { positions: 2, chats: 1, prefs: 3 }, skipped: IMPORT_SKIPPED });
@@ -245,10 +241,10 @@ export default async function run(ctx) {
     });
   });
 
-  await t('importAll(exportAll()) restores positions, chats and preferences in another browser (its API key kept, its other data replaced), nothing skipped; a v1 file with preferences only still imports', async () => {
+  it('importAll(exportAll()) restores positions, chats and preferences in another browser (its API key kept, its other data replaced), nothing skipped; a v1 file with preferences only still imports', async () => {
     let exported;
     await withGlobals({ localStorage: filledStorage(), window: fakeWindow() }, async () => {
-      const store = await import(STORE_URL);
+      const store = await import('./store.js');
       store.setBackend(new store.LocalStorageBackend());
       exported = JSON.parse(JSON.stringify(store.exportAll())); // through JSON, like the downloaded file
     });
@@ -256,7 +252,7 @@ export default async function run(ctx) {
     target.setItem('ai_key_openai', JSON.stringify('sk-target'));
     target.setItem('position_OLD', JSON.stringify({ costBasis: 1, shares: 1 }));
     await withGlobals({ localStorage: target, window: fakeWindow() }, async (warnings) => {
-      const store = await import(STORE_URL);
+      const store = await import('./store.js');
       store.setBackend(new store.LocalStorageBackend());
       assert.deepEqual(store.importAll(exported), { imported: { positions: 2, chats: 2, prefs: 8 }, skipped: [] });
       const again = store.exportAll();
@@ -272,7 +268,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('importAll → replaceCloud: a backend with one is called once, during the import, with exactly what was written (no API key); not awaited; a rejection or a throw is one warning; a plain backend has none to call', async () => {
+  it('importAll → replaceCloud: a backend with one is called once, during the import, with exactly what was written (no API key); not awaited; a rejection or a throw is one warning; a plain backend has none to call', async () => {
     const unhandled = [];
     const onUnhandled = (reason) => { unhandled.push(reason); };
     process.on('unhandledRejection', onUnhandled);
@@ -285,7 +281,7 @@ export default async function run(ctx) {
       ]) {
         const storage = filledStorage();
         await withGlobals({ localStorage: storage, window: fakeWindow() }, async (warnings) => {
-          const store = await import(STORE_URL);
+          const store = await import('./store.js');
           const calls = [];
           // The store's method surface (a LocalStorageBackend) plus replaceCloud, recording its argument and
           // what this browser held when it was called.
@@ -311,7 +307,7 @@ export default async function run(ctx) {
         });
       }
       await withGlobals({ localStorage: filledStorage(), window: fakeWindow() }, async (warnings) => {
-        const store = await import(STORE_URL);
+        const store = await import('./store.js');
         store.setBackend(new store.LocalStorageBackend());
         assert.equal('replaceCloud' in store.LocalStorageBackend.prototype, false);
         assert.deepEqual(store.importAll(JSON.parse(IMPORT_FILE)).imported, { positions: 2, chats: 1, prefs: 3 });
@@ -324,7 +320,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('importAll: a file it cannot read throws before anything changes (no clear, no backup, no event, no cloud call)', async () => {
+  it('importAll: a file it cannot read throws before anything changes (no clear, no backup, no event, no cloud call)', async () => {
     for (const [name, input, message] of [
       ['null', null, /Invalid data format/],
       ['a string', 'backup', /Invalid data format/],
@@ -337,7 +333,7 @@ export default async function run(ctx) {
       const storage = filledStorage();
       const win = fakeWindow();
       await withGlobals({ localStorage: storage, window: win }, async (warnings) => {
-        const store = await import(STORE_URL);
+        const store = await import('./store.js');
         let cloudCalls = 0;
         class CloudBackend extends store.LocalStorageBackend {
           replaceCloud() { cloudCalls++; return Promise.resolve({ pushed: 0, deleted: 0 }); }
@@ -354,9 +350,9 @@ export default async function run(ctx) {
     }
   });
 
-  await t('setChatHistory / deleteChatHistory without a ticker reach no backend (ChatBot saving "the previous ticker" when market data first arrives writes nothing)', async () => {
+  it('setChatHistory / deleteChatHistory without a ticker reach no backend (ChatBot saving "the previous ticker" when market data first arrives writes nothing)', async () => {
     await withGlobals({ localStorage: memoryStorage(), window: undefined }, async () => {
-      const store = await import(STORE_URL);
+      const store = await import('./store.js');
       const calls = [];
       class Recording extends store.LocalStorageBackend {
         setChatHistory(...args) { calls.push(['set', ...args]); }
@@ -375,4 +371,4 @@ export default async function run(ctx) {
       store.setBackend(new store.LocalStorageBackend());
     });
   });
-}
+});

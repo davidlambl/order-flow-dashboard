@@ -1,19 +1,20 @@
-// scripts/verify/sync.mjs — Phase 3 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// SupabaseBackend (hydrate decisions, conflict resolution, the write path: outbox, tombstones,
-// last-writer-wins dates, replaceCloud), the outbox itself (syncOutbox.js) and session.js against a
-// recording fake Supabase client: nothing here touches the network or a real project, and nothing
-// sleeps (timers and `now` are injected from a fake clock).
-// store.js, SupabaseBackend.js and session.js are imported unsuffixed: session.js and the backend import
-// ./store.js, so a cache-busted store would be a different instance from theirs. Browser globals are
-// swapped per check (inBrowser) and each check starts from a fresh LocalStorageBackend.
+// src/lib/sync.node.test.js — SupabaseBackend (hydrate decisions, conflict resolution, the write path: outbox,
+// tombstones, last-writer-wins dates, replaceCloud), the outbox itself (syncOutbox.js) and session.js against the
+// recording fake Supabase client (test/helpers/fakeSupabase.js): nothing here touches the network or a real
+// project, and nothing sleeps (timers and `now` are injected from a fake clock).
+// store.js, SupabaseBackend.js and session.js are imported together inside each test (inBrowser): session.js and
+// the backend import ./store.js, so the three must share one store instance. Two tests load a module fresh with no
+// DOM (vi.resetModules(), then an import of session.js or syncOutbox.js); every later dynamic import in this file
+// then yields that next module generation, which stays consistent because each test imports store, backend and
+// session together. Browser globals are swapped per test (inBrowser) and each test starts from a fresh
+// LocalStorageBackend.
+import { describe, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { memoryStorage, withGlobals, fakeWindow, fakeClock, settle } from './helpers.mjs';
+import { memoryStorage, withGlobals, fakeWindow, fakeClock, settle } from '../../test/helpers/globals.js';
+import { fakeSupabase } from '../../test/helpers/fakeSupabase.js';
 
-const BACKEND_URL = new URL('../../src/lib/SupabaseBackend.js', import.meta.url);
-const OUTBOX_URL = new URL('../../src/lib/syncOutbox.js', import.meta.url);
-const STORE_URL = new URL('../../src/lib/store.js', import.meta.url);
-const SUPABASE_URL = new URL('../../src/lib/supabase.js', import.meta.url);
-const SESSION_URL = new URL('../../src/lib/session.js', import.meta.url);
+const OUTBOX_URL = new URL('./syncOutbox.js', import.meta.url);
 
 const KEY_COLUMN = { positions: 'ticker', preferences: 'key', chat_histories: 'ticker' };
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -24,84 +25,6 @@ const NETWORK = { error: { message: 'TypeError: Failed to fetch', details: '', h
 const RLS = { error: { message: 'new row violates row-level security policy for table "positions"', code: '42501' }, status: 403 };
 const NO_COLUMN = { error: { message: "Could not find the 'deleted_at' column of 'positions' in the schema cache", code: 'PGRST204' }, status: 400 };
 const NOT_NULL = { error: { message: 'null value in column "value" of relation "preferences" violates not-null constraint', code: '23502' }, status: 400 };
-
-/**
- * Fake supabase-js client. `from(table)` returns a thenable query builder: select/eq/is chain,
- * upsert(rows, opts) and delete() too, and awaiting the builder runs the query against the
- * in-memory `tables` (rows are plain objects with user_id + key column). Every read, upsert and
- * delete is recorded; `reads`, `upserts`, `deletes`, `signOuts` and `tables` read the live state
- * (also on `_state`). Options:
- *   tables      – initial rows per table
- *   readError   – { [table]: error } → that table's select resolves { data: null, error, status: 500 }
- *   respond     – ({ table, op, rows, filters }) => { error, status } | undefined; a returned value is
- *                 the write's response and the write is NOT applied (simulates RLS / network failures,
- *                 a database without migration 005); a throw rejects the write like a failed fetch
- *                 would with throwOnError. Every attempt is recorded either way.
- *   signOutError – returned by auth.signOut()
- *   gate        – a promise every select waits for before it runs (a read still in flight)
- */
-export function fakeSupabase({ tables = {}, readError = {}, respond = () => undefined, signOutError = null, gate = null } = {}) {
-  const state = {
-    tables: { positions: [], preferences: [], chat_histories: [], ...clone(tables) },
-    reads: [], upserts: [], deletes: [], signOuts: 0,
-  };
-  const matches = (row, filters) => filters.every(([col, value]) => row[col] === value);
-
-  function builder(table) {
-    const q = { table, op: 'select', filters: [], rows: null, opts: null };
-    const rowsOf = () => (state.tables[table] ??= []);
-    const run = () => {
-      if (q.op === 'select') {
-        state.reads.push({ table, filters: q.filters });
-        if (readError[table]) return { data: null, error: readError[table], status: 500, statusText: 'Internal Server Error' };
-        return { data: clone(rowsOf().filter((r) => matches(r, q.filters))), error: null, status: 200, statusText: 'OK' };
-      }
-      if (q.op === 'upsert') {
-        state.upserts.push({ table, rows: clone(q.rows), opts: q.opts });
-        const forced = respond({ table, op: 'upsert', rows: q.rows, opts: q.opts });
-        if (forced) return { data: null, ...forced };
-        const keyCols = (q.opts?.onConflict || `user_id,${KEY_COLUMN[table]}`).split(',');
-        for (const row of q.rows) {
-          const i = rowsOf().findIndex((r) => keyCols.every((c) => r[c] === row[c]));
-          if (i === -1) rowsOf().push(clone(row));
-          else if (!q.opts?.ignoreDuplicates) rowsOf()[i] = { ...rowsOf()[i], ...clone(row) };
-        }
-        return { data: null, error: null, status: 201, statusText: 'Created' };
-      }
-      // delete
-      state.deletes.push({ table, filters: q.filters });
-      const forced = respond({ table, op: 'delete', rows: null, filters: q.filters });
-      if (forced) return { data: null, ...forced };
-      state.tables[table] = rowsOf().filter((r) => !matches(r, q.filters));
-      return { data: null, error: null, status: 204, statusText: 'No Content' };
-    };
-    const b = {
-      select() { return b; },
-      eq(col, value) { q.filters.push([col, value]); return b; },
-      is(col, value) { q.filters.push([col, value]); return b; },
-      upsert(rows, opts) { q.op = 'upsert'; q.rows = Array.isArray(rows) ? rows : [rows]; q.opts = opts ?? null; return b; },
-      delete() { q.op = 'delete'; return b; },
-      then(resolve, reject) {
-        const wait = q.op === 'select' && gate ? gate : undefined;
-        return Promise.resolve(wait).then(run).then(resolve, reject);
-      },
-    };
-    return b;
-  }
-
-  return {
-    get tables() { return state.tables; },
-    get reads() { return state.reads; },
-    get upserts() { return state.upserts; },
-    get deletes() { return state.deletes; },
-    get signOuts() { return state.signOuts; },
-    from: (table) => builder(table),
-    auth: {
-      async signOut() { state.signOuts++; return { error: signOutError }; },
-    },
-    _state: state,
-  };
-}
 
 const U = 'user-a';
 const AT = '2026-09-01T00:00:00.000Z';
@@ -165,9 +88,9 @@ async function inBrowser(fn, { document } = {}) {
   const storage = memoryStorage();
   const win = fakeWindow();
   await withGlobals({ localStorage: storage, window: win, document }, async (warnings) => {
-    const store = await import(STORE_URL);
-    const { SupabaseBackend } = await import(BACKEND_URL);
-    const session = await import(SESSION_URL);
+    const store = await import('./store.js');
+    const { SupabaseBackend } = await import('./SupabaseBackend.js');
+    const session = await import('./session.js');
     store.setBackend(new store.LocalStorageBackend());
     await fn({ storage, win, warnings, store, SupabaseBackend, session, local: new store.LocalStorageBackend() });
   });
@@ -202,7 +125,7 @@ function seedConflict(local) {
  * `warnings` each warn() call.
  */
 async function outboxRig({ storage = memoryStorage(), script = [], userId = U, clock = fakeClock(Date.parse(AT)) } = {}) {
-  const { createOutbox } = await import(OUTBOX_URL);
+  const { createOutbox } = await import('./syncOutbox.js');
   const sent = [];
   const warnings = [];
   const send = async (op) => {
@@ -224,17 +147,15 @@ const sentKeys = (sent) => sent.map((op) => op.key);
 // The outbox saves its queue in a microtask after a burst of changes: one microtask later it is there.
 const tick = () => Promise.resolve();
 
-export default async function run(ctx) {
-  console.log('sync');
-  const { t, assert } = ctx;
-
-  await t('SupabaseBackend loads under Node (no DOM, no VITE_ env → null default client) and writes through an injected client', async () => {
+describe('sync', () => {
+  it('SupabaseBackend loads under Node (no DOM, no VITE_ env → null default client) and writes through an injected client', async () => {
     const storage = memoryStorage();
     await withGlobals({ localStorage: storage, window: undefined }, async () => {
-      const { supabase } = await import(SUPABASE_URL);
+      const { supabase } = await import('./supabase.js');
+      // vitest.config.js test.env blanks VITE_SUPABASE_*, so a developer's .env never builds a default client here.
       assert.equal(supabase, null, 'no VITE_SUPABASE_* under Node → no default client');
-      const { SupabaseBackend } = await import(BACKEND_URL);
-      const { LocalStorageBackend } = await import(STORE_URL);
+      const { SupabaseBackend } = await import('./SupabaseBackend.js');
+      const { LocalStorageBackend } = await import('./store.js');
       const client = fakeSupabase();
       const backend = new SupabaseBackend(new LocalStorageBackend(), 'user-a', client);
       backend.setPosition('AVGO', { costBasis: 100, shares: 10 });
@@ -250,15 +171,16 @@ export default async function run(ctx) {
     });
   });
 
-  await t('session.js loads under Node with no DOM (no window, localStorage or confirm at import time)', async () => {
+  it('session.js loads under Node with no DOM (no window, localStorage or confirm at import time)', async () => {
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const session = await import(`${SESSION_URL.href}?nodom=1`); // its own instance; ./store.js stays shared
+      vi.resetModules(); // a fresh session.js and ./store.js; every later import in this file gets this generation
+      const session = await import('./session.js');
       for (const name of ['signOut', 'claimLocalData']) assert.equal(typeof session[name], 'function', name);
       assert.match(session.SIGN_OUT_CONFIRM, /API keys and the access token on this device are removed; your account's cloud copy is kept\.$/);
     });
   });
 
-  await t('hydrate, data only in the account → pulled: rows applied here (layout too), one store-changed, nothing uploaded; tombstones, API keys, unknown names skipped', async () => {
+  it('hydrate, data only in the account → pulled: rows applied here (layout too), one store-changed, nothing uploaded; tombstones, API keys, unknown names skipped', async () => {
     await inBrowser(async ({ storage, win, warnings, SupabaseBackend, local }) => {
       local.setPreference('ai_key_openai', 'sk-local');
       const client = fakeSupabase({
@@ -290,7 +212,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate, data only in this browser → pushed: one upsert per item with onConflict, no ignoreDuplicates, updated_at; no API key or device flag ever sent', async () => {
+  it('hydrate, data only in this browser → pushed: one upsert per item with onConflict, no ignoreDuplicates, updated_at; no API key or device flag ever sent', async () => {
     await inBrowser(async ({ win, warnings, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 100, shares: 10 });
       local.setPosition('NVDA', { costBasis: null, shares: 5 });
@@ -326,7 +248,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("hydrate, the same data on both sides (JSONB reorders keys; unknown cloud names ignored) → in-sync: nothing written to the account or to this browser's data; its copies take the account's dates", async () => {
+  it("hydrate, the same data on both sides (JSONB reorders keys; unknown cloud names ignored) → in-sync: nothing written to the account or to this browser's data; its copies take the account's dates", async () => {
     await inBrowser(async ({ storage, win, warnings, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 101.5, shares: 10 });
       local.setPreference('strategic_context', 'plan');
@@ -360,7 +282,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate, different data on both sides → conflict with per-side counts, and nothing written anywhere', async () => {
+  it('hydrate, different data on both sides → conflict with per-side counts, and nothing written anywhere', async () => {
     await inBrowser(async ({ storage, win, warnings, SupabaseBackend, local }) => {
       const client = seedConflict(local);
       const before = contents(storage);
@@ -396,7 +318,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('hydrate, same data but layout differs → in-sync; only layout moves: this browser\'s value pushed, a cloud-only one applied (+ store-changed)', async () => {
+  it('hydrate, same data but layout differs → in-sync; only layout moves: this browser\'s value pushed, a cloud-only one applied (+ store-changed)', async () => {
     await inBrowser(async ({ storage, win, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 100, shares: 10 });
       local.setPreference('sidebarWidth', 300);
@@ -420,7 +342,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate, a read fails ({ error } on any table, or a throw) → offline: nothing written, exactly one warning', async () => {
+  it('hydrate, a read fails ({ error } on any table, or a throw) → offline: nothing written, exactly one warning', async () => {
     const cases = [
       ...['positions', 'preferences', 'chat_histories'].map((table) => [
         `${table} read error`, () => fakeSupabase({ tables: { positions: [posRow('AVGO', 1, 1)] }, readError: { [table]: { message: 'boom' } } }),
@@ -445,7 +367,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t("resolveConflict('merge'): union — only-here uploaded, only-in-account applied here, on both sides this browser's copy uploaded; secrets kept", async () => {
+  it("resolveConflict('merge'): union — only-here uploaded, only-in-account applied here, on both sides this browser's copy uploaded; secrets kept", async () => {
     await inBrowser(async ({ storage, win, SupabaseBackend, local }) => {
       const client = seedConflict(local);
       const backend = new SupabaseBackend(local, U, client);
@@ -472,7 +394,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("resolveConflict('cloud'): this browser becomes the account's copy (API keys kept, copies dated by the account's rows), nothing uploaded or deleted", async () => {
+  it("resolveConflict('cloud'): this browser becomes the account's copy (API keys kept, copies dated by the account's rows), nothing uploaded or deleted", async () => {
     await inBrowser(async ({ storage, win, SupabaseBackend, local }) => {
       const client = seedConflict(local);
       storage.setItem('access_token', 'jwt');
@@ -495,7 +417,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("resolveConflict('local'): the account becomes this browser's copy — everything here uploaded, account-only rows tombstoned (content nulled, deleted_at set; no hard delete); nothing changes here", async () => {
+  it("resolveConflict('local'): the account becomes this browser's copy — everything here uploaded, account-only rows tombstoned (content nulled, deleted_at set; no hard delete); nothing changes here", async () => {
     await inBrowser(async ({ storage, win, SupabaseBackend, local }) => {
       const client = seedConflict(local);
       const backend = new SupabaseBackend(local, U, client, { now: () => Date.parse(NOW) });
@@ -521,7 +443,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('auth_skipped: a raw device flag under AUTH_SKIPPED_KEY, read back as a boolean, cleared with false; never a preference', async () => {
+  it('auth_skipped: a raw device flag under AUTH_SKIPPED_KEY, read back as a boolean, cleared with false; never a preference', async () => {
     await inBrowser(async ({ storage, store, session }) => {
       assert.equal(session.AUTH_SKIPPED_KEY, 'auth_skipped');
       assert.ok(store.DEVICE_KEYS.has(session.AUTH_SKIPPED_KEY), 'guarded against ever syncing or exporting');
@@ -536,13 +458,13 @@ export default async function run(ctx) {
       assert.equal(session.isAuthSkipped(), false);
     });
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const session = await import(SESSION_URL);
+      const session = await import('./session.js');
       assert.equal(session.isAuthSkipped(), false, 'no storage: not skipped');
       assert.doesNotThrow(() => session.setAuthSkipped(true), 'no storage: no throw');
     });
   });
 
-  await t('signOut, confirmed: auth.signOut once; positions, chats, every preference, access_token, _import_backup, the owner mark, the outbox and the sync dates removed; backend reset; store-changed', async () => {
+  it('signOut, confirmed: auth.signOut once; positions, chats, every preference, access_token, _import_backup, the owner mark, the outbox and the sync dates removed; backend reset; store-changed', async () => {
     await inBrowser(async ({ storage, win, warnings, store, SupabaseBackend, session, local }) => {
       const clock = fakeClock(Date.parse(T1));
       let online = false;
@@ -581,7 +503,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('signOut sends writes still queued first (a retry waiting for its backoff goes at once), so the account really keeps the copy', async () => {
+  it('signOut sends writes still queued first (a retry waiting for its backoff goes at once), so the account really keeps the copy', async () => {
     await inBrowser(async ({ storage, warnings, store, SupabaseBackend, session, local }) => {
       const clock = fakeClock(Date.parse(T1));
       let online = false;
@@ -602,7 +524,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('signOut, declined: nothing changes (no auth call, storage and backend as they were)', async () => {
+  it('signOut, declined: nothing changes (no auth call, storage and backend as they were)', async () => {
     await inBrowser(async ({ storage, win, store, SupabaseBackend, session, local }) => {
       const client = fakeSupabase();
       store.setBackend(new SupabaseBackend(local, U, client));
@@ -621,7 +543,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('signOut, Supabase fails ({ error } or a throw) or is absent: this browser is cleared anyway and the error reported', async () => {
+  it('signOut, Supabase fails ({ error } or a throw) or is absent: this browser is cleared anyway and the error reported', async () => {
     const throwing = { auth: { async signOut() { throw new Error('fetch failed'); } } };
     for (const [name, client, message] of [
       ['returned { error }', fakeSupabase({ signOutError: { message: 'network down' } }), 'network down'],
@@ -641,7 +563,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('a hydrate still reading when the user signs out (or the backend is replaced) writes nothing: no rows land here, no upload', async () => {
+  it('a hydrate still reading when the user signs out (or the backend is replaced) writes nothing: no rows land here, no upload', async () => {
     await inBrowser(async ({ storage, warnings, store, SupabaseBackend, session, local }) => {
       let release;
       const client = fakeSupabase({
@@ -679,7 +601,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("claimLocalData: another account's data is cleared (API keys kept) before this account's backend; data with no owner, or this account's, is kept", async () => {
+  it("claimLocalData: another account's data is cleared (API keys kept) before this account's backend; data with no owner, or this account's, is kept", async () => {
     await inBrowser(async ({ storage, warnings, session, local }) => {
       const seed = () => {
         local.setPosition('AVGO', { costBasis: 100, shares: 10 });
@@ -716,13 +638,14 @@ export default async function run(ctx) {
 
   // ── The outbox (syncOutbox.js) ─────────────────────────────────────────────
 
-  await t('syncOutbox.js imports only ./retry.js and reads no browser global (bar a default globalThis.localStorage); without storage the queue lives in memory; bad arguments throw', async () => {
+  it('syncOutbox.js imports only ./retry.js and reads no browser global (bar a default globalThis.localStorage); without storage the queue lives in memory; bad arguments throw', async () => {
     const code = stripComments(await readFile(OUTBOX_URL, 'utf8'));
     assert.deepEqual([...code.matchAll(/\bimport\b[\s\S]*?\bfrom\s*['"]([^'"]+)['"]/g)].map((m) => m[1]), ['./retry.js']);
     assert.doesNotMatch(code, /\bimport\s*\(/);
     assert.equal(code.match(/(?<!globalThis\.)\b(?:window|document|localStorage|sessionStorage|navigator)\b/g), null);
     await withGlobals({ localStorage: undefined, window: undefined }, async () => {
-      const { createOutbox } = await import(`${OUTBOX_URL.href}?nodom=1`);
+      vi.resetModules(); // a fresh syncOutbox.js, loaded with no DOM; every later import in this file gets it
+      const { createOutbox } = await import('./syncOutbox.js');
       const clock = fakeClock();
       const sent = [];
       const outbox = createOutbox({ userId: U, send: async (op) => { sent.push(op.key); return OK; }, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout });
@@ -735,7 +658,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('syncOutbox: ops coalesce per (table, key) (the latest replaces an earlier one and moves to the tail); the queue is saved as JSON under sync_outbox_<uid> after every change (a burst of changes in one save) and read back by a new outbox', async () => {
+  it('syncOutbox: ops coalesce per (table, key) (the latest replaces an earlier one and moves to the tail); the queue is saved as JSON under sync_outbox_<uid> after every change (a burst of changes in one save) and read back by a new outbox', async () => {
     const storage = memoryStorage();
     let saves = 0;
     const counting = { getItem: (k) => storage.getItem(k), setItem: (k, v) => { saves++; storage.setItem(k, v); }, removeItem: (k) => storage.removeItem(k) };
@@ -774,7 +697,7 @@ export default async function run(ctx) {
     assert.equal((await outboxRig({ storage, userId: 'user-b' })).outbox.size(), 0, 'a corrupted copy starts empty');
   });
 
-  await t('syncOutbox flush: one op at a time from the head; success shifts; { error } without a code (or a throw) keeps the op at the head and retries after backoffSeconds(2, failures, 300) s on the injected timer; force retries at once; ops queued mid-flush go out; a success resets the backoff', async () => {
+  it('syncOutbox flush: one op at a time from the head; success shifts; { error } without a code (or a throw) keeps the op at the head and retries after backoffSeconds(2, failures, 300) s on the injected timer; force retries at once; ops queued mid-flush go out; a success resets the backoff', async () => {
     let release;
     const gate = new Promise((resolve) => { release = resolve; });
     const { outbox, clock, sent, warnings, storage, script } = await outboxRig({
@@ -821,7 +744,7 @@ export default async function run(ctx) {
     outbox.dispose();
   });
 
-  await t('syncOutbox: a deterministic error (42501, 22P02, 23505, PGRST…, another 4xx) drops that op with one warning naming table, key and code, and the next op goes out; isRetryable() on postgrest responses', async () => {
+  it('syncOutbox: a deterministic error (42501, 22P02, 23505, PGRST…, another 4xx) drops that op with one warning naming table, key and code, and the next op goes out; isRetryable() on postgrest responses', async () => {
     const { outbox, sent, warnings, clock } = await outboxRig({ script: [RLS, OK] });
     outbox.enqueue(posOp('AVGO'));
     outbox.enqueue(posOp('NVDA'));
@@ -833,7 +756,7 @@ export default async function run(ctx) {
     const text = warnings[0].join(' ');
     for (const part of ['positions', 'AVGO', '42501']) assert.ok(text.includes(part), `the warning names ${part}: ${text}`);
 
-    const { isRetryable } = await import(OUTBOX_URL);
+    const { isRetryable } = await import('./syncOutbox.js');
     const withCode = (code, status) => ({ error: { code, message: code }, status });
     const retryable = {
       'no response': undefined,
@@ -858,7 +781,7 @@ export default async function run(ctx) {
     for (const [name, response] of Object.entries(final)) assert.equal(isRetryable(response), false, name);
   });
 
-  await t('syncOutbox: clear() drops the queue, its saved copy and a waiting retry, and the outbox stays usable; dispose() cancels the retry and stops (an op in flight stays saved for the next outbox)', async () => {
+  it('syncOutbox: clear() drops the queue, its saved copy and a waiting retry, and the outbox stays usable; dispose() cancels the retry and stops (an op in flight stays saved for the next outbox)', async () => {
     const storage = memoryStorage();
     const { outbox, clock, sent } = await outboxRig({ storage, script: [NETWORK] });
     outbox.enqueue(posOp('AVGO'));
@@ -899,7 +822,7 @@ export default async function run(ctx) {
 
   // ── SupabaseBackend: the write path ────────────────────────────────────────
 
-  await t('SupabaseBackend writes go through the outbox: a setPosition while the network fails is saved (sync_outbox_<uid>), retried after the backoff and lands; a reload (a new backend on the same storage) sends what the old page could not', async () => {
+  it('SupabaseBackend writes go through the outbox: a setPosition while the network fails is saved (sync_outbox_<uid>), retried after the backoff and lands; a reload (a new backend on the same storage) sends what the old page could not', async () => {
     await inBrowser(async ({ storage, warnings, store, SupabaseBackend, local }) => {
       const clock = fakeClock(Date.parse(T1));
       let online = false;
@@ -942,7 +865,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('SupabaseBackend in a browser: retried at once on `online` and when the tab becomes visible (not when hidden), and every 60 s while writes wait; dispose() removes the listeners, the 60 s retry and the backoff timer', async () => {
+  it('SupabaseBackend in a browser: retried at once on `online` and when the tab becomes visible (not when hidden), and every 60 s while writes wait; dispose() removes the listeners, the 60 s retry and the backoff timer', async () => {
     const doc = Object.assign(fakeWindow(), { visibilityState: 'hidden' });
     await inBrowser(async ({ win, SupabaseBackend, local }) => {
       const clock = fakeClock(Date.parse(T1));
@@ -995,7 +918,7 @@ export default async function run(ctx) {
     }, { document: doc });
   });
 
-  await t('a content upsert carries deleted_at: null (a write clears a tombstone); without migration 005 (PGRST204) it is sent again without the column, with one warning per backend', async () => {
+  it('a content upsert carries deleted_at: null (a write clears a tombstone); without migration 005 (PGRST204) it is sent again without the column, with one warning per backend', async () => {
     await inBrowser(async ({ warnings, SupabaseBackend, local }) => {
       const client = fakeSupabase({ tables: { positions: [posRow('AVGO', null, null, { deleted_at: AT })] } });
       new SupabaseBackend(local, U, client).setPosition('AVGO', { costBasis: 100, shares: 10 });
@@ -1018,7 +941,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('every delete is a tombstone upsert (content nulled, deleted_at = updated_at = the time of the delete), never a hard delete: deletePosition, setPosition with neither field, setPreference(name, null), setChatHistory(t, []), deleteChatHistory; an API key is never sent, not even as a delete', async () => {
+  it('every delete is a tombstone upsert (content nulled, deleted_at = updated_at = the time of the delete), never a hard delete: deletePosition, setPosition with neither field, setPreference(name, null), setChatHistory(t, []), deleteChatHistory; an API key is never sent, not even as a delete', async () => {
     await inBrowser(async ({ storage, warnings, SupabaseBackend, local }) => {
       const client = fakeSupabase({
         tables: {
@@ -1052,7 +975,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('without migration 005 a delete falls back to a hard delete (PGRST204: no deleted_at column; 23502: content still NOT NULL), with one warning per backend', async () => {
+  it('without migration 005 a delete falls back to a hard delete (PGRST204: no deleted_at column; 23502: content still NOT NULL), with one warning per backend', async () => {
     await inBrowser(async ({ warnings, SupabaseBackend, local }) => {
       const client = fakeSupabase({
         tables: { positions: [posRow('AVGO', 100, 10)], preferences: [prefRow('strategic_context', 'plan')] },
@@ -1075,7 +998,7 @@ export default async function run(ctx) {
 
   // ── Last writer wins, tombstones ───────────────────────────────────────────
 
-  await t("sync_meta_<uid> dates this browser's copies: a write or a delete here stamps now, a cloud row applied here its updated_at (Postgres times read); API keys are never dated", async () => {
+  it("sync_meta_<uid> dates this browser's copies: a write or a delete here stamps now, a cloud row applied here its updated_at (Postgres times read); API keys are never dated", async () => {
     await inBrowser(async ({ storage, SupabaseBackend, local }) => {
       const clock = fakeClock(Date.parse(T1));
       const backend = new SupabaseBackend(local, U, fakeSupabase(), onClock(clock));
@@ -1101,7 +1024,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("resolveConflict('merge') is last-writer-wins per item: the more recently changed copy wins either way, an undated copy here wins, equal copies never move and take the account's date; equal content is never a conflict whatever the dates", async () => {
+  it("resolveConflict('merge') is last-writer-wins per item: the more recently changed copy wins either way, an undated copy here wins, equal copies never move and take the account's date; equal content is never a conflict whatever the dates", async () => {
     await inBrowser(async ({ storage, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 100, shares: 10 }); // changed here at T2; the account's copy is from T1 → this one
       local.setPosition('NVDA', { costBasis: 50, shares: 2 }); // here T1, the account T2 → the account's
@@ -1144,7 +1067,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate with tombstones only in the account (deleted items never count as its data: a first push) — one newer than this copy deletes it here, not re-uploaded; an older one, or an undated copy, loses: the copy is uploaded with deleted_at: null; one for an item not here is ignored', async () => {
+  it('hydrate with tombstones only in the account (deleted items never count as its data: a first push) — one newer than this copy deletes it here, not re-uploaded; an older one, or an undated copy, loses: the copy is uploaded with deleted_at: null; one for an item not here is ignored', async () => {
     await inBrowser(async ({ storage, win, warnings, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 100, shares: 10 }); // dated T1 here, deleted in the account at T2 → deleted here
       local.setPosition('NVDA', { costBasis: 50, shares: 2 }); // dated T3 here → wins, uploaded again
@@ -1174,7 +1097,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate pulled / in-sync apply tombstones to layout too: one newer than this copy removes it here; a copy that changed here later is uploaded again', async () => {
+  it('hydrate pulled / in-sync apply tombstones to layout too: one newer than this copy removes it here; a copy that changed here later is uploaded again', async () => {
     await inBrowser(async ({ storage, SupabaseBackend, local }) => {
       local.setPreference('sidebarWidth', 300); // dated T1, deleted in the account at T2 → removed here
       local.setPreference('section_charts', false); // dated T3 → wins, uploaded
@@ -1208,7 +1131,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("resolveConflict settles tombstones: 'merge' deletes here what the account deleted later and uploads what changed here later; 'cloud' drops the copy (and writes queued during the prompt); 'local' brings it back", async () => {
+  it("resolveConflict settles tombstones: 'merge' deletes here what the account deleted later and uploads what changed here later; 'cloud' drops the copy (and writes queued during the prompt); 'local' brings it back", async () => {
     const seed = (storage, local, respond) => {
       local.setPosition('AVGO', { costBasis: 100, shares: 10 }); // dated T1 here, deleted in the account at T2
       local.setPosition('NVDA', { costBasis: 50, shares: 2 }); // dated T3 here, deleted at T2
@@ -1265,7 +1188,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('replaceCloud(snapshot): an upsert per imported item and a tombstone per live account item the import lacks, dated now; API keys, device flags and unknown names never sent; a failed read queues the upserts only (one warning); disposed → nothing', async () => {
+  it('replaceCloud(snapshot): an upsert per imported item and a tombstone per live account item the import lacks, dated now; API keys, device flags and unknown names never sent; a failed read queues the upserts only (one warning); disposed → nothing', async () => {
     await inBrowser(async ({ storage, warnings, SupabaseBackend, local }) => {
       const client = fakeSupabase({
         tables: {
@@ -1325,7 +1248,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("clearAll() on a SupabaseBackend empties this browser's copy, the outbox (a waiting write is dropped) and the sync dates, never the account; the backend stays usable", async () => {
+  it("clearAll() on a SupabaseBackend empties this browser's copy, the outbox (a waiting write is dropped) and the sync dates, never the account; the backend stays usable", async () => {
     await inBrowser(async ({ storage, SupabaseBackend, local }) => {
       const clock = fakeClock(Date.parse(T1));
       let online = false;
@@ -1352,7 +1275,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t("a backend for one account removes other accounts' queued writes and sync dates (claimLocalData() already cleared their data; a queued write can hold chat text) and sends its own", async () => {
+  it("a backend for one account removes other accounts' queued writes and sync dates (claimLocalData() already cleared their data; a queued write can hold chat text) and sends its own", async () => {
     await inBrowser(async ({ storage, SupabaseBackend, local }) => {
       storage.setItem('sync_outbox_user-b', JSON.stringify([{ table: 'chat_histories', key: 'AVGO', op: 'upsert', row: { ticker: 'AVGO', messages: MSGS }, ts: 1 }]));
       storage.setItem('sync_meta_user-b', JSON.stringify({ 'chat_histories:AVGO': T1 }));
@@ -1368,7 +1291,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('a saved queue is data, not trusted: an op for an API key, a device flag or another table is dropped with a warning and never sent; only the columns of the item go out, under this user', async () => {
+  it('a saved queue is data, not trusted: an op for an API key, a device flag or another table is dropped with a warning and never sent; only the columns of the item go out, under this user', async () => {
     await inBrowser(async ({ storage, warnings, SupabaseBackend, local }) => {
       storage.setItem('sync_outbox_user-a', JSON.stringify([
         { table: 'preferences', key: 'ai_key_openai', op: 'upsert', row: { key: 'ai_key_openai', value: 'sk-secret' }, ts: 1 },
@@ -1390,7 +1313,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate after a reload sends the writes queued offline first: the edit is not taken for a difference (no conflict prompt), and the delete does not come back', async () => {
+  it('hydrate after a reload sends the writes queued offline first: the edit is not taken for a difference (no conflict prompt), and the delete does not come back', async () => {
     await inBrowser(async ({ storage, win, store, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 100, shares: 10 });
       local.setPosition('NVDA', { costBasis: 50, shares: 2 });
@@ -1416,7 +1339,7 @@ export default async function run(ctx) {
     });
   });
 
-  await t('hydrate waits at most 10 s for the queued writes: one that never answers (postgrest has no timeout) does not hold up sign-in', async () => {
+  it('hydrate waits at most 10 s for the queued writes: one that never answers (postgrest has no timeout) does not hold up sign-in', async () => {
     await inBrowser(async ({ storage, SupabaseBackend, local }) => {
       local.setPosition('AVGO', { costBasis: 1, shares: 1 });
       storage.setItem('sync_outbox_user-a', JSON.stringify([posOp('AVGO', { ts: Date.parse(T1) })]));
@@ -1440,4 +1363,4 @@ export default async function run(ctx) {
       backend.dispose();
     });
   });
-}
+});

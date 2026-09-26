@@ -1,11 +1,15 @@
-// scripts/verify/charts.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// chart helpers: time-zone-safe date labels (F16), mock flow dates, GEX axis ticks and reference levels (F14).
-// Every input is fixed except the mock flow history, which by design covers the 30 days ending
-// today; that check reads "today" from the same process clock, in the same zone.
+// src/lib/charts.node.test.js — chart helpers: time-zone-safe date labels (F16), mock flow dates, GEX axis ticks and
+// reference levels (F14). Every input is fixed except the mock flow history, which by design covers the 30 days
+// ending today; that test reads "today" from the same process clock, in the same zone: never fake timers here.
+import { describe, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
+import * as format from './format.js';
+import * as mock from './mockData.js';
+import * as gex from './gexChartHelpers.js';
 
-const FORMAT_URL = new URL('../../src/lib/format.js', import.meta.url);
-const MOCK_URL = new URL('../../src/lib/mockData.js', import.meta.url);
-const GEX_URL = new URL('../../src/lib/gexChartHelpers.js', import.meta.url);
+// What inZone loads a fresh copy of.
+const importFormat = () => import('./format.js');
+const importMock = () => import('./mockData.js');
 
 // CI runs in UTC, where a local-vs-UTC date slip is invisible. US zones show a date-only string
 // a day early. Pago Pago (UTC-11) and Kiritimati (UTC+14) straddle the date line: at any hour at
@@ -15,14 +19,15 @@ const LABEL_ZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'Pacific/
 const FAR_ZONES = ['Pacific/Pago_Pago', 'Pacific/Kiritimati'];
 
 /**
- * Runs `fn(module)` with process.env.TZ = `tz` and a fresh copy of the module at `url` (the query
- * string makes a new instance), restoring TZ afterwards.
+ * Runs `fn(module)` with process.env.TZ = `tz` and a fresh copy of the module `importer` loads
+ * (vi.resetModules() first, so the import makes a new instance), restoring TZ afterwards.
  */
-async function inZone(tz, url, fn) {
+async function inZone(tz, importer, fn) {
   const originalTZ = process.env.TZ;
   try {
     process.env.TZ = tz;
-    return await fn(await import(`${url.href}?tz=${tz}`));
+    vi.resetModules();
+    return await fn(await importer());
   } finally {
     if (originalTZ === undefined) delete process.env.TZ;
     else process.env.TZ = originalTZ;
@@ -52,26 +57,19 @@ function nextWeekday(iso) {
 
 const increasing = (xs) => xs.every((v, i) => i === 0 || xs[i - 1] < v);
 
-export default async function run(ctx) {
-  const { t, assert } = ctx;
-  console.log('charts');
-
-  let loaded = false;
-  await t('modules load in Node (no DOM): format, mockData and gexChartHelpers exports', async () => {
-    const [format, mock, gex] = await Promise.all([import(FORMAT_URL), import(MOCK_URL), import(GEX_URL)]);
+describe('charts', () => {
+  it('modules load in Node (no DOM): format, mockData and gexChartHelpers exports', async () => {
     for (const [mod, name] of [
       [format, 'formatShortDate'], [format, 'toLocalISODate'], [mock, 'generateMockData'],
       [gex, 'gexAxisTicks'], [gex, 'referenceLevels'],
     ]) {
       assert.equal(typeof mod[name], 'function', `export ${name}`);
     }
-    loaded = true;
   });
-  if (!loaded) return; // every later check would only repeat the load failure
 
-  await t('formatShortDate: M/D read from the digits, identical in UTC, New York, Los Angeles and Kiritimati', async () => {
+  it('formatShortDate: M/D read from the digits, identical in UTC, New York, Los Angeles and Kiritimati', async () => {
     for (const tz of LABEL_ZONES) {
-      await inZone(tz, FORMAT_URL, ({ formatShortDate }) => {
+      await inZone(tz, importFormat, ({ formatShortDate }) => {
         assert.equal(formatShortDate('2026-03-12'), '3/12', tz);
         assert.equal(formatShortDate('2026-09-01'), '9/1', `${tz}: no leading zeros`);
         assert.equal(formatShortDate('2026-09-25T20:00:00Z'), '9/25', `${tz}: the date as written`);
@@ -82,8 +80,8 @@ export default async function run(ctx) {
     }
   });
 
-  await t('F16 bug class: in Los Angeles new Date("2026-03-12") is Mar 11 locally; formatShortDate still says 3/12', async () => {
-    await inZone('America/Los_Angeles', FORMAT_URL, ({ formatShortDate }) => {
+  it('F16 bug class: in Los Angeles new Date("2026-03-12") is Mar 11 locally; formatShortDate still says 3/12', async () => {
+    await inZone('America/Los_Angeles', importFormat, ({ formatShortDate }) => {
       const parsed = new Date('2026-03-12'); // a date-only ISO string parses as UTC midnight
       assert.equal(parsed.getDate(), 11, 'what the old tickFormatter read');
       assert.equal(`${parsed.getMonth() + 1}/${parsed.getDate()}`, '3/11');
@@ -91,9 +89,9 @@ export default async function run(ctx) {
     });
   });
 
-  await t('toLocalISODate: the local calendar date, zero-padded, in any zone; invalid -> ""', async () => {
+  it('toLocalISODate: the local calendar date, zero-padded, in any zone; invalid -> ""', async () => {
     for (const tz of FAR_ZONES) {
-      await inZone(tz, FORMAT_URL, ({ toLocalISODate }) => {
+      await inZone(tz, importFormat, ({ toLocalISODate }) => {
         assert.equal(toLocalISODate(new Date(2026, 8, 5)), '2026-09-05', `${tz}: local constructor`);
         assert.equal(toLocalISODate(new Date(Number.NaN)), '', tz);
         assert.equal(toLocalISODate(null), '', tz);
@@ -101,20 +99,20 @@ export default async function run(ctx) {
       });
     }
     // Why not toISOString(): in a UTC+14 process, local midnight is still the previous day in UTC.
-    await inZone('Pacific/Kiritimati', FORMAT_URL, ({ toLocalISODate }) => {
+    await inZone('Pacific/Kiritimati', importFormat, ({ toLocalISODate }) => {
       const local = new Date(2026, 8, 5);
       assert.equal(local.toISOString().slice(0, 10), '2026-09-04');
       assert.equal(toLocalISODate(local), '2026-09-05');
     });
   });
 
-  await t('mock flow history (UTC-11, UTC+14): weekday YYYY-MM-DD labels, consecutive, ending on the latest weekday <= local today', async () => {
+  it('mock flow history (UTC-11, UTC+14): weekday YYYY-MM-DD labels, consecutive, ending on the latest weekday <= local today', async () => {
     const realRandom = Math.random;
     Math.random = () => 0.5; // generateMockData is random; its dates must not depend on it
     try {
       for (const tz of FAR_ZONES) {
-        await inZone(tz, MOCK_URL, async ({ generateMockData }) => {
-          const { toLocalISODate } = await import(`${FORMAT_URL.href}?tz=${tz}`);
+        await inZone(tz, importMock, async ({ generateMockData }) => {
+          const { toLocalISODate } = await import('./format.js');
           // "Today" is read on both sides of the call, so a local midnight in between cannot flake it.
           const before = toLocalISODate(new Date());
           const dates = generateMockData('AVGO').flowHistory.map((row) => row.date);
@@ -139,8 +137,8 @@ export default async function run(ctx) {
     }
   });
 
-  await t('gexAxisTicks: at most 8 real strikes, both ends kept, sorted, deduplicated, spread evenly by price', async () => {
-    const { gexAxisTicks } = await import(GEX_URL);
+  it('gexAxisTicks: at most 8 real strikes, both ends kept, sorted, deduplicated, spread evenly by price', async () => {
+    const { gexAxisTicks } = gex;
 
     const nine = [100, 102.5, 105, 110, 115, 117.5, 120, 125, 130];
     const t9 = gexAxisTicks(nine);
@@ -171,8 +169,8 @@ export default async function run(ctx) {
     assert.deepEqual(gexAxisTicks([100, 105, 110, 115, 120], 3), [100, 110, 120], 'first, middle, last');
   });
 
-  await t('referenceLevels: exact prices in spot/basis/sma50/sma200 order; visible only within the strike range', async () => {
-    const { referenceLevels } = await import(GEX_URL);
+  it('referenceLevels: exact prices in spot/basis/sma50/sma200 order; visible only within the strike range', async () => {
+    const { referenceLevels } = gex;
     const strikes = [172.5, 175, 177.5, 180, 182.5, 185, 190, 195, 200];
 
     assert.deepEqual(referenceLevels({ costBasis: 150 }, strikes), [{ key: 'basis', value: 150, visible: false }], 'below the lowest strike');
@@ -196,4 +194,4 @@ export default async function run(ctx) {
     assert.deepEqual(referenceLevels({ spotPrice: 172.5, costBasis: 200 }, strikes).map((l) => l.visible), [true, true], 'range ends are inclusive');
     assert.deepEqual(referenceLevels({ spotPrice: 181 }, []), [{ key: 'spot', value: 181, visible: false }], 'no strikes: nothing is on the chart');
   });
-}
+});
