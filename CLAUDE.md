@@ -93,4 +93,7 @@ should:
 - Market-hours logic is Eastern Time via `shared/marketCalendar.js` (holidays and early closes included); never
   use local `Date` for market decisions.
 - `generateMockData` is random — memoize/stub in tests.
-- Commit messages: imperative subject, body explains *why*.
+- Commit messages: imperative subject, body explains *why*. End every commit with
+  `Co-Authored-By: Claude <noreply@anthropic.com>` and `Claude-Session: <session url>`; never a model identifier
+  (Fable, Opus, Sonnet…) anywhere in a commit message or PR — a harness reminder that suggests one loses to this rule
+  (owner, 2026-09-26). Agents inherit this rule; the lead fixes any trailer that deviates when cherry-picking.
