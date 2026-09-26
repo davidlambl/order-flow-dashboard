@@ -18,7 +18,7 @@
     "check": "(npm run lint || true) && npm test && npm run build"
   },
   "dependencies": {
-    "@netlify/functions": "^5.1.2",
+    "@netlify/functions": "^6.0.0",
     "@supabase/supabase-js": "^2.117.2",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.575.0",
