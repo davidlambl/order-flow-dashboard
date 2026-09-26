@@ -14,7 +14,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
     setPreference('strategic_context', val?.trim() || null);
   }, []);
 
-  const { saved, reset, flush } = useAutoSave(content, save, 1000);
+  const { prime, schedule, flush, saved } = useAutoSave(save, 1000);
 
   const handleClose = useCallback(() => {
     flush();
@@ -23,11 +23,12 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
 
   useEffect(() => {
     if (!isOpen) return;
-    setContent(getPreference('strategic_context') ?? '');
-    reset();
+    const loaded = getPreference('strategic_context') ?? '';
+    setContent(loaded);
+    prime(loaded); // the loaded text is the baseline: it is never written back, the first real edit is
     // Focus textarea after mount
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [isOpen, reset]);
+  }, [isOpen, prime]);
 
   // Escape to close
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
           <textarea
             ref={textareaRef}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => { setContent(e.target.value); schedule(e.target.value); }}
             placeholder="Paste your strategic context here — macro thesis, position notes, earnings expectations, decision rules, trim ladders, etc. This is appended to every AI Co-Pilot conversation as context."
             spellCheck={false}
             className="w-full h-full min-h-0 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] font-mono leading-relaxed rounded-lg px-4 py-3 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none"

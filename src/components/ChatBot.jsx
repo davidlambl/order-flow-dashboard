@@ -726,7 +726,10 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   }, [messages, currentTicker]);
 
   useEffect(() => {
-    const handler = () => {
+    const handler = (e) => {
+      const detail = e.detail;
+      if (detail && !(detail.kind === 'chat' && detail.id === currentTicker)) return; // another item changed
+      if (streamRef.current) return; // a reply is streaming; keep the on-screen conversation
       skipSaveRef.current = true;
       setMessages(getChatHistory(currentTicker));
     };

@@ -1,11 +1,15 @@
 // src/lib/supabase.js
 // Browser-side Supabase client (anon key, access controlled via RLS).
+// `import.meta.env` exists only under Vite; under Node (the verify harness) it is
+// undefined, so this module and everything that imports it load without a bundler
+// and the default client is null. Vite still replaces `import.meta.env` statically.
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const env = import.meta.env ?? {};
 
-export const supabase =
-  SUPABASE_URL && SUPABASE_ANON_KEY
-    ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-    : null;
+/** A client for `url` + `key`, or null when either is missing. */
+export function createSupabaseClient(url, key) {
+  return url && key ? createClient(url, key) : null;
+}
+
+export const supabase = createSupabaseClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY);

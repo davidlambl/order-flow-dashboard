@@ -262,7 +262,7 @@ const ctx = {
   setFetch: (fn) => { fetchImpl = fn; },
   resetFetch: () => { fetchImpl = async () => new Response('{}', { status: 200 }); },
 };
-for (const name of ['calendar', 'marketData', 'liveQuote', 'tickerContext', 'collector', 'recommend', 'clientLib', 'charts', 'sse']) {
+for (const name of ['calendar', 'marketData', 'liveQuote', 'tickerContext', 'collector', 'recommend', 'clientLib', 'charts', 'sse', 'saver', 'store', 'sync']) {
   await (await import(`./verify/${name}.mjs`)).default(ctx);
 }
 

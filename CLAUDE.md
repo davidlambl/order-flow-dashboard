@@ -21,24 +21,29 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline after Phase 2: 6 errors, 0 warnings (five
-  `react-hooks/set-state-in-effect` in `App`, `StrategicContextEditor`, `useAutoSave` and `useMarketData`, one
+- `npm run build` — must pass. `npm run lint` — baseline after Phase 3 (PR a): 5 errors, 0 warnings (four
+  `react-hooks/set-state-in-effect` in `App`, `StrategicContextEditor` and `useMarketData`, one
   `react-refresh/only-export-components` in `AppSettings`), all owned by Phase 5; don't add new ones. CI runs lint
   non-blocking until that count is zero, then it becomes required.
 - `npm run verify:functions` — drives every function in-process with a stubbed `fetch` (blocking in CI). The runner
   is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's helpers
   via `ctx`. Server areas: `calendar`, `marketData`, `liveQuote`, `tickerContext`, `collector`; client areas
-  (pure `src/lib` modules loaded under Node): `recommend`, `clientLib`, `charts`, `sse`. Time-dependent code takes
-  an injectable `now`, so checks never depend on the wall clock.
+  (pure `src/lib` modules loaded under Node): `recommend`, `clientLib`, `charts`, `sse`, `saver`, `store`, `sync`.
+  `scripts/verify/helpers.mjs` has the browser-global stand-ins (`memoryStorage`, `withGlobals`, `fakeWindow`,
+  `settle`) and `sync.mjs` exports the recording fake supabase-js client. Time-dependent code takes an injectable
+  `now` (and the saver injectable timers), so checks never depend on the wall clock.
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
 ## Layout
-- `src/lib/` pure helpers + storage (`store.js` localStorage backend, `SupabaseBackend.js` cloud sync,
-  `api.js` fetchers incl. SSE streaming, `sse.js` stream framing/events, `recommend.js`, `format.js`,
-  `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.js` JWT client side). Modules the Node harness loads
-  use explicit `.js` relative imports (Vite resolves both) and no top-level `window`/`localStorage` access.
-- `src/hooks/` data hooks (`useMarketData`, `useLiveQuote`, `useTickerContext`, `useAutoSave`).
+- `src/lib/` pure helpers + storage (`store.js` localStorage backend, `SupabaseBackend.js` cloud sync with an
+  injectable client, `supabase.js` Node-safe client factory, `session.js` the one sign-out, `debouncedSaver.js`
+  baseline-compared debounce behind `useAutoSave`, `deepEqual.js`, `api.js` fetchers incl. SSE streaming, `sse.js`
+  stream framing/events, `recommend.js`, `format.js`, `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.js`
+  JWT client side). Modules the Node harness loads use explicit `.js` relative imports (Vite resolves both) and no
+  top-level `window`/`localStorage` access.
+- `src/hooks/` data hooks (`useMarketData`, `useLiveQuote`, `useTickerContext`, `useAutoSave(saveFn, delay)` →
+  `{ prime, schedule, flush, saved }`: prime with the loaded value, schedule from `onChange`, flush before close).
 - `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are
   large and scheduled for decomposition (Phase 5) along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
@@ -54,7 +59,16 @@ should:
   Phase 8) Terraform for AWS. See the roadmap's Phase 7/8 for the skill-building rationale.
 
 ## Conventions
-- Secrets: BYOK keys live only in localStorage (`SECRET_KEYS` in `store.js`) and are never synced or exported.
+- Secrets: BYOK keys live only in localStorage (`SECRET_KEYS` in `store.js`) and are never synced or exported;
+  `DEVICE_KEYS` (secrets + per-browser flags) never sync, export or import; `LAYOUT_KEYS` sync but never raise the
+  sync-conflict prompt.
+- Persistence: the Supabase backend is keyed on the signed-in user (`App.jsx` `activeUserIdRef`); `hydrate()` never
+  pushes into a non-empty cloud — it pulls into an empty browser, pushes into an empty account, and otherwise reports
+  `conflict` so App shows `SyncChoice` (merge / cloud / local) and nothing is written until the user picks. Sign-out
+  is `signOut()` in `src/lib/session.js` (confirm, Supabase sign-out, clear local user data + secrets + JWT, reset
+  the backend); a `local_data_owner` mark records whose data the browser holds, and `claimLocalData()` clears another
+  account's data (secrets kept) before a new account's backend exists. Replacing a backend disposes it.
+  `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything".
 - Functions accept BYOK via headers/body (`x-tradier-key`, `x-finnhub-key`, `userApiKey`); server keys are
   only for access-token holders (`netlify/functions/lib/auth.js`), and refused with 503 if `TOKEN_SECRET`
   is unset. New functions must use `lib/http.js` (CORS allowlist, `fetchWithTimeout`, `errorResponse`

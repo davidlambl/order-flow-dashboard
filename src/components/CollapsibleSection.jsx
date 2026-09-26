@@ -18,11 +18,12 @@ export default function CollapsibleSection({ id, title, icon: Icon, badge, defau
     return () => window.removeEventListener('store-changed', handler);
   }, [id]);
 
-  const toggle = () => setOpen((v) => {
-    const next = !v;
+  // The write stays out of the state updater, which StrictMode runs twice (D12).
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
     setPreference(`section_${id}`, next);
-    return next;
-  });
+  };
 
   return (
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] fade-in">
