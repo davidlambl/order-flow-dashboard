@@ -41,6 +41,10 @@ should:
   Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
   only at file top level; never enable fake timers globally; time-dependent code takes an injectable `now` (and the
   saver injectable timers), so tests never depend on the wall clock.
+  Under the `dom` project Vite rewrites `new URL('./x.js', import.meta.url)` to the served `http://localhost:3000/…`
+  URL, so a test that reads a source file uses `path.join(import.meta.dirname, 'x.js')`; the `node` project is not
+  rewritten. Fixtures that must reach a stub, not MSW, install `installFetchRecorder()` (`test/helpers/fetch.js`)
+  per test and uninstall it after.
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
