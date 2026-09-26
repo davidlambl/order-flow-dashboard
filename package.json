@@ -11,11 +11,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.functions.json",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "(npm run lint || true) && npm test && npm run build"
+    "check": "(npm run lint || true) && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@netlify/functions": "^6.0.0",
@@ -36,6 +37,8 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
@@ -49,6 +52,8 @@
     "msw": "^2.15.0",
     "rollup-plugin-visualizer": "^7.1.1",
     "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.70.1",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   }
