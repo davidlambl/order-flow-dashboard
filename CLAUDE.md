@@ -25,6 +25,7 @@ should:
   `react-hooks/set-state-in-effect` in `App`, `AppSettings`, `Header`, `StrategicContextEditor`, `useLiveQuote`,
   `useMarketData` and `useTickerContext`, one `react-refresh/only-export-components` in `AppSettings`), all owned by
   Phase 5; don't add new ones. CI runs lint non-blocking until that count is zero, then it becomes required.
+  `npm run check` = lint (non-blocking until the baseline is zero) + test + build.
 - `npm run verify:functions` — drives every function in-process with a stubbed `fetch` (blocking in CI). The runner
   is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's helpers
   via `ctx`. Server areas: `calendar`, `marketData`, `liveQuote`, `tickerContext`, `collector`; client areas

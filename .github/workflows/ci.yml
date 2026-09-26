@@ -32,7 +32,8 @@ jobs:
         continue-on-error: true
         run: npm run lint
       # - run: npm run typecheck   # enable in Phase 5 (TypeScript)
-      # - run: npm test            # enable in Phase 4b (Vitest)
+      - name: Test (with coverage)
+        run: npm run test:coverage
       - name: Verify functions (auth, cost controls, validation)
         run: npm run verify:functions
       - run: npm run build
