@@ -355,7 +355,7 @@ export default async (req) => {
   };
 
   // Yahoo Finance needs no key and is available to everyone.
-  let yahooError = null;
+  let yahooError;
   try {
     const quote = await fetchYahooQuote(ticker, req.signal);
     return jsonResponse(req, quote, 200, okHeaders);

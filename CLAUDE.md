@@ -21,10 +21,10 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline after Phase 3 (PR a): 5 errors, 0 warnings (four
-  `react-hooks/set-state-in-effect` in `App`, `StrategicContextEditor` and `useMarketData`, one
-  `react-refresh/only-export-components` in `AppSettings`), all owned by Phase 5; don't add new ones. CI runs lint
-  non-blocking until that count is zero, then it becomes required.
+- `npm run build` — must pass. `npm run lint` — baseline after Phase 4b's ESLint 10 bump: 10 errors, 0 warnings (nine
+  `react-hooks/set-state-in-effect` in `App`, `AppSettings`, `Header`, `StrategicContextEditor`, `useLiveQuote`,
+  `useMarketData` and `useTickerContext`, one `react-refresh/only-export-components` in `AppSettings`), all owned by
+  Phase 5; don't add new ones. CI runs lint non-blocking until that count is zero, then it becomes required.
 - `npm run verify:functions` — drives every function in-process with a stubbed `fetch` (blocking in CI). The runner
   is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's helpers
   via `ctx`. Server areas: `calendar`, `marketData`, `liveQuote`, `tickerContext`, `collector`; client areas

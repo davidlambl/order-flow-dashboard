@@ -48,7 +48,7 @@ export async function fetchMarketData(ticker, signal = null) {
   try {
     res = await fetch(url, options);
   } catch (networkErr) {
-    throw new Error(`Network error: ${networkErr.message}`);
+    throw new Error(`Network error: ${networkErr.message}`, { cause: networkErr });
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -184,7 +184,7 @@ export async function fetchTickerContext(ticker, signal = null) {
   try {
     res = await fetch(url, options);
   } catch (networkErr) {
-    throw new Error(`Network error: ${networkErr.message}`);
+    throw new Error(`Network error: ${networkErr.message}`, { cause: networkErr });
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -234,7 +234,7 @@ export async function fetchLiveQuote(ticker, signal = null) {
   try {
     res = await fetch(url, options);
   } catch (networkErr) {
-    throw new Error(`Network error: ${networkErr.message}`);
+    throw new Error(`Network error: ${networkErr.message}`, { cause: networkErr });
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
