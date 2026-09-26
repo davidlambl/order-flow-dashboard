@@ -1,6 +1,6 @@
 // src/components/ChatBot.jsx
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, Children, cloneElement, isValidElement } from 'react';
-import { Send, Bot, User, AlertCircle, MessageSquare, X, Sparkles, Settings, Loader2, Lock, KeyRound, ShieldCheck, Trash2, Copy, Check, FileText, ListChecks, Pencil, Square } from 'lucide-react';
+import { Send, Bot, User, CircleAlert, MessageSquare, X, Sparkles, Settings, LoaderCircle, Lock, KeyRound, ShieldCheck, Trash, Copy, Check, FileText, ListChecks, Pencil, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { askLLMStream } from '../lib/api';
@@ -445,7 +445,7 @@ function MessageBubble({ msg, onDelete }) {
             : 'bg-[var(--color-purple-bg)] text-[var(--color-purple)]'
         }`}
       >
-        {isUser ? <User size={12} /> : isError ? <AlertCircle size={12} /> : <Bot size={12} />}
+        {isUser ? <User size={12} /> : isError ? <CircleAlert size={12} /> : <Bot size={12} />}
       </div>
       <div className="flex flex-col max-w-[85%]">
         <div
@@ -478,7 +478,7 @@ function MessageBubble({ msg, onDelete }) {
             aria-label="Delete message"
             title="Delete message"
           >
-            <Trash2 size={11} />
+            <Trash size={11} />
           </button>
         </div>
       </div>
@@ -590,7 +590,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
               className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               {status === 'validating' ? (
-                <Loader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : status === 'success' ? (
                 <ShieldCheck size={14} />
               ) : (
@@ -600,7 +600,7 @@ function ChatLockScreen({ onClose, onUnlock }) {
           </div>
           {error && (
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
-              <AlertCircle size={10} className="shrink-0" />
+              <CircleAlert size={10} className="shrink-0" />
               <span>{error}</span>
             </div>
           )}
@@ -999,7 +999,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
               aria-label="Clear chat history"
               title="Clear chat history"
             >
-              <Trash2 size={14} />
+              <Trash size={14} />
             </button>
           )}
           <button

@@ -1,7 +1,7 @@
 // src/components/AppSettings.jsx
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  X, Settings, Check, Loader2, AlertCircle, KeyRound, ShieldCheck,
+  X, Settings, Check, LoaderCircle, CircleAlert, KeyRound, ShieldCheck,
   RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive, RotateCcw, Pencil,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
@@ -481,11 +481,11 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                   className="px-3 py-2 text-xs font-medium rounded-lg border transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--color-surface-2)] border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]"
                 >
                   {keyTestStatus === 'testing' ? (
-                    <Loader2 size={12} className="animate-spin" />
+                    <LoaderCircle size={12} className="animate-spin" />
                   ) : keyTestStatus === 'success' ? (
                     <Check size={12} className="text-[var(--color-bull)]" />
                   ) : keyTestStatus === 'error' ? (
-                    <AlertCircle size={12} className="text-[var(--color-bear)]" />
+                    <CircleAlert size={12} className="text-[var(--color-bear)]" />
                   ) : (
                     'Test'
                   )}
@@ -493,7 +493,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
               </div>
               {keyTestStatus === 'error' && keyTestError && (
                 <div className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
-                  <AlertCircle size={11} className="shrink-0 mt-px" />
+                  <CircleAlert size={11} className="shrink-0 mt-px" />
                   <span>{keyTestError}</span>
                 </div>
               )}
@@ -516,7 +516,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
               </label>
               {loadingModels ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)]">
-                  <Loader2 size={12} className="animate-spin" /> Fetching available models...
+                  <LoaderCircle size={12} className="animate-spin" /> Fetching available models...
                 </div>
               ) : hasModels ? (
                 <select
@@ -530,7 +530,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                 </select>
               ) : (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)] text-xs text-[var(--color-text-muted)]">
-                  <AlertCircle size={12} className="shrink-0" />
+                  <CircleAlert size={12} className="shrink-0" />
                   {modelError || 'No models loaded.'}
                 </div>
               )}
@@ -786,7 +786,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                       className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                     >
                       {tokenStatus === 'validating' ? (
-                        <Loader2 size={14} className="animate-spin" />
+                        <LoaderCircle size={14} className="animate-spin" />
                       ) : tokenStatus === 'success' ? (
                         <ShieldCheck size={14} />
                       ) : (
@@ -796,7 +796,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                   </div>
                   {tokenError && (
                     <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
-                      <AlertCircle size={10} className="shrink-0" />
+                      <CircleAlert size={10} className="shrink-0" />
                       <span>{tokenError}</span>
                     </div>
                   )}
@@ -956,7 +956,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
               )}
               {importStatus === 'error' && (
                 <div className="flex items-start gap-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
-                  <AlertCircle size={11} className="shrink-0 mt-px" />
+                  <CircleAlert size={11} className="shrink-0 mt-px" />
                   <span>{importError}</span>
                 </div>
               )}

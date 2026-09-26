@@ -21,7 +21,7 @@
     "@netlify/functions": "^6.0.0",
     "@supabase/supabase-js": "^2.117.2",
     "jsonwebtoken": "^9.0.3",
-    "lucide-react": "^0.575.0",
+    "lucide-react": "^1.48.0",
     "p-limit": "^7.3.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

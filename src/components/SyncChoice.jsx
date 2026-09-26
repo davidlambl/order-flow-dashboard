@@ -2,7 +2,7 @@
 // Shown when hydrate() finds different data in this browser and in the signed-in account (roadmap D1, D6).
 // Blocking on purpose: no close button, no backdrop dismiss. Until the user picks, neither copy is written
 // over the other, and there is no safe default to fall back on.
-import { Loader2, RefreshCw } from 'lucide-react';
+import { LoaderCircle, RefreshCw } from 'lucide-react';
 
 const CHOICES = [
   {
@@ -91,7 +91,7 @@ export default function SyncChoice({ report, onChoose, busy }) {
 
         {busy && (
           <p role="status" className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)]">
-            <Loader2 size={11} className="animate-spin" /> Syncing…
+            <LoaderCircle size={11} className="animate-spin" /> Syncing…
           </p>
         )}
       </div>
