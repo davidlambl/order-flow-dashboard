@@ -1,7 +1,7 @@
 // src/lib/api.js
 // Centralized API helpers — all calls route through Netlify Functions.
-// Node-loadable (the verify harness drives askLLMStream), so relative imports carry
-// their extension and nothing touches browser globals at import time.
+// src/lib/api.test.js drives askLLMStream under jsdom. Still Node-loadable: relative
+// imports carry their extension and nothing touches browser globals at import time.
 
 import { getAuthHeaders, clearTokenIfDead } from './auth.js';
 import { getPreference } from './store.js';
@@ -48,7 +48,7 @@ export async function fetchMarketData(ticker, signal = null) {
   try {
     res = await fetch(url, options);
   } catch (networkErr) {
-    throw new Error(`Network error: ${networkErr.message}`);
+    throw new Error(`Network error: ${networkErr.message}`, { cause: networkErr });
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -184,7 +184,7 @@ export async function fetchTickerContext(ticker, signal = null) {
   try {
     res = await fetch(url, options);
   } catch (networkErr) {
-    throw new Error(`Network error: ${networkErr.message}`);
+    throw new Error(`Network error: ${networkErr.message}`, { cause: networkErr });
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -234,7 +234,7 @@ export async function fetchLiveQuote(ticker, signal = null) {
   try {
     res = await fetch(url, options);
   } catch (networkErr) {
-    throw new Error(`Network error: ${networkErr.message}`);
+    throw new Error(`Network error: ${networkErr.message}`, { cause: networkErr });
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));

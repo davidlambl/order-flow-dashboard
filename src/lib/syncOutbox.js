@@ -20,7 +20,7 @@
 //    delete never races the edit it follows.
 //
 // Pure: imports only ./retry.js and reads no browser global at import time. Storage, timers, clock and
-// warn are injectable, so scripts/verify/sync.mjs drives it under Node with a fake clock; nothing waits.
+// warn are injectable, so src/lib/sync.node.test.js drives it under Node with a fake clock; nothing waits.
 import { backoffSeconds } from './retry.js';
 
 /** Storage key prefix of a user's saved queue: `${OUTBOX_PREFIX}${userId}`. */

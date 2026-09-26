@@ -452,7 +452,8 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `test.projects` = `node` (`netlify/**`, `scripts/**`) and `dom` (jsdom, `src/**`, `setupFiles: src/test/setup.js`
    with MSW server + `localStorage.clear()`). Scripts: `test`, `test:watch`, `test:coverage`, `typecheck`,
    `check` (lint+typecheck+test+build). First test files in order: `format`, `recommend`, `marketDataHelpers`
-   (node), `api` (SSE chunk-boundary splitting; export `parseSSELine`), `auth`, `store`, `useAutoSave`,
+   (node), `sse`/`api` (SSE chunk boundaries via `drainSSEBuffer` and `askLLMStream`; `parseSSELine` no longer
+   exists), `auth`, `store`, `useAutoSave`,
    `useMarketData` (MSW; the regression net for the TanStack migration), `useLiveQuote`/`useTickerContext`,
    `PositionAnalysis`/`CollapsibleSection`, `getLiveQuote` (node, MSW for Yahoo/Finnhub).
 6. CI `.github/workflows/ci.yml`: on push to main + PRs; matrix Node 22 (required) / 24 (informational,

@@ -1,6 +1,6 @@
 // src/components/PositionAnalysis.jsx
 import { useMemo } from 'react';
-import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight, AlertTriangle, ArrowDown, ArrowUp } from 'lucide-react';
+import { DollarSign, Hash, TrendingUp, TrendingDown, Minus, ChevronRight, TriangleAlert, ArrowDown, ArrowUp } from 'lucide-react';
 import { computeRecommendation, computeDualRecommendation, extractPriceLevels, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 import { isStaleData } from '../lib/staleness';
 import { formatDollar, formatPrice } from '../lib/format';
@@ -139,7 +139,7 @@ function RecommendationBadge({ rec, isStale, lastUpdated, label, isSecondary, ha
       )}
       <div className="flex items-center gap-2">
         {hasWarning && (
-          <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
+          <TriangleAlert size={14} className="text-[var(--color-warn)] shrink-0" />
         )}
         <div
           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isSecondary ? 'border-dashed' : ''}`}
@@ -451,7 +451,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPric
         <div className="mt-4 space-y-4">
           {/* Market Status Warning */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-warn-bg)] border border-[var(--color-warn)]/20">
-            <AlertTriangle size={14} className="text-[var(--color-warn)] shrink-0" />
+            <TriangleAlert size={14} className="text-[var(--color-warn)] shrink-0" />
             <span className="text-xs text-[var(--color-warn)] font-medium">
               Options market closed — price has moved {dualRec.gapPercent > 0 ? 'up' : 'down'} {Math.abs(dualRec.gapPercent).toFixed(1)}% since the options snapshot
             </span>

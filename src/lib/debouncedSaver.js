@@ -11,8 +11,8 @@
 // Each schedule() passes the save function to use, and a pending save keeps the one it was scheduled with:
 // an Anthropic key still inside the debounce when the provider switches is not written under ai_key_openai.
 //
-// No imports and no browser globals. Timers are injectable so scripts/verify/saver.mjs drives this under
-// Node with a fake clock; nothing there sleeps.
+// No imports and no browser globals. Timers are injectable so src/lib/debouncedSaver.node.test.js drives this
+// under Node with a fake clock; nothing there sleeps.
 
 /**
  * @template T

@@ -3,7 +3,7 @@
 // uneven spacing of listed strikes ($2.50 near the money, $5 further out) stays visible,
 // tick labels are real strikes, and the reference levels (spot, cost basis, moving
 // averages) sit at their exact price instead of snapping to the nearest strike.
-// Pure and Node-loadable: scripts/verify/charts.mjs imports it directly.
+// Pure and Node-loadable: src/lib/charts.node.test.js imports it directly.
 
 /** Keys of the chart's reference lines, in drawing (and legend) order. */
 const LEVEL_KEYS = ['spot', 'basis', 'sma50', 'sma200'];

@@ -1,8 +1,13 @@
-// scripts/verify/liveQuote.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// getLiveQuote (roadmap M3, M4): the newest-timestamped price wins, NQ futures are context only and
-// never overwrite `current`, "market closed" comes from the shared holiday calendar, and Finnhub's
-// zero / non-numeric quotes are rejected. Pure checks use far-past Unix seconds; the futures checks
-// inject `now`, so nothing here depends on the wall clock.
+// netlify/functions/__tests__/getLiveQuote.test.js — live quotes. Access (roadmap Phase 1): Yahoo first; the
+// Finnhub fallback spends the server key only for token holders. Price selection (M3, M4): the newest-timestamped
+// price wins, NQ futures are context only and never overwrite `current`, "market closed" comes from the shared
+// holiday calendar, and Finnhub's zero / non-numeric quotes are rejected. Pure checks use far-past Unix seconds;
+// the futures checks inject `now`, so no outcome depends on the wall clock.
+import { describe, it } from 'vitest';
+import getLiveQuote, { selectQuoteCandidate, fetchYahooQuote } from '../getLiveQuote.js';
+import { installFunctionHarness } from '../../../test/helpers/functions.js';
+
+const { calls, setFetch, req, json, mint, assert, SECRET } = installFunctionHarness();
 
 /** Yahoo v8 chart body with a single result. */
 const chart = ({ meta, timestamps = [], closes = [] }) => ({
@@ -16,7 +21,9 @@ const noFetch = async (url) => { throw new Error(`unexpected fetch: ${url}`); };
 const PERIODS = { pre: { start: 0, end: 1000 }, regular: { start: 1000, end: 2000 }, post: { start: 2000, end: 3000 } };
 
 // AAPL (a Nasdaq-100 member) last traded at 10 after a 9 prior close, and NQ is up 5 %.
-// fetchNasdaqFutures caches per process for 60 s, so this is the run's ONLY NQ fixture.
+// getLiveQuote.js caches the NQ quote for 60 s with no reset (futuresCache), and each test file gets its own copy
+// of the module: this is the file's ONLY NQ fixture, so whatever the cache holds is this one, whichever check
+// filled it. A second NQ fixture needs a cache reset exported from getLiveQuote.js first.
 const AAPL = chart({ meta: { regularMarketPrice: 10, regularMarketTime: 100, chartPreviousClose: 9 } });
 const NQ = chart({ meta: { regularMarketPrice: 21000, regularMarketTime: 100, chartPreviousClose: 20000 } });
 const stockAndFutures = async (url) => {
@@ -26,21 +33,38 @@ const stockAndFutures = async (url) => {
   return new Response('unexpected upstream', { status: 500 });
 };
 
-export default async function run(ctx) {
-  const { t, req, json, calls, assert, ROOT, setFetch } = ctx;
-  console.log('liveQuote');
-  const mod = await import(ROOT + 'getLiveQuote.js');
-  const getLiveQuote = mod.default;
-  const { selectQuoteCandidate, fetchYahooQuote } = mod;
+const near = (actual, expected, what) => assert.ok(
+  Number.isFinite(actual) && Math.abs(actual - expected) < 1e-9, `${what}: expected ≈${expected}, got ${actual}`,
+);
+const pick = (meta, nowSec = 1000) => selectQuoteCandidate(resultOf({ meta }), nowSec);
+const REGULAR = { regularMarketPrice: 10, regularMarketTime: 100 };
+const ALL = { ...REGULAR, postMarketPrice: 11, postMarketTime: 200, preMarketPrice: 9, preMarketTime: 150 };
+const finnhubOnly = (body) => async (url) => (String(url).includes('finnhub.io') ? ok(body) : new Response('x', { status: 500 }));
+const byok = { headers: { 'x-finnhub-key': 'fh-user' } };
 
-  const near = (actual, expected, what) => assert.ok(
-    Number.isFinite(actual) && Math.abs(actual - expected) < 1e-9, `${what}: expected ≈${expected}, got ${actual}`,
-  );
-  const pick = (meta, nowSec = 1000) => selectQuoteCandidate(resultOf({ meta }), nowSec);
-  const REGULAR = { regularMarketPrice: 10, regularMarketTime: 100 };
-  const ALL = { ...REGULAR, postMarketPrice: 11, postMarketTime: 200, preMarketPrice: 9, preMarketTime: 150 };
+describe('getLiveQuote', () => {
+  it('yahoo ok → 200 private cache; ticker encoded', async () => {
+    setFetch(async () => new Response(JSON.stringify({ chart: { result: [{ meta: { regularMarketPrice: 10, regularMarketTime: 1, chartPreviousClose: 9 }, timestamp: [], indicators: { quote: [{}] } }] } }), { status: 200 }));
+    const r = await json(await getLiveQuote(req('getLiveQuote?ticker=brk.b')));
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.headers['cache-control'], 'private, max-age=60'); assert.match(calls[0].url, /chart\/BRK\.B\?/);
+  });
+  it('yahoo down, anonymous, server finnhub key → 502 generic (key not spent)', async () => {
+    process.env.FINNHUB_API_KEY = 'fh-server'; process.env.TOKEN_SECRET = SECRET;
+    setFetch(async () => new Response('x', { status: 500 }));
+    const r = await json(await getLiveQuote(req('getLiveQuote?ticker=AVGO')));
+    assert.equal(r.status, 502); assert.equal(r.body.code, 'QUOTE_UNAVAILABLE'); assert.ok(calls.every((c) => !c.url.includes('finnhub')));
+    assert.equal(r.headers['cache-control'], 'no-store');
+  });
+  it('yahoo down, token holder → finnhub fallback with server key', async () => {
+    process.env.FINNHUB_API_KEY = 'fh-server'; process.env.TOKEN_SECRET = SECRET;
+    setFetch(async (url) => String(url).includes('finnhub') ? new Response(JSON.stringify({ c: 5, pc: 4, t: 1 }), { status: 200 }) : new Response('x', { status: 500 }));
+    const r = await json(await getLiveQuote(req('getLiveQuote?ticker=AVGO', { headers: { authorization: `Bearer ${mint()}` } })));
+    assert.equal(r.status, 200); assert.equal(r.body.source, 'finnhub');
+  });
+});
 
-  await t('selectQuoteCandidate: newest timestamp wins, ties prefer regular > post > pre', async () => {
+describe('liveQuote', () => {
+  it('selectQuoteCandidate: newest timestamp wins, ties prefer regular > post > pre', async () => {
     setFetch(noFetch);
     assert.deepEqual(pick(ALL), { source: 'yahoo-post', price: 11, timestamp: 200 });
     assert.deepEqual(pick({ ...ALL, preMarketTime: 300 }), { source: 'yahoo-pre', price: 9, timestamp: 300 });
@@ -52,7 +76,7 @@ export default async function run(ctx) {
     assert.equal(calls.length, 0);
   });
 
-  await t('selectQuoteCandidate: skips 0 / blank / non-numeric / future-stamped prices; null when none', async () => {
+  it('selectQuoteCandidate: skips 0 / blank / non-numeric / future-stamped prices; null when none', async () => {
     setFetch(noFetch);
     assert.equal(pick({}), null);
     assert.equal(selectQuoteCandidate({}, 1000), null, 'no meta at all');
@@ -68,7 +92,7 @@ export default async function run(ctx) {
     assert.equal(calls.length, 0);
   });
 
-  await t('selectQuoteCandidate: extended-hours candles beat stale meta; only candles <= now count', async () => {
+  it('selectQuoteCandidate: extended-hours candles beat stale meta; only candles <= now count', async () => {
     setFetch(noFetch);
     const result = resultOf({
       meta: { regularMarketPrice: 10, regularMarketTime: 1500, currentTradingPeriod: PERIODS },
@@ -92,7 +116,7 @@ export default async function run(ctx) {
     assert.equal(calls.length, 0);
   });
 
-  await t('handler: newest price wins (post 11@2 over regular 10@1) → 200, ms timestamp, private cache', async () => {
+  it('handler: newest price wins (post 11@2 over regular 10@1) → 200, ms timestamp, private cache', async () => {
     setFetch(async () => ok(chart({ meta: {
       regularMarketPrice: 10, regularMarketTime: 1, postMarketPrice: 11, postMarketTime: 2, chartPreviousClose: 10,
     } })));
@@ -105,7 +129,7 @@ export default async function run(ctx) {
     assert.equal(calls.length, 1, 'only the chart is fetched: no NQ lookup when the newest price is post-market');
   });
 
-  await t('regular session (Fri 11:00 ET): NQ not fetched, no futuresContext', async () => {
+  it('regular session (Fri 11:00 ET): NQ not fetched, no futuresContext', async () => {
     setFetch(stockAndFutures);
     const q = await fetchYahooQuote('AAPL', null, { now: new Date('2026-09-25T15:00:00Z') });
     assert.equal(q.current, 10); assert.equal(q.source, 'yahoo-regular');
@@ -113,7 +137,7 @@ export default async function run(ctx) {
     assert.equal(q.futuresContext, undefined);
   });
 
-  await t('market closed (Sat): NQ goes to futuresContext only; current/source/changePercent stay the stock\'s own', async () => {
+  it('market closed (Sat): NQ goes to futuresContext only; current/source/changePercent stay the stock\'s own', async () => {
     setFetch(stockAndFutures);
     const q = await fetchYahooQuote('AAPL', null, { now: new Date('2026-09-26T15:00:00Z') });
     assert.equal(q.current, 10, 'current is the last trade, not the NQ-implied estimate');
@@ -126,7 +150,7 @@ export default async function run(ctx) {
     assert.equal(q.futuresContext.nqCurrent, 21000); assert.equal(q.futuresContext.nqPreviousClose, 20000);
   });
 
-  await t('shared calendar: Thanksgiving 11:00 ET and a post-early-close afternoon count as closed', async () => {
+  it('shared calendar: Thanksgiving 11:00 ET and a post-early-close afternoon count as closed', async () => {
     setFetch(stockAndFutures);
     const holiday = await fetchYahooQuote('AAPL', null, { now: new Date('2026-11-26T16:00:00Z') });
     assert.ok(holiday.futuresContext, 'Thanksgiving is a market holiday'); assert.equal(holiday.current, 10);
@@ -136,7 +160,7 @@ export default async function run(ctx) {
     assert.ok(afterEarlyClose.futuresContext, '14:00 ET is after the 1 PM early close'); assert.equal(afterEarlyClose.current, 10);
   });
 
-  await t('handler never answers source futures-implied (Nasdaq-100, regular-only price, either session)', async () => {
+  it('handler never answers source futures-implied (Nasdaq-100, regular-only price, either session)', async () => {
     setFetch(stockAndFutures);
     const r = await json(await getLiveQuote(req('getLiveQuote?ticker=AAPL')));
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -146,10 +170,7 @@ export default async function run(ctx) {
     if (r.body.futuresContext) near(r.body.futuresContext.impliedPrice, 9.45, 'impliedPrice');
   });
 
-  const finnhubOnly = (body) => async (url) => (String(url).includes('finnhub.io') ? ok(body) : new Response('x', { status: 500 }));
-  const byok = { headers: { 'x-finnhub-key': 'fh-user' } };
-
-  await t('finnhub c:0 (unknown symbol) or non-numeric c → 502 QUOTE_UNAVAILABLE', async () => {
+  it('finnhub c:0 (unknown symbol) or non-numeric c → 502 QUOTE_UNAVAILABLE', async () => {
     setFetch(finnhubOnly({ c: 0, pc: 4, t: 1 }));
     const r = await json(await getLiveQuote(req('getLiveQuote?ticker=AVGO', byok)));
     assert.equal(r.status, 502, JSON.stringify(r.body)); assert.equal(r.body.code, 'QUOTE_UNAVAILABLE');
@@ -159,7 +180,7 @@ export default async function run(ctx) {
     assert.equal(r2.status, 502, JSON.stringify(r2.body)); assert.equal(r2.body.code, 'QUOTE_UNAVAILABLE');
   });
 
-  await t('finnhub numeric strings coerced to numbers; t → ms, missing t → null (not now)', async () => {
+  it('finnhub numeric strings coerced to numbers; t → ms, missing t → null (not now)', async () => {
     setFetch(finnhubOnly({ c: '5.5', pc: '5', t: 7 }));
     const r = await json(await getLiveQuote(req('getLiveQuote?ticker=AVGO', byok)));
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -170,4 +191,4 @@ export default async function run(ctx) {
     const r2 = await json(await getLiveQuote(req('getLiveQuote?ticker=AVGO', byok)));
     assert.equal(r2.status, 200, JSON.stringify(r2.body)); assert.equal(r2.body.timestamp, null);
   });
-}
+});

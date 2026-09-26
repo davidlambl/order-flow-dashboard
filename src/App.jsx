@@ -1,6 +1,6 @@
 // src/App.jsx
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Sparkles, Target, BarChart2 } from 'lucide-react';
+import { Sparkles, Target, ChartNoAxesColumn } from 'lucide-react';
 import Header from './components/Header';
 import KPICards from './components/KPICards';
 import CollapsibleSection from './components/CollapsibleSection';
@@ -425,7 +425,7 @@ export default function App() {
           </PremiumGate>
 
           {/* Charts */}
-          <CollapsibleSection id="charts" title="Charts" icon={BarChart2} noPadding>
+          <CollapsibleSection id="charts" title="Charts" icon={ChartNoAxesColumn} noPadding>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 p-4">
               <GexChart data={data?.gexByStrike} loading={loading} spotPrice={data?.spotPrice} costBasis={costBasis} technicals={tickerContext?.technicals} />
               <FlowChart data={data?.flowHistory} loading={loading} />

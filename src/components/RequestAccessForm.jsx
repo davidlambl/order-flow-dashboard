@@ -1,6 +1,6 @@
 // src/components/RequestAccessForm.jsx
 import { useState, useCallback } from 'react';
-import { Send, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Send, LoaderCircle, CircleCheckBig, CircleAlert } from 'lucide-react';
 
 export default function RequestAccessForm({ compact }) {
   const [name, setName] = useState('');
@@ -52,7 +52,7 @@ export default function RequestAccessForm({ compact }) {
   if (status === 'sent') {
     return (
       <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-[var(--color-bull)]/10 border border-[var(--color-bull)]/20">
-        <CheckCircle size={14} className="text-[var(--color-bull)] shrink-0" />
+        <CircleCheckBig size={14} className="text-[var(--color-bull)] shrink-0" />
         <span className="text-xs text-[var(--color-bull)]">
           Request sent — you'll hear back soon.
         </span>
@@ -89,7 +89,7 @@ export default function RequestAccessForm({ compact }) {
       />
       {error && (
         <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
-          <AlertCircle size={10} className="shrink-0" />
+          <CircleAlert size={10} className="shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -99,7 +99,7 @@ export default function RequestAccessForm({ compact }) {
         className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {status === 'sending' ? (
-          <><Loader2 size={12} className="animate-spin" /> Sending...</>
+          <><LoaderCircle size={12} className="animate-spin" /> Sending...</>
         ) : (
           <><Send size={12} /> Request Access</>
         )}

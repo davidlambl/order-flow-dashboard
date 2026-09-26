@@ -18,4 +18,5 @@
 [functions]
   # shared/ holds pure modules imported by both src/ and netlify/functions/ (e.g. the
   # market calendar). Static imports are traced automatically; this keeps it explicit.
-  included_files = ["shared/**"]
+  # Netlify bundles shared/** into every function; the test files there are never imported, so they stay out.
+  included_files = ["shared/**", "!shared/**/*.test.js"]

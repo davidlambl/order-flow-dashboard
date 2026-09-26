@@ -1,49 +1,19 @@
-// scripts/verify/saver.mjs — Phase 3 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// The debounced saver behind useAutoSave (src/lib/debouncedSaver.js): baseline compare instead of a
-// skip flag, one save per edit burst, flush and cancel. Timers are injected, so nothing waits.
+// src/lib/debouncedSaver.node.test.js — the debounced saver behind useAutoSave (src/lib/debouncedSaver.js):
+// baseline compare instead of a skip flag, one save per edit burst, flush and cancel. Timers are injected from the
+// shared fake clock (test/helpers/globals.js), so nothing waits.
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createSaver } from './debouncedSaver.js';
+import { fakeClock } from '../../test/helpers/globals.js';
 
-const SAVER_URL = new URL('../../src/lib/debouncedSaver.js', import.meta.url);
+const SAVER_URL = new URL('./debouncedSaver.js', import.meta.url);
 const DELAY = 600;
 // Browser and host globals the saver must not touch (globalThis is allowed: it backs the default timers).
 const HOST_GLOBALS = /\b(?:window|document|navigator|localStorage|sessionStorage|console|process|require)\b/g;
 
-/**
- * A fake clock for the injectable timers: setTimeout queues { id, fn, at }, clearTimeout removes the entry,
- * advance(ms) runs what falls due in time order and moves the clock on. `queued` counts live timers.
- */
-function fakeClock() {
-  let now = 0;
-  let nextId = 1;
-  const queue = [];
-  return {
-    setTimeout(fn, ms) {
-      const id = nextId++;
-      queue.push({ id, fn, at: now + ms });
-      return id;
-    },
-    clearTimeout(id) {
-      const i = queue.findIndex((entry) => entry.id === id);
-      if (i !== -1) queue.splice(i, 1);
-    },
-    advance(ms) {
-      const until = now + ms;
-      for (;;) {
-        queue.sort((a, b) => a.at - b.at || a.id - b.id);
-        if (!queue.length || queue[0].at > until) break;
-        const { fn, at } = queue.shift();
-        now = at;
-        fn();
-      }
-      now = until;
-    },
-    get queued() { return queue.length; },
-  };
-}
-
 /** A saver on a fake clock, with a recording save function and an onSaved counter. */
 async function setup(options = {}) {
-  const { createSaver } = await import(SAVER_URL);
   const clock = fakeClock();
   const writes = [];
   const counts = { onSaved: 0 };
@@ -57,11 +27,8 @@ async function setup(options = {}) {
   return { saver, clock, writes, counts, save: (value) => { writes.push(value); } };
 }
 
-export default async function run(ctx) {
-  console.log('saver');
-  const { t, assert } = ctx;
-
-  await t('schedule() of the primed value writes nothing and returns false (a reopened modal saves nothing)', async () => {
+describe('saver', () => {
+  it('schedule() of the primed value writes nothing and returns false (a reopened modal saves nothing)', async () => {
     const { saver, clock, writes, counts, save } = await setup();
     saver.prime('sk-loaded');
     assert.equal(saver.schedule('sk-loaded', save), false);
@@ -73,7 +40,7 @@ export default async function run(ctx) {
     assert.equal(saver.flush(), false, 'nothing to flush');
   });
 
-  await t('the first edit after prime() is saved, once, after the delay (D7: a key pasted in one go into an empty field)', async () => {
+  it('the first edit after prime() is saved, once, after the delay (D7: a key pasted in one go into an empty field)', async () => {
     const { saver, clock, writes, counts, save } = await setup();
     saver.prime('');
     assert.equal(saver.schedule('sk-pasted', save), true);
@@ -89,7 +56,7 @@ export default async function run(ctx) {
     assert.equal(counts.onSaved, 1);
   });
 
-  await t('edits inside the delay coalesce into one save of the last value, timed from the last edit', async () => {
+  it('edits inside the delay coalesce into one save of the last value, timed from the last edit', async () => {
     const { saver, clock, writes, counts, save } = await setup();
     saver.prime('');
     saver.schedule('s', save);
@@ -103,7 +70,7 @@ export default async function run(ctx) {
     assert.equal(counts.onSaved, 1);
   });
 
-  await t('flush() saves the pending value at once, returns true and fires onSaved; a second flush() returns false', async () => {
+  it('flush() saves the pending value at once, returns true and fires onSaved; a second flush() returns false', async () => {
     const { saver, clock, writes, counts, save } = await setup();
     saver.prime('');
     saver.schedule('sk-closed-early', save);
@@ -118,7 +85,7 @@ export default async function run(ctx) {
     assert.equal(saver.schedule('sk-closed-early', save), false, 'the written value is the new baseline');
   });
 
-  await t('cancel() drops the pending save and its timer; prime() does too (Reset all settings)', async () => {
+  it('cancel() drops the pending save and its timer; prime() does too (Reset all settings)', async () => {
     const { saver, clock, writes, counts, save } = await setup();
     saver.prime('');
     saver.schedule('sk-typed', save);
@@ -136,7 +103,7 @@ export default async function run(ctx) {
     assert.equal(counts.onSaved, 0);
   });
 
-  await t('editing back to the primed value cancels the pending save (type a character, delete it: nothing written)', async () => {
+  it('editing back to the primed value cancels the pending save (type a character, delete it: nothing written)', async () => {
     const { saver, clock, writes, counts, save } = await setup();
     saver.prime('sk-a');
     assert.equal(saver.schedule('sk-ab', save), true);
@@ -148,7 +115,7 @@ export default async function run(ctx) {
     assert.equal(counts.onSaved, 0);
   });
 
-  await t('a pending save runs with the function it was scheduled with (provider switch: the key lands under the old provider)', async () => {
+  it('a pending save runs with the function it was scheduled with (provider switch: the key lands under the old provider)', async () => {
     const { saver, clock } = await setup();
     const stored = {};
     const calls = [];
@@ -170,7 +137,7 @@ export default async function run(ctx) {
     assert.deepEqual(calls, [['gemini', 'k4']]);
   });
 
-  await t('the isEqual option decides what is unchanged (a field-wise compare; the default is Object.is)', async () => {
+  it('the isEqual option decides what is unchanged (a field-wise compare; the default is Object.is)', async () => {
     const sameFields = (a, b) => a?.costBasis === b?.costBasis && a?.shares === b?.shares;
     const { saver, clock, writes, save } = await setup({ isEqual: sameFields });
     saver.prime({ costBasis: 100, shares: 10 });
@@ -184,11 +151,11 @@ export default async function run(ctx) {
     assert.equal(plain.saver.schedule({ costBasis: 100, shares: 10 }, plain.save), true, 'Object.is: a fresh object is a change');
   });
 
-  await t('debouncedSaver.js is import-free and touches no browser or host globals', async () => {
+  it('debouncedSaver.js is import-free and touches no browser or host globals', async () => {
     // Strip comments (keeping string literals, so a '//' inside a string is not taken for one).
     const src = await readFile(SAVER_URL, 'utf8');
     const code = src.replace(/('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (_, str) => str ?? '');
     assert.doesNotMatch(code, /^\s*import\b|\bimport\s*\(/m, 'debouncedSaver.js must stay import-free');
     assert.deepEqual(code.match(HOST_GLOBALS), null, 'debouncedSaver.js must stay pure');
   });
-}
+});

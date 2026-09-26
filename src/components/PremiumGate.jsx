@@ -1,6 +1,6 @@
 // src/components/PremiumGate.jsx
 import { useState, useRef, useEffect } from 'react';
-import { Lock, KeyRound, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Lock, KeyRound, LoaderCircle, ShieldCheck, CircleAlert } from 'lucide-react';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import RequestAccessForm from './RequestAccessForm';
 
@@ -76,7 +76,7 @@ export default function PremiumGate({ isPremium, onUnlock, featureName, children
               className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               {status === 'validating' ? (
-                <Loader2 size={14} className="animate-spin" />
+                <LoaderCircle size={14} className="animate-spin" />
               ) : status === 'success' ? (
                 <ShieldCheck size={14} />
               ) : (
@@ -87,7 +87,7 @@ export default function PremiumGate({ isPremium, onUnlock, featureName, children
 
           {error && (
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
-              <AlertCircle size={10} className="shrink-0" />
+              <CircleAlert size={10} className="shrink-0" />
               <span>{error}</span>
             </div>
           )}

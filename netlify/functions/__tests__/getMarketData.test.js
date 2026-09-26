@@ -1,8 +1,20 @@
-// scripts/verify/marketData.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// getMarketData: provider answers validated before they are accepted (Tradier → CBOE fallback with
-// `fallbackReason`), one expiry window for every provider, and honest metrics (P/C null without
-// call volume, max pain skipping closed expiries, no fake Tradier IV30).
-import { etDateString } from '../../shared/marketCalendar.js';
+// netlify/functions/__tests__/getMarketData.test.js — the options chain. Access (roadmap Phase 1): the ticker is
+// validated, anonymous callers get CBOE only, the server Tradier key goes only to token holders, a BYOK key comes in
+// x-tradier-key. Provider answers (Phase 2): validated before they are accepted (Tradier → CBOE fallback with
+// `fallbackReason`), one expiry window for every provider, and honest metrics (P/C null without call volume, max
+// pain skipping closed expiries, no fake Tradier IV30). The handler windows expiries on the real clock, so the
+// fixtures are dated relative to today: never fake timers in this file.
+import { describe, it } from 'vitest';
+import getMarketData from '../getMarketData.js';
+import { fetchTradier, computeMaxPain, computePutCallRatio, parseOptionSymbol, EXPIRY_WINDOW } from '../lib/marketDataHelpers.js';
+import { etDateString } from '../../../shared/marketCalendar.js';
+import { installFunctionHarness } from '../../../test/helpers/functions.js';
+
+const { calls, setFetch, req, json, mint, assert, SECRET } = installFunctionHarness();
+
+// Expiry 30 days out: past expiries are dropped by normalizeChain, so a fixed date would go stale.
+const fixtureExpiry = new Date(Date.now() + 30 * 86400000).toISOString().slice(2, 10).replace(/-/g, '');
+const cboeBody = { data: { current_price: 100, options: [{ option: `AVGO${fixtureExpiry}C00100000`, bid: 1, ask: 2, volume: 10, open_interest: 5, gamma: 0.01 }] } };
 
 const jsonRes = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -36,65 +48,85 @@ const toTradier = (c) => ({ symbol: c.symbol, bid: c.bid, ask: c.ask, volume: c.
 const toCboe = (c) => ({ option: c.symbol, bid: c.bid, ask: c.ask, volume: c.volume, open_interest: c.oi, gamma: c.gamma, delta: c.delta });
 const timeoutError = () => Object.assign(new Error('t'), { name: 'TimeoutError' });
 
-export default async function run(ctx) {
-  console.log('marketData');
-  const { t, req, json, mint, calls, assert, ROOT, SECRET, setFetch } = ctx;
-  const getMarketData = (await import(ROOT + 'getMarketData.js')).default;
-  const {
-    fetchTradier, computeMaxPain, computePutCallRatio, parseOptionSymbol, EXPIRY_WINDOW,
-  } = await import(ROOT + 'lib/marketDataHelpers.js');
+const expiryOf = (symbol) => parseOptionSymbol(symbol).expiry;
 
-  const expiryOf = (symbol) => parseOptionSymbol(symbol).expiry;
-
-  /** Tradier API stub: expirations = the fixtures' expiries; chains answer per ?expiration=, unless `chain(exp)` returns a Response. */
-  function tradierApi({ contracts = [], quote = {}, chain = () => null } = {}) {
-    const expirations = [...new Set(contracts.map((c) => expiryOf(c.symbol)))].sort();
-    return (u) => {
-      if (u.pathname.endsWith('/options/expirations')) return jsonRes({ expirations: { date: expirations } });
-      if (u.pathname.endsWith('/quotes')) {
-        return jsonRes({ quotes: { quote: { last: 100, change: 1.5, change_percentage: 1.5, volume: 2_000_000, trade_date: 1, ...quote } } });
-      }
-      if (u.pathname.endsWith('/options/chains')) {
-        const exp = u.searchParams.get('expiration');
-        return chain(exp) || jsonRes({ options: { option: contracts.filter((c) => expiryOf(c.symbol) === exp).map(toTradier) } });
-      }
-      return jsonRes({}, 404);
-    };
-  }
-
-  /** CBOE delayed-quotes stub. */
-  function cboeApi({ contracts = [], price = 100, status = 200 } = {}) {
-    return () => (status === 200
-      ? jsonRes({ data: { current_price: price, price_change: 1.5, price_change_percent: 1.5, volume: 2_000_000, options: contracts.map(toCboe) } })
-      : jsonRes({ error: 'upstream down' }, status));
-  }
-
-  /** Route stubbed fetches by host; a provider the check did not stub fails loudly. */
-  function stub({ tradier, cboe }) {
-    return async (url) => {
-      const u = new URL(String(url));
-      if (u.hostname.endsWith('tradier.com')) {
-        if (!tradier) throw new Error(`unexpected Tradier call: ${u}`);
-        return tradier(u);
-      }
-      if (u.hostname.endsWith('cboe.com')) {
-        if (!cboe) throw new Error(`unexpected CBOE call: ${u}`);
-        return cboe(u);
-      }
-      return jsonRes({}, 404);
-    };
-  }
-
-  /** Configure the server Tradier key + token secret; returns headers carrying a valid access token. */
-  const tokenHolder = () => {
-    process.env.TOKEN_SECRET = SECRET;
-    process.env.TRADIER_API_KEY = 'tr-server';
-    return { authorization: `Bearer ${mint()}` };
+/** Tradier API stub: expirations = the fixtures' expiries; chains answer per ?expiration=, unless `chain(exp)` returns a Response. */
+function tradierApi({ contracts = [], quote = {}, chain = () => null } = {}) {
+  const expirations = [...new Set(contracts.map((c) => expiryOf(c.symbol)))].sort();
+  return (u) => {
+    if (u.pathname.endsWith('/options/expirations')) return jsonRes({ expirations: { date: expirations } });
+    if (u.pathname.endsWith('/quotes')) {
+      return jsonRes({ quotes: { quote: { last: 100, change: 1.5, change_percentage: 1.5, volume: 2_000_000, trade_date: 1, ...quote } } });
+    }
+    if (u.pathname.endsWith('/options/chains')) {
+      const exp = u.searchParams.get('expiration');
+      return chain(exp) || jsonRes({ options: { option: contracts.filter((c) => expiryOf(c.symbol) === exp).map(toTradier) } });
+    }
+    return jsonRes({}, 404);
   };
-  const get = async (headers = {}) => json(await getMarketData(req('getMarketData?ticker=AVGO', { headers })));
-  const called = (host) => calls.some((c) => c.url.includes(host));
+}
 
-  await t('Tradier valid → served by Tradier: no fallback, window ≤ 6, max pain expiry in window, iv30 null', async () => {
+/** CBOE delayed-quotes stub. */
+function cboeApi({ contracts = [], price = 100, status = 200 } = {}) {
+  return () => (status === 200
+    ? jsonRes({ data: { current_price: price, price_change: 1.5, price_change_percent: 1.5, volume: 2_000_000, options: contracts.map(toCboe) } })
+    : jsonRes({ error: 'upstream down' }, status));
+}
+
+/** Route stubbed fetches by host; a provider the check did not stub fails loudly. */
+function stub({ tradier, cboe }) {
+  return async (url) => {
+    const u = new URL(String(url));
+    if (u.hostname.endsWith('tradier.com')) {
+      if (!tradier) throw new Error(`unexpected Tradier call: ${u}`);
+      return tradier(u);
+    }
+    if (u.hostname.endsWith('cboe.com')) {
+      if (!cboe) throw new Error(`unexpected CBOE call: ${u}`);
+      return cboe(u);
+    }
+    return jsonRes({}, 404);
+  };
+}
+
+/** Configure the server Tradier key + token secret; returns headers carrying a valid access token. */
+const tokenHolder = () => {
+  process.env.TOKEN_SECRET = SECRET;
+  process.env.TRADIER_API_KEY = 'tr-server';
+  return { authorization: `Bearer ${mint()}` };
+};
+const get = async (headers = {}) => json(await getMarketData(req('getMarketData?ticker=AVGO', { headers })));
+const called = (host) => calls.some((c) => c.url.includes(host));
+
+describe('getMarketData', () => {
+  it('invalid ticker → 400', async () => {
+    const r = await json(await getMarketData(req('getMarketData?ticker=..%2Fx'))); assert.equal(r.status, 400); assert.equal(calls.length, 0);
+  });
+  it('anonymous + server TRADIER key → CBOE only (server key never spent)', async () => {
+    process.env.TRADIER_API_KEY = 'tr-server'; process.env.TOKEN_SECRET = SECRET;
+    setFetch(async () => new Response(JSON.stringify(cboeBody), { status: 200 }));
+    const r = await json(await getMarketData(req('getMarketData?ticker=avgo')));
+    assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.body.provider, 'cboe'); assert.equal(r.body.ticker, 'AVGO');
+    assert.ok(calls.some((c) => c.url.includes('cboe.com')) && calls.every((c) => !c.url.includes('tradier')), 'CBOE called, Tradier never called');
+    assert.equal(r.headers['cache-control'], 'private, max-age=60'); assert.match(r.headers['vary'], /x-tradier-key/);
+  });
+  it('token holder → Tradier attempted with server key, URL built safely', async () => {
+    process.env.TRADIER_API_KEY = 'tr-server'; process.env.TOKEN_SECRET = SECRET;
+    setFetch(async (url) => String(url).includes('tradier') ? new Response('{}', { status: 500 }) : new Response(JSON.stringify(cboeBody), { status: 200 }));
+    const r = await json(await getMarketData(req('getMarketData?ticker=BRK.B', { headers: { authorization: `Bearer ${mint()}` } })));
+    assert.equal(r.status, 200); assert.equal(r.body.provider, 'cboe'); assert.equal(r.body.fallbackReason, 'tradier-error');
+    const tr = calls.find((c) => c.url.includes('tradier')); assert.ok(tr); assert.match(tr.url, /symbol=BRK\.B/); assert.equal(tr.init.headers.Authorization, 'Bearer tr-server');
+  });
+  it('BYOK tradier header used without token', async () => {
+    process.env.TOKEN_SECRET = SECRET;
+    setFetch(async (url) => String(url).includes('tradier') ? new Response('{}', { status: 500 }) : new Response(JSON.stringify(cboeBody), { status: 200 }));
+    await getMarketData(req('getMarketData?ticker=AVGO', { headers: { 'x-tradier-key': 'tr-user' } }));
+    const tr = calls.find((c) => c.url.includes('tradier')); assert.equal(tr.init.headers.Authorization, 'Bearer tr-user');
+  });
+});
+
+describe('marketData', () => {
+  it('Tradier valid → served by Tradier: no fallback, window ≤ 6, max pain expiry in window, iv30 null', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([7, 14]);
     setFetch(stub({ tradier: tradierApi({ contracts }) }));
@@ -114,7 +146,7 @@ export default async function run(ctx) {
     assert.match(r.headers.vary, /Authorization/);
   });
 
-  await t('Tradier quote without spot (last 0, no close) → CBOE, fallbackReason tradier-no-spot', async () => {
+  it('Tradier quote without spot (last 0, no close) → CBOE, fallbackReason tradier-no-spot', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([7, 14]);
     setFetch(stub({ tradier: tradierApi({ contracts, quote: { last: 0 } }), cboe: cboeApi({ contracts }) }));
@@ -125,7 +157,7 @@ export default async function run(ctx) {
     assert.ok(called('tradier.com') && called('cboe.com'));
   });
 
-  await t('Tradier chains all empty ({ options: null }) → CBOE, fallbackReason tradier-no-options', async () => {
+  it('Tradier chains all empty ({ options: null }) → CBOE, fallbackReason tradier-no-options', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([7, 14]);
     setFetch(stub({ tradier: tradierApi({ contracts, chain: () => jsonRes({ options: null }) }), cboe: cboeApi({ contracts }) }));
@@ -136,7 +168,7 @@ export default async function run(ctx) {
     assert.equal(r.body.totalOptionsCount, contracts.length);
   });
 
-  await t('Tradier timeout (every call, or just the quote) → CBOE, fallbackReason tradier-timeout', async () => {
+  it('Tradier timeout (every call, or just the quote) → CBOE, fallbackReason tradier-timeout', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([7, 14]);
     setFetch(stub({ tradier: () => { throw timeoutError(); }, cboe: cboeApi({ contracts }) }));
@@ -153,7 +185,7 @@ export default async function run(ctx) {
     assert.equal(r2.body.fallbackReason, 'tradier-timeout');
   });
 
-  await t('CBOE unusable after fallback → its code + fallbackReason; CBOE down → generic 502; expired-only chain → 404', async () => {
+  it('CBOE unusable after fallback → its code + fallbackReason; CBOE down → generic 502; expired-only chain → 404', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([7, 14]);
     setFetch(stub({ tradier: tradierApi({ contracts, quote: { last: 0 } }), cboe: cboeApi({ contracts, price: 0 }) }));
@@ -179,7 +211,7 @@ export default async function run(ctx) {
     assert.equal(r3.body.fallbackReason, null);
   });
 
-  await t('expiry window: past expiries dropped, 6 nearest kept, metrics computed on the window only', async () => {
+  it('expiry window: past expiries dropped, 6 nearest kept, metrics computed on the window only', async () => {
     const days = [7, 14, 21, 28, 35, 42, 49, 56];
     const contracts = contractsFor([-7, ...days]);
     setFetch(stub({ cboe: cboeApi({ contracts }) }));
@@ -195,7 +227,7 @@ export default async function run(ctx) {
     assert.equal(r.body.kpis.callVolume, callVolume, 'P/C inputs limited to the window');
   });
 
-  await t('P/C ratios are null (not 0) without call volume / OI', async () => {
+  it('P/C ratios are null (not 0) without call volume / OI', async () => {
     setFetch(stub({ cboe: cboeApi({ contracts: contractsFor([7, 14], { calls: false }) }) }));
     const r = await get();
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -206,7 +238,7 @@ export default async function run(ctx) {
     assert.deepEqual(computePutCallRatio([]), { volumeRatio: null, oiRatio: null, callVolume: 0, putVolume: 0, callOI: 0, putOI: 0 });
   });
 
-  await t('computeMaxPain skips a closed 0DTE and expiries without OI; null (never 0) when nothing is open', async () => {
+  it('computeMaxPain skips a closed 0DTE and expiries without OI; null (never 0) when nothing is open', async () => {
     const c = (date, type, strike, openInterest) => ({
       symbol: `AVGO${date.slice(2).replace(/-/g, '')}${type}${String(strike * 1000).padStart(8, '0')}`, openInterest,
     });
@@ -226,7 +258,7 @@ export default async function run(ctx) {
     assert.equal(computeMaxPain([], { now: beforeClose }), null);
   });
 
-  await t('provider parity: the same contracts via Tradier and via CBOE → identical metrics and window', async () => {
+  it('provider parity: the same contracts via Tradier and via CBOE → identical metrics and window', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([3, 7, 14, 21, 28, 35, 42, 49]); // 8 expiries: both sides end on the same 6
     setFetch(stub({ tradier: tradierApi({ contracts }) }));
@@ -244,7 +276,7 @@ export default async function run(ctx) {
     assert.deepEqual(viaTradier.body.gexByStrike, viaCboe.body.gexByStrike);
   });
 
-  await t('fetchTradier: a failed chain is tolerated; all chains failed → throws and the handler falls back', async () => {
+  it('fetchTradier: a failed chain is tolerated; all chains failed → throws and the handler falls back', async () => {
     const headers = tokenHolder();
     const contracts = contractsFor([7, 14]);
     const firstFails = tradierApi({ contracts, chain: (exp) => (exp === isoFromToday(7) ? jsonRes({}, 500) : null) });
@@ -267,6 +299,4 @@ export default async function run(ctx) {
     assert.equal(r2.body.provider, 'cboe');
     assert.ok(['tradier-no-options', 'tradier-error'].includes(r2.body.fallbackReason), `fallbackReason ${r2.body.fallbackReason}`);
   });
-
-  ctx.resetFetch();
-}
+});
