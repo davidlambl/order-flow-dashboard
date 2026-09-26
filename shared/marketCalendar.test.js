@@ -1,10 +1,12 @@
-// scripts/verify/calendar.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// shared/marketCalendar.js is pure (no fetch, env or wall clock), so nothing is stubbed: every
-// instant is passed in explicitly. 2026-09-25 (Fri) is EDT, UTC-4; 2026-11-27 (Fri, the early
-// close after Thanksgiving) is EST, UTC-5.
+// shared/marketCalendar.test.js — the Eastern-Time market calendar. The module is pure (no fetch, env or wall
+// clock), so nothing is stubbed: every instant is passed in explicitly. 2026-09-25 (Fri) is EDT, UTC-4; 2026-11-27
+// (Fri, the early close after Thanksgiving) is EST, UTC-5.
+import { describe, it, vi } from 'vitest';
+import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import * as cal from './marketCalendar.js';
 
-const MODULE_URL = new URL('../../shared/marketCalendar.js', import.meta.url);
+const MODULE_URL = new URL('./marketCalendar.js', import.meta.url);
 
 // The exported API is frozen: src/ and netlify/ both import these names.
 const FUNCTIONS = [
@@ -37,20 +39,15 @@ function daysOf(year) {
   return days;
 }
 
-export default async function run(ctx) {
-  const { t, assert } = ctx;
-  console.log('calendar');
+// Compares only the named fields of getMarketSession(iso); a failure names the instant and both sides.
+const expectSession = (iso, want) => {
+  const s = cal.getMarketSession(at(iso));
+  const got = Object.fromEntries(Object.keys(want).map((k) => [k, s[k]]));
+  assert.deepEqual(got, want, `${iso}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+};
 
-  let cal = null;
-  // Compares only the named fields of getMarketSession(iso); a failure names the instant and both sides.
-  const expectSession = (iso, want) => {
-    const s = cal.getMarketSession(at(iso));
-    const got = Object.fromEntries(Object.keys(want).map((k) => [k, s[k]]));
-    assert.deepEqual(got, want, `${iso}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
-  };
-
-  await t('module: frozen export surface; no host globals (console, process, window, fetch, ...) or hour12', async () => {
-    cal = await import(MODULE_URL);
+describe('calendar', () => {
+  it('module: frozen export surface; no host globals (console, process, window, fetch, ...) or hour12', async () => {
     for (const name of FUNCTIONS) assert.equal(typeof cal[name], 'function', `export ${name}`);
     for (const name of CONSTANTS) assert.notEqual(cal[name], undefined, `export ${name}`);
     // Strip comments (keeping string literals, so a '//' inside a string is not taken for one).
@@ -60,9 +57,8 @@ export default async function run(ctx) {
     // hour12 overrides hourCycle, and an h24 clock renders midnight as '24' in some engines.
     assert.doesNotMatch(code, /\bhour12\b/, "the ET formatter must use hourCycle: 'h23', not hour12");
   });
-  if (!cal) return; // every later check would only repeat the load failure
 
-  await t('holidays: rule-based, weekend-shifted and special-closure dates are closed', async () => {
+  it('holidays: rule-based, weekend-shifted and special-closure dates are closed', async () => {
     for (const d of [
       '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07',
       '2026-11-26', '2026-12-25', '2027-03-26', '2027-06-18', '2027-07-05', '2027-12-24', '2023-01-02', '2025-01-09',
@@ -73,7 +69,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('holidays: getHolidays(2025-2028) is exactly the NYSE calendar (no Jan 1 in 2028)', async () => {
+  it('holidays: getHolidays(2025-2028) is exactly the NYSE calendar (no Jan 1 in 2028)', async () => {
     const nyse = {
       2025: '01-01 01-09 01-20 02-17 04-18 05-26 06-19 07-04 09-01 11-27 12-25',
       2026: '01-01 01-19 02-16 04-03 05-25 06-19 07-03 09-07 11-26 12-25',
@@ -85,7 +81,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('trading days: weekends/holidays closed; Sat New Year, Columbus, Veterans Day, pre-2022 Juneteenth open', async () => {
+  it('trading days: weekends/holidays closed; Sat New Year, Columbus, Veterans Day, pre-2022 Juneteenth open', async () => {
     for (const d of ['2027-12-31', '2021-12-31', '2022-01-03', '2026-07-02', '2026-10-12', '2026-11-11', '2021-06-18']) {
       assert.equal(cal.isMarketHoliday(d), false, `${d} should not be a holiday`);
       assert.equal(cal.getHolidayName(d), null, `${d} should have no holiday name`);
@@ -98,7 +94,7 @@ export default async function run(ctx) {
     assert.deepEqual(['2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28'].map((d) => cal.isWeekend(d)), [false, true, true, false]);
   });
 
-  await t('early close: 1:00 PM on Jul 3 / Dec 24 (Mon-Thu) and the day after Thanksgiving, never on a closed day', async () => {
+  it('early close: 1:00 PM on Jul 3 / Dec 24 (Mon-Thu) and the day after Thanksgiving, never on a closed day', async () => {
     for (const d of ['2026-11-27', '2026-12-24', '2025-07-03', '2028-07-03']) {
       assert.equal(cal.getEarlyClose(d)?.closeMin, 780, `${d} should close at 1:00 PM`);
     }
@@ -109,7 +105,7 @@ export default async function run(ctx) {
     assert.deepEqual(early, ['2025-07-03', '2025-11-28', '2025-12-24', '2026-11-27', '2026-12-24', '2027-11-26', '2028-07-03', '2028-11-24']);
   });
 
-  await t('session (EDT): closed -> pre 4:00 AM -> regular 9:30 -> options-only 4:00-4:15 PM -> post -> closed 8:00 PM', async () => {
+  it('session (EDT): closed -> pre 4:00 AM -> regular 9:30 -> options-only 4:00-4:15 PM -> post -> closed 8:00 PM', async () => {
     expectSession('2026-09-25T07:59:00Z', { isTradingDay: true, session: 'closed', preMarket: false });
     expectSession('2026-09-25T08:00:00Z', { session: 'pre', preMarket: true, equityOpen: false });
     expectSession('2026-09-25T13:29:00Z', { session: 'pre', preMarket: true, equityOpen: false, optionsOpen: false });
@@ -123,14 +119,14 @@ export default async function run(ctx) {
     expectSession('2026-09-26T00:00:00Z', { date: '2026-09-25', mins: 1200, session: 'closed', postMarket: false, optionsOpen: false });
   });
 
-  await t('session (EST early close): equities stop at 1:00 PM, options at 1:15 PM', async () => {
+  it('session (EST early close): equities stop at 1:00 PM, options at 1:15 PM', async () => {
     const early = { earlyClose: true, closeMin: 780, optionsCloseMin: 795 };
     expectSession('2026-11-27T17:59:00Z', { ...early, session: 'regular', equityOpen: true, optionsOpen: true });
     expectSession('2026-11-27T18:00:00Z', { ...early, session: 'post', equityOpen: false, optionsOpen: true, postMarket: true });
     expectSession('2026-11-27T18:15:00Z', { ...early, session: 'post', equityOpen: false, optionsOpen: false });
   });
 
-  await t('session: holidays and weekends are closed all day; isMarketOpen/isOptionsMarketOpen match the flags', async () => {
+  it('session: holidays and weekends are closed all day; isMarketOpen/isOptionsMarketOpen match the flags', async () => {
     const closed = { isTradingDay: false, session: 'closed', preMarket: false, equityOpen: false, optionsOpen: false, postMarket: false };
     for (const iso of ['2026-07-03T09:00:00Z', '2026-07-03T14:00:00Z', '2026-07-03T21:00:00Z']) expectSession(iso, closed);
     assert.match(String(cal.getMarketSession(at('2026-07-03T14:00:00Z')).holiday), /Independence/);
@@ -143,7 +139,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('getETParts: the ET date rolls at local midnight (hour 0, never 24) and follows DST', async () => {
+  it('getETParts: the ET date rolls at local midnight (hour 0, never 24) and follows DST', async () => {
     assert.deepEqual(cal.getETParts(at('2026-07-03T04:00:00Z')), {
       date: '2026-07-03', year: 2026, month: 7, day: 3, hour: 0, minute: 0, mins: 0, weekday: 5,
     });
@@ -159,7 +155,7 @@ export default async function run(ctx) {
     assert.equal(cal.getETParts(at('2026-03-09T13:30:00Z')).mins, 570);
   });
 
-  await t('isExpiryClosed: past dates, and today once options stop (4:15 PM; 1:15 PM on early closes)', async () => {
+  it('isExpiryClosed: past dates, and today once options stop (4:15 PM; 1:15 PM on early closes)', async () => {
     for (const [expiry, iso, want] of [
       ['2026-09-25', '2026-09-25T20:14:00Z', false],
       ['2026-09-25', '2026-09-25T20:15:00Z', true],
@@ -174,7 +170,7 @@ export default async function run(ctx) {
     }
   });
 
-  await t('robustness: bad dates and Invalid Date degrade safely (impossible dates rejected); getHolidays memoized', async () => {
+  it('robustness: bad dates and Invalid Date degrade safely (impossible dates rejected); getHolidays memoized', async () => {
     assert.equal(cal.isMarketHoliday('not-a-date'), false);
     assert.equal(cal.getHolidayName('2026-13-45'), null);
     assert.equal(cal.isTradingDay(undefined), false);
@@ -201,7 +197,7 @@ export default async function run(ctx) {
     assert.equal(cal.isExpiryClosed('not-a-date', at('2026-09-25T20:16:00Z')), false);
   });
 
-  await t('time-zone independent: fresh copies in a UTC-11 and a UTC+14 process give identical answers', async () => {
+  it('time-zone independent: fresh copies in a UTC-11 and a UTC+14 process give identical answers', async () => {
     // CI runs in UTC, where a local-time slip (getDay, a date parsed without 'Z') is invisible.
     const answers = (c) => ({
       holidays: YEARS.map((y) => [...c.getHolidays(y).keys()].sort()),
@@ -214,7 +210,9 @@ export default async function run(ctx) {
     try {
       for (const tz of ['Pacific/Pago_Pago', 'Pacific/Kiritimati']) {
         process.env.TZ = tz;
-        const fresh = await import(`${MODULE_URL.href}?tz=${tz}`); // new instance, so an empty holiday cache
+        vi.resetModules();
+        const fresh = await import('./marketCalendar.js'); // new instance, so an empty holiday cache
+        assert.notEqual(fresh, cal, 'vi.resetModules() should give a new module instance');
         assert.deepEqual({ tz, ...answers(fresh) }, { tz, ...expected });
       }
     } finally {
@@ -222,4 +220,4 @@ export default async function run(ctx) {
       else process.env.TZ = originalTZ;
     }
   });
-}
+});

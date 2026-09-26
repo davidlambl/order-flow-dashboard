@@ -26,13 +26,13 @@ should:
   `useMarketData` and `useTickerContext`, one `react-refresh/only-export-components` in `AppSettings`), all owned by
   Phase 5; don't add new ones. CI runs lint non-blocking until that count is zero, then it becomes required.
   `npm run check` = lint (non-blocking until the baseline is zero) + test + build.
-- `npm run verify:functions` — drives every function in-process with a stubbed `fetch` (blocking in CI). The runner
-  is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's helpers
-  via `ctx`. Server areas: `calendar`, `marketData`, `liveQuote`, `tickerContext`, `collector`; client areas
-  (pure `src/lib` modules loaded under Node): `recommend`, `clientLib`, `charts`, `sse`, `saver`, `store`, `sync`.
-  `scripts/verify/helpers.mjs` has the browser-global stand-ins (`memoryStorage`, `withGlobals`, `fakeWindow`,
-  `settle`) and `sync.mjs` exports the recording fake supabase-js client. Time-dependent code takes an injectable
-  `now` (and the saver injectable timers), so checks never depend on the wall clock.
+- `npm run verify:functions` — runs the client-side checks under Node with a stubbed `fetch` (blocking in CI). The
+  runner is `scripts/verify-functions.mjs`; Phase 2 checks live in `scripts/verify/<area>.mjs` and get the runner's
+  helpers via `ctx`. Areas (pure `src/lib` modules loaded under Node): `recommend`, `clientLib`, `charts`, `sse`,
+  `saver`, `store`, `sync`. The function and calendar checks now run under Vitest in `netlify/functions/__tests__/`
+  and `shared/`. `scripts/verify/helpers.mjs` has the browser-global stand-ins (`memoryStorage`, `withGlobals`,
+  `fakeWindow`, `settle`) and `sync.mjs` exports the recording fake supabase-js client. Time-dependent code takes an
+  injectable `now` (and the saver injectable timers), so checks never depend on the wall clock.
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 

@@ -1,12 +1,12 @@
 // scripts/verify/sse.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// LLM streaming (F6-F8, M7): SSE framing, per-provider events, askLLMStream end-to-end, server output caps and body timeout.
+// LLM streaming (F6-F8, M7): SSE framing, per-provider events and askLLMStream end-to-end. The server side (output
+// caps, the body timeout) is tested in netlify/functions/__tests__/askLLM.test.js.
 // The client modules (src/lib/sse.js, src/lib/api.js) run under Node against the runner's fetch stub;
 // api.js reads the access token through auth.js, so those checks stub localStorage for their duration.
 import { readFile } from 'node:fs/promises';
 
 const SSE_URL = new URL('../../src/lib/sse.js', import.meta.url);
 const API_URL = new URL('../../src/lib/api.js', import.meta.url);
-const THRESHOLDS_URL = new URL('../../shared/thresholds.js', import.meta.url);
 const HOST_GLOBALS = /\b(?:console|process|window|document|navigator|globalThis|fetch|require|localStorage|sessionStorage|Buffer)\b/g;
 
 const encoder = new TextEncoder();
@@ -52,14 +52,11 @@ const PARAMS = { messages: [{ role: 'user', content: 'hi' }], financialContext: 
 const anthropicText = (text) => `data: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } })}\n\n`;
 
 export default async function run(ctx) {
-  const { t, assert, req, json, mint, calls, ROOT, SECRET, setFetch, resetFetch } = ctx;
+  const { t, assert, calls, setFetch, resetFetch } = ctx;
   console.log('sse');
 
   let sse = null;
   let api = null;
-  const askLLMModule = await import(ROOT + 'askLLM.js');
-  const askLLM = askLLMModule.default;
-  const { fetchWithTimeout, isTimeoutError } = await import(ROOT + 'lib/http.js');
 
   /** askLLMStream against a stubbed upstream and localStorage; the text chunks are collected into `chunks`. */
   const stream = async (response, { params = PARAMS, signal = null, chunks = [] } = {}) => {
@@ -262,135 +259,5 @@ export default async function run(ctx) {
     ], { headers: { 'X-Provider': 'gemini', 'X-Request-Id': 'g1' } }), { params: { ...PARAMS, provider: 'gemini' } });
     assert.equal(chunks.join(''), 'Hello €5');
     assert.deepEqual(result, { stopReason: 'end', chars: 8, requestId: 'g1', provider: 'gemini' });
-  });
-
-  await t('output caps: longest-prefix model limits, BYOK ceiling 16384, server cap 4096 / MAX_OUTPUT_TOKENS', async () => {
-    const { maxOutputTokens, providerOutputCap, PROVIDER_OUTPUT_CAPS, DEFAULT_OUTPUT_CAP, BYOK_OUTPUT_CAP } = askLLMModule;
-    try {
-      assert.equal(DEFAULT_OUTPUT_CAP, 16384); assert.equal(BYOK_OUTPUT_CAP, 16384);
-      for (const [model, cap] of [
-        ['claude-opus-5', 16384], ['claude-3-haiku-20240307', 4096], ['gpt-4', 8192], ['gpt-4o', 16384],
-        ['gemini-2.0-flash', 8192], ['gemini-2.5-flash', 16384], ['gpt-5.1', 16384], ['claude-3-5-haiku-20241022', 8192],
-      ]) assert.equal(maxOutputTokens(model, 'user'), cap, `user cap for ${model}`);
-      for (const [model, cap] of [
-        ['claude-opus-5', 128000], ['claude-fable-5-1', 128000], ['claude-mythos-5-1', 128000], ['claude-sonnet-4-5', 64000],
-        ['claude-sonnet-4-5-20250929', 64000], ['claude-haiku-4-5', 64000], ['claude-opus-4-1-20250805', 32000],
-        ['claude-sonnet-4-20250514', 64000], ['claude-opus-4-20250514', 32000], ['gpt-5.1', 128000], ['o3-mini', 100000],
-        ['gpt-4-turbo-2024-04-09', 4096], ['gpt-4o-mini', 16384], ['gpt-4.1-mini', 32768], ['gemini-3.8-flash', 65536],
-        ['unknown-model', 16384],
-      ]) assert.equal(providerOutputCap(model), cap, `model limit for ${model}`);
-      const prefixes = PROVIDER_OUTPUT_CAPS.map(([prefix]) => prefix);
-      assert.equal(new Set(prefixes).size, prefixes.length, 'prefixes are unique');
-      for (const [prefix, cap] of PROVIDER_OUTPUT_CAPS) {
-        assert.ok(Number.isInteger(cap) && cap > 0, `${prefix}: positive integer cap`);
-        assert.equal(providerOutputCap(prefix), cap, `${prefix} resolves to its own cap`);
-      }
-      assert.equal(maxOutputTokens('claude-opus-5', 'server'), 4096);
-      assert.equal(maxOutputTokens('claude-3-haiku-20240307', 'server'), 4096);
-      process.env.MAX_OUTPUT_TOKENS = '1000';
-      assert.equal(maxOutputTokens('claude-opus-5', 'server'), 1000);
-      process.env.MAX_OUTPUT_TOKENS = '100000';
-      assert.equal(maxOutputTokens('claude-3-5-haiku-20241022', 'server'), 8192, 'never above the model limit');
-    } finally {
-      delete process.env.MAX_OUTPUT_TOKENS;
-    }
-  });
-
-  await t('askLLM (openai BYOK): gpt-5.x / o-series send max_completion_tokens + developer role; gpt-4o sends max_tokens + system', async () => {
-    process.env.TOKEN_SECRET = SECRET;
-    try {
-      setFetch(async () => new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 }));
-      const sentFor = async (model) => {
-        calls.length = 0;
-        const r = await json(await askLLM(req('askLLM', { method: 'POST', body: {
-          provider: 'openai', userApiKey: 'sk-user', model, messages: [{ role: 'user', content: 'hi' }], stream: false,
-        } })));
-        assert.equal(r.status, 200, JSON.stringify(r.body));
-        return JSON.parse(calls[0].init.body);
-      };
-      for (const model of ['gpt-5.1', 'o3-mini']) {
-        const sent = await sentFor(model);
-        assert.equal(sent.max_completion_tokens, 16384, model); assert.equal('max_tokens' in sent, false, model);
-        assert.equal(sent.messages[0].role, 'developer', model);
-      }
-      const sent = await sentFor('gpt-4o');
-      assert.equal(sent.max_tokens, 16384); assert.equal('max_completion_tokens' in sent, false);
-      assert.equal(sent.messages[0].role, 'system');
-    } finally {
-      resetFetch();
-    }
-  });
-
-  await t('fetchWithTimeout: bodyTimeout false bounds only time-to-headers; the default also bounds the body', async () => {
-    // Mimics fetch: headers at once, body 80 ms later, and the request signal errors the body.
-    const lateBody = async (url, init) => {
-      let ctl;
-      const body = new ReadableStream({
-        start(c) {
-          ctl = c;
-          setTimeout(() => { try { c.enqueue(encoder.encode('late')); c.close(); } catch { /* already errored */ } }, 80);
-        },
-      });
-      init.signal?.addEventListener('abort', () => { try { ctl.error(init.signal.reason); } catch { /* closed */ } });
-      return new Response(body);
-    };
-    try {
-      setFetch(lateBody);
-      const res = await fetchWithTimeout('https://x.test/', {}, 30, null, { bodyTimeout: false });
-      assert.equal(await res.text(), 'late', 'the 30 ms timer was cleared when the headers arrived');
-      assert.equal(calls[0].init.signal.aborted, false);
-
-      const res2 = await fetchWithTimeout('https://x.test/', {}, 30);
-      await assert.rejects(res2.text(), (err) => err.name === 'TimeoutError', 'default: the timeout covers the body');
-      setFetch(async () => new Response('ok'));
-      assert.equal(await (await fetchWithTimeout('https://x.test/', {}, 1000)).text(), 'ok');
-
-      // No headers in time: rejects with a TimeoutError that askLLM maps to 504.
-      setFetch((url, init) => new Promise((resolve, reject) => {
-        init.signal.addEventListener('abort', () => reject(init.signal.reason));
-      }));
-      await assert.rejects(fetchWithTimeout('https://x.test/', {}, 30, null, { bodyTimeout: false }), (err) => {
-        assert.equal(err.name, 'TimeoutError'); assert.equal(isTimeoutError(err), true); assert.match(err.message, /30 ms/);
-        return true;
-      });
-      // The parent (client) signal still aborts the upstream.
-      const parent = new AbortController();
-      const pending = fetchWithTimeout('https://x.test/', {}, 1000, parent.signal, { bodyTimeout: false });
-      parent.abort();
-      await assert.rejects(pending, (err) => err.name === 'AbortError' && isTimeoutError(err));
-
-      // askLLM streams: every provider call opts out of the body timeout.
-      const src = await readFile(new URL(ROOT + 'askLLM.js'), 'utf8');
-      const providerCalls = (src.match(/\bfetchWithTimeout\(/g) || []).length;
-      assert.equal(providerCalls, 3, 'one fetchWithTimeout call per provider');
-      assert.equal((src.match(/\{ bodyTimeout: false \}\);/g) || []).length, providerCalls, 'each provider call passes { bodyTimeout: false }');
-    } finally {
-      resetFetch();
-    }
-  });
-
-  await t('askLLM: the system prompt takes its put/call bands from shared/thresholds.js', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-server'; process.env.TOKEN_SECRET = SECRET;
-    try {
-      setFetch(async () => new Response('data: {"type":"message_stop"}\n\n', { status: 200 }));
-      const res = await askLLM(req('askLLM', { method: 'POST', body: {
-        provider: 'anthropic', messages: [{ role: 'user', content: 'hi' }], stream: true, ticker: 'AVGO',
-      }, headers: { authorization: `Bearer ${mint()}` } }));
-      assert.equal(res.status, 200);
-      const { system } = JSON.parse(calls[0].init.body);
-      const { PUT_CALL } = await import(THRESHOLDS_URL);
-      assert.ok(system.includes('<0.7') && system.includes('>1'), 'P/C bands in the prompt');
-      assert.ok(system.includes(`<${PUT_CALL.bullishBelow} is bullish, ${PUT_CALL.bullishBelow}-${PUT_CALL.bearishAbove} neutral, >${PUT_CALL.bearishAbove} bearish`));
-      await res.body?.cancel();
-    } finally {
-      resetFetch();
-    }
-  });
-
-  await t('askLLM: default models are claude-opus-5 / gpt-5.1 / gemini-3.8-flash', async () => {
-    const base = { messages: [{ role: 'user', content: 'hi' }] };
-    assert.equal(askLLMModule.validatePayload({ ...base, provider: 'anthropic' }).value.model, 'claude-opus-5');
-    assert.equal(askLLMModule.validatePayload({ ...base, provider: 'openai' }).value.model, 'gpt-5.1');
-    assert.equal(askLLMModule.validatePayload({ ...base, provider: 'gemini' }).value.model, 'gemini-3.8-flash');
   });
 }

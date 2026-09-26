@@ -1,7 +1,14 @@
-// scripts/verify/collector.mjs — Phase 2 checks; loaded by scripts/verify-functions.mjs with its helpers.
-// Nightly flow collector (collectFlowHistory.js): ET trading-date gating, per-ticker upserts,
-// cum_premium lookup errors, the concurrency cap and the run deadline. Supabase is a recording fake.
+// netlify/functions/__tests__/collectFlowHistory.test.js — the nightly flow collector (roadmap Phase 2): ET
+// trading-date gating, per-ticker upserts, cum_premium lookup errors, the concurrency cap and the run deadline.
+// Supabase is a recording fake of the collector's own queries (not test/helpers/fakeSupabase.js). Timers are real:
+// the concurrency and deadline checks wait on them.
+import { describe, it } from 'vitest';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { DEFAULT_TRACKED_TICKERS, parseTrackedTickers, runCollection, handler } from '../collectFlowHistory.js';
+import { EXPIRY_WINDOW } from '../lib/marketDataHelpers.js';
+import { installFunctionHarness } from '../../../test/helpers/functions.js';
+
+const { calls, setFetch, assert } = installFunctionHarness();
 
 const DAY_MS = 86_400_000;
 const FRIDAY = new Date('2026-09-25T21:30:00Z'); // Friday 5:30 PM EDT, a trading day
@@ -80,14 +87,10 @@ function fakeSupabase({ lookup = { data: [], error: null }, upsertError = null }
   };
 }
 
-export default async function run(ctx) {
-  console.log('collector');
-  const { t, assert, calls } = ctx;
-  const { DEFAULT_TRACKED_TICKERS, parseTrackedTickers, runCollection, handler } = await import(ctx.ROOT + 'collectFlowHistory.js');
-  const { EXPIRY_WINDOW } = await import(ctx.ROOT + 'lib/marketDataHelpers.js');
-  const byTicker = (results) => Object.fromEntries(results.map((r) => [r.ticker, r]));
+const byTicker = (results) => Object.fromEntries(results.map((r) => [r.ticker, r]));
 
-  await t('parseTrackedTickers: comma list trimmed, invalid dropped, deduped; nothing valid → defaults', async () => {
+describe('collector', () => {
+  it('parseTrackedTickers: comma list trimmed, invalid dropped, deduped; nothing valid → defaults', async () => {
     assert.deepEqual([...DEFAULT_TRACKED_TICKERS], ['AVGO', 'NVDA', 'AAPL', 'TSLA', 'MSFT', 'META', 'AMZN', 'GOOGL', 'AMD', 'SPY', 'QQQ']);
     assert.deepEqual(parseTrackedTickers('spy, qqq,bad ticker!,SPY,../x'), ['SPY', 'QQQ']);
     for (const raw of ['', '  ,, ', undefined]) assert.deepEqual(parseTrackedTickers(raw), DEFAULT_TRACKED_TICKERS, `raw=${JSON.stringify(raw)}`);
@@ -95,8 +98,8 @@ export default async function run(ctx) {
     assert.deepEqual(parseTrackedTickers('../x', ['SPY']), ['SPY'], 'custom fallback');
   });
 
-  await t('NYSE holiday / weekend → skipped not-trading-day, nothing fetched or written', async () => {
-    ctx.setFetch(async (url) => cboeOk(url, FRIDAY));
+  it('NYSE holiday / weekend → skipped not-trading-day, nothing fetched or written', async () => {
+    setFetch(async (url) => cboeOk(url, FRIDAY));
     const supabase = fakeSupabase();
     const cases = [['2026-07-03T21:30:00Z', '2026-07-03'], ['2026-09-26T21:30:00Z', '2026-09-26']]; // Independence Day (observed), Saturday
     for (const [iso, date] of cases) {
@@ -106,9 +109,9 @@ export default async function run(ctx) {
     assert.equal(calls.length, 0); assert.equal(supabase.upserts.length, 0); assert.equal(supabase.lookups.length, 0);
   });
 
-  await t('row date is the ET trading date (Fri 9 PM EDT = Sat 01:00 UTC → 2026-09-25)', async () => {
+  it('row date is the ET trading date (Fri 9 PM EDT = Sat 01:00 UTC → 2026-09-25)', async () => {
     const now = new Date('2026-09-26T01:00:00Z');
-    ctx.setFetch(async (url) => cboeOk(url, now));
+    setFetch(async (url) => cboeOk(url, now));
     const supabase = fakeSupabase();
     const r = await runCollection({ tickers: ['SPY'], supabase, now, log: quiet });
     assert.equal(r.skipped, null); assert.equal(r.date, '2026-09-25');
@@ -119,8 +122,8 @@ export default async function run(ctx) {
     assert.equal(row.cum_premium, row.net_premium, 'no prior row → running total starts at 0');
   });
 
-  await t('cum_premium lookup error ⇒ skipped (lookup-error), nothing written, message logged', async () => {
-    ctx.setFetch(async (url) => cboeOk(url, FRIDAY));
+  it('cum_premium lookup error ⇒ skipped (lookup-error), nothing written, message logged', async () => {
+    setFetch(async (url) => cboeOk(url, FRIDAY));
     const supabase = fakeSupabase({ lookup: { data: null, error: { message: 'boom' } } });
     const log = recorder();
     const r = await runCollection({ tickers: ['SPY'], supabase, now: FRIDAY, log });
@@ -134,8 +137,8 @@ export default async function run(ctx) {
     assert.deepEqual(partial.upserts.map((u) => u.row.ticker), ['QQQ']);
   });
 
-  await t('per-ticker upsert: a CBOE 500 loses only that ticker; cum_premium = previous + net', async () => {
-    ctx.setFetch(async (url) => (tickerOf(url) === 'QQQ' ? new Response('{}', { status: 500 }) : cboeOk(url, FRIDAY)));
+  it('per-ticker upsert: a CBOE 500 loses only that ticker; cum_premium = previous + net', async () => {
+    setFetch(async (url) => (tickerOf(url) === 'QQQ' ? new Response('{}', { status: 500 }) : cboeOk(url, FRIDAY)));
     const supabase = fakeSupabase({ lookup: { data: [{ cum_premium: 1000 }], error: null } });
     const r = await runCollection({ tickers: ['SPY', 'QQQ', 'NVDA'], supabase, now: FRIDAY, log: quiet });
     assert.deepEqual(r.results.map((x) => x.status), ['stored', 'failed', 'stored']);
@@ -156,10 +159,10 @@ export default async function run(ctx) {
     assert.deepEqual(q, { select: 'cum_premium', eq: ['ticker', 'SPY'], lt: ['date', '2026-09-25'], order: ['date', { ascending: false }], limit: 1 });
   });
 
-  await t('p-limit caps concurrent CBOE fetches (6 tickers, concurrency 2)', async () => {
+  it('p-limit caps concurrent CBOE fetches (6 tickers, concurrency 2)', async () => {
     let inFlight = 0;
     let maxInFlight = 0;
-    ctx.setFetch(async (url) => {
+    setFetch(async (url) => {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
       try { await sleep(20); return cboeOk(url, FRIDAY); } finally { inFlight--; }
@@ -172,8 +175,8 @@ export default async function run(ctx) {
     assert.ok(r.results.every((x) => x.status === 'stored'), JSON.stringify(r.results));
   });
 
-  await t('run deadline aborts a hanging CBOE fetch → failed/timeout, others stored, resolves < 1 s', async () => {
-    ctx.setFetch((url, init) => {
+  it('run deadline aborts a hanging CBOE fetch → failed/timeout, others stored, resolves < 1 s', async () => {
+    setFetch((url, init) => {
       if (tickerOf(url) !== 'HANG') return Promise.resolve(cboeOk(url, FRIDAY));
       return new Promise((_, reject) => {
         // AbortSignal.timeout() timers are unref'd: like a real hung socket, hold the event loop
@@ -197,8 +200,8 @@ export default async function run(ctx) {
     assert.deepEqual(supabase.upserts.map((u) => u.row.ticker).sort(), ['QQQ', 'SPY']);
   });
 
-  await t('nightly rows use the dashboard expiry window (expired and beyond-window contracts excluded)', async () => {
-    ctx.setFetch(async (url) => cboeOk(url, FRIDAY, (sym) => [
+  it('nightly rows use the dashboard expiry window (expired and beyond-window contracts excluded)', async () => {
+    setFetch(async (url) => cboeOk(url, FRIDAY, (sym) => [
       { option: sym(-7, 'C', 100), bid: 1, ask: 2, volume: 50, open_interest: 5 }, // expired last week
       // Fill the window with EXPIRY_WINDOW - 1 more (zero-volume) expiries after the +7-day one…
       ...Array.from({ length: EXPIRY_WINDOW - 1 }, (_, i) => ({ option: sym(8 + i, 'C', 100), bid: 1, ask: 2, volume: 0, open_interest: 5 })),
@@ -213,9 +216,9 @@ export default async function run(ctx) {
     assert.equal(row.call_premium, 1500); assert.equal(row.put_premium, 600); assert.equal(row.net_premium, 900);
   });
 
-  await t('TRACKED_TICKERS env drives the default ticker list', async () => {
+  it('TRACKED_TICKERS env drives the default ticker list', async () => {
     process.env.TRACKED_TICKERS = 'nvda';
-    ctx.setFetch(async (url) => cboeOk(url, FRIDAY));
+    setFetch(async (url) => cboeOk(url, FRIDAY));
     const supabase = fakeSupabase();
     const r = await runCollection({ supabase, now: FRIDAY, log: quiet });
     assert.equal(calls.length, 1); assert.match(calls[0].url, /cboe\.com\/.*\/NVDA\.json$/);
@@ -223,8 +226,8 @@ export default async function run(ctx) {
     delete process.env.TRACKED_TICKERS;
   });
 
-  await t('a throwing ticker is contained: failed/error, the run resolves, the other ticker stored', async () => {
-    ctx.setFetch((url) => {
+  it('a throwing ticker is contained: failed/error, the run resolves, the other ticker stored', async () => {
+    setFetch((url) => {
       if (tickerOf(url) === 'AMD') throw new Error('kaboom'); // synchronous throw from fetch()
       return Promise.resolve(cboeOk(url, FRIDAY));
     });
@@ -236,8 +239,8 @@ export default async function run(ctx) {
     assert.deepEqual(supabase.upserts.map((u) => u.row.ticker), ['SPY']);
   });
 
-  await t('scheduled handler without Supabase env → 200, nothing fetched', async () => {
-    ctx.setFetch(async (url) => cboeOk(url, FRIDAY));
+  it('scheduled handler without Supabase env → 200, nothing fetched', async () => {
+    setFetch(async (url) => cboeOk(url, FRIDAY));
     const warn = console.warn;
     const warned = [];
     console.warn = (...args) => { warned.push(args.join(' ')); };
@@ -249,6 +252,4 @@ export default async function run(ctx) {
     assert.equal(calls.length, 0);
     assert.ok(warned.some((l) => l.includes('Supabase env vars not set')), 'guard reason logged');
   });
-
-  ctx.resetFetch();
-}
+});
