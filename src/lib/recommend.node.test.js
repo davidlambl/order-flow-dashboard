@@ -8,7 +8,7 @@ import * as rec from './recommend.js';
 import * as stale from './staleness.js';
 import * as th from '../../shared/thresholds.js';
 
-const RECOMMEND_URL = new URL('./recommend.js', import.meta.url);
+const RECOMMEND_URL = new URL('./recommend.ts', import.meta.url);
 const STALENESS_URL = new URL('./staleness.js', import.meta.url);
 const THRESHOLDS_URL = new URL('../../shared/thresholds.js', import.meta.url);
 
@@ -73,7 +73,7 @@ function* allVectors(length = 5) {
 }
 
 describe('recommend', () => {
-  it('modules: recommend.js, staleness.js and shared/thresholds.js load; gap threshold re-exported; no host globals or clock reads', async () => {
+  it('modules: recommend.ts, staleness.js and shared/thresholds.js load; gap threshold re-exported; no host globals or clock reads', async () => {
     for (const name of ['computeRecommendation', 'extractPriceLevels', 'computeDualRecommendation']) {
       assert.equal(typeof rec[name], 'function', `recommend.js export ${name}`);
     }
