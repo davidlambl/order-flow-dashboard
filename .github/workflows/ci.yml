@@ -31,7 +31,7 @@ jobs:
         # Non-blocking until the remaining react-hooks errors are closed (roadmap Phases 2/5).
         continue-on-error: true
         run: npm run lint
-      # - run: npm run typecheck   # enable in Phase 5 (TypeScript)
+      - run: npm run typecheck
       - name: Test (with coverage)
         run: npm run test:coverage
       - run: npm run build
