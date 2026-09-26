@@ -14,9 +14,14 @@ should:
 2. Work on a branch named `roadmap/phase-<n>-<slug>`, one PR per phase (split large phases as the
    issue suggests). Reference the issue in the PR body (`Closes #<n>`).
 3. Keep each PR minimal to its phase; don't pull later-phase work forward.
-4. Before pushing: `npm run check` (lint with the known baseline, test, build) and
+4. Plan in Fable, implement with Opus agents **in parallel** (owner's standing rule, 2026-09-26): partition the
+   phase into independent units by the files they touch, give each unit its own agent in a git worktree
+   (`git worktree add <path> <branch tip>`; the Agent tool's worktree isolation starts from `main`, so reset it to
+   the branch tip first), have each commit in its worktree, then cherry-pick in the planned order and re-run the
+   gate after each. Only units that share `package.json`/the lockfile or the same source files run sequentially.
+5. Before pushing: `npm run check` (lint with the known baseline, test, build) and
    `npm audit --omit=dev --audit-level=high`.
-5. Line numbers in the roadmap were taken at commit `9cf9ccd` + the Phase 0 merge; re-grep before editing.
+6. Line numbers in the roadmap were taken at commit `9cf9ccd` + the Phase 0 merge; re-grep before editing.
 
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
