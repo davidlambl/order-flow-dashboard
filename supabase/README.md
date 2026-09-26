@@ -7,7 +7,7 @@ earnings cache, and the access-token revocation list plus usage quotas used by t
 ## Apply the migrations
 
 Run each file in `migrations/` **in order** in the Supabase SQL Editor (Dashboard → SQL Editor →
-New query → paste → Run). All four are idempotent, so re-running one is safe.
+New query → paste → Run). All five are idempotent, so re-running one is safe.
 
 | File | What it does |
 |---|---|
@@ -15,6 +15,7 @@ New query → paste → Run). All four are idempotent, so re-running one is safe
 | `002_add_user_auth.sql` | adds `user_id`, composite primary keys, per-user RLS (enable **Authentication → Email** first) |
 | `003_earnings_cache.sql` | shared Alpha Vantage earnings cache (public read, service-role write) |
 | `004_security_hardening.sql` | `revoked_tokens`, `usage_log`, DB-owned `updated_at`, `ON DELETE CASCADE`, tighter policies |
+| `005_sync_tombstones.sql` | `deleted_at` on the three user tables and nullable content, so a delete is a tombstone that syncs to other devices (until it runs, deletes are hard deletes and the app warns) |
 
 ## Environment variables
 

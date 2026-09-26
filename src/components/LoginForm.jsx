@@ -5,7 +5,13 @@ import { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-export default function LoginForm({ onSkip }) {
+const SEND_FAILED = 'Could not send the magic link.';
+
+/**
+ * @param {{ onSkip: () => void, notice?: string|null }} props
+ *   notice: shown above the form, e.g. when the app could not check for an existing session
+ */
+export default function LoginForm({ onSkip, notice }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('idle'); // idle | sending | sent | error
   const [errorMsg, setErrorMsg] = useState('');
@@ -15,10 +21,22 @@ export default function LoginForm({ onSkip }) {
     if (!email.trim()) return;
     setStatus('sending');
     setErrorMsg('');
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
+    // A thrown error (network down) must not leave the form stuck on "Sending..." (roadmap F10). The
+    // link returns to this page, not the project's Site URL (D11); Supabase only honours a redirect
+    // listed under Auth › URL Configuration › Redirect URLs and otherwise falls back to the Site URL.
+    // (Nothing conditional inside the try/catch: the React Compiler cannot lower that yet.)
+    let error;
+    try {
+      ({ error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.origin + window.location.pathname },
+      }));
+    } catch (err) {
+      error = err; // a network failure is thrown rather than returned
+    }
     if (error) {
       setStatus('error');
-      setErrorMsg(error.message);
+      setErrorMsg(error.message || SEND_FAILED);
     } else {
       setStatus('sent');
     }
@@ -32,6 +50,12 @@ export default function LoginForm({ onSkip }) {
           <Activity className="w-8 h-8" />
           <span className="text-2xl font-bold text-white">Order Flow</span>
         </div>
+
+        {notice && status !== 'sent' && (
+          <p role="status" className="text-gray-400 text-xs text-center leading-relaxed">
+            {notice}
+          </p>
+        )}
 
         {status === 'sent' ? (
           <div className="bg-[#141926] border border-gray-700 rounded-lg p-6 text-center space-y-3">

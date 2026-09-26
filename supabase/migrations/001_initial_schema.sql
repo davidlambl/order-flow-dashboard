@@ -1,6 +1,6 @@
 -- 001_initial_schema.sql
 -- Run this in the Supabase SQL Editor to set up the database.
--- Idempotent: safe to re-run. Apply 001 → 002 → 003 → 004 in order.
+-- Idempotent: safe to re-run. Apply 001 → 002 → 003 → 004 → 005 in order.
 
 -- Flow history: daily options flow snapshots per ticker
 CREATE TABLE IF NOT EXISTS flow_history (

@@ -9,7 +9,7 @@ const CHOICES = [
     id: 'merge',
     label: 'Merge',
     recommended: true,
-    description: "Keeps both. Where an item exists in both places, this browser's copy is kept.",
+    description: 'Keeps both. Where an item exists in both places, the most recently changed copy is kept.',
   },
   { id: 'cloud', label: 'Use cloud copy', description: "Replaces this browser's data with your account's." },
   { id: 'local', label: "Use this browser's copy", description: "Replaces your account's data with this browser's." },
