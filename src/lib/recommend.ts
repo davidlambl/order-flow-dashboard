@@ -1,4 +1,4 @@
-// src/lib/recommend.js
+// src/lib/recommend.ts
 // Algorithmic position recommendation engine.
 // Scores up to 5 market factors (P&L vs basis, max-pain pull, GEX positioning, premium traded,
 // put/call ratio) and aggregates them into a BUY / HOLD / SELL signal. A factor whose input is
@@ -10,10 +10,113 @@
 import {
   PUT_CALL, PNL_PCT, MAX_PAIN_PULL_PCT, GEX_NEAR_SPOT_PCT, RECOMMENDATION, GAP_DUAL_REC_THRESHOLD_PCT,
 } from '../../shared/thresholds.js';
+import type { GexRow, MarketKpis } from '../../types/market.js';
 
 // Minimum live-vs-snapshot gap (percent) that triggers dual recommendation mode. Re-exported
 // because PositionAnalysis and ChatBot import it from here.
 export { GAP_DUAL_REC_THRESHOLD_PCT };
+
+/** A number or a numeric string, which the engine coerces; null and undefined count as missing. */
+type NumericInput = number | string | null | undefined;
+
+/** The MarketKpis fields the engine reads, numeric strings coerced; a missing or invalid value skips its factor. */
+export type RecommendationKpis = { [K in 'maxPain' | 'netPremium' | 'putCallRatio']?: MarketKpis[K] | string | null };
+
+/** A gexByStrike row as the engine reads it: GexRow's strike and gex, numeric strings coerced. */
+export type GexRowInput = { [K in 'strike' | 'gex']?: GexRow[K] | string | null };
+
+/**
+ * gexByStrike as the engine reads it. The engine also survives a non-array (no rows) and rows that are not objects
+ * (skipped), which the tests pin, but a type admitting those would make every row `any`. The array type is mutable
+ * on purpose: Array.isArray narrows a readonly array type to any[], which would do the same.
+ */
+type GexRowsInput = (GexRowInput | null | undefined)[] | null | undefined;
+
+/**
+ * computeRecommendation's input. spotPrice and kpis are required keys so a caller cannot forget them; a missing
+ * value still gives a null result.
+ */
+export interface RecommendationInput {
+  costBasis?: NumericInput;
+  shares?: NumericInput;
+  spotPrice: NumericInput;
+  kpis: RecommendationKpis | null | undefined;
+  gexByStrike?: GexRowsInput;
+}
+
+/** extractPriceLevels's input: the engine's without shares, every field optional. */
+export type PriceLevelsInput = Partial<Pick<RecommendationInput, 'costBasis' | 'spotPrice' | 'kpis' | 'gexByStrike'>>;
+
+/**
+ * computeDualRecommendation's input: the engine's, with the snapshot and live prices in place of spotPrice.
+ * shares and gexByStrike are passed on to the engine as they are.
+ */
+export interface DualRecommendationInput {
+  costBasis: NumericInput;
+  shares?: NumericInput;
+  optionsSnapshotPrice: NumericInput;
+  livePrice: NumericInput;
+  kpis: RecommendationKpis | null | undefined;
+  gexByStrike?: GexRowsInput;
+  optionsMarketOpen: boolean;
+}
+
+/** The engine's call. */
+export type Signal = 'BUY' | 'HOLD' | 'SELL';
+
+/** Scored factors dissenting from the call: none → HIGH, one → MEDIUM, two or more → LOW; LOW when too few were scored. */
+export type Confidence = 'HIGH' | 'MEDIUM' | 'LOW';
+
+/** The position at the scored spot price. */
+export interface RecommendationPnl {
+  dollars: number | null;
+  percent: number | null;
+  /** spot × shares */
+  marketValue: number;
+}
+
+/** computeRecommendation's result. */
+export interface Recommendation {
+  signal: Signal;
+  confidence: Confidence;
+  /** One line per scored factor, in factor order, then a note when too few were scored. */
+  reasons: string[];
+  pnl: RecommendationPnl;
+  /** Factors scored, out of 5; the others lacked a valid input. */
+  factorsUsed: number;
+  threshold: number | null;
+  score: number;
+}
+
+/** The levels extractPriceLevels can mark. */
+export type PriceLevelLabel = 'Basis' | 'Spot' | 'Max Pain' | 'GEX Support' | 'GEX Resist.';
+
+/** One marker on the position's price-level bar. */
+export interface PriceLevel {
+  price: number;
+  label: PriceLevelLabel;
+  /** A CSS colour: a theme variable such as 'var(--color-cyan)'. */
+  color: string;
+}
+
+/** computeDualRecommendation's result. */
+export interface DualRecommendation {
+  /** The engine at the options snapshot price; at the live price while the options market is open. */
+  primary: Recommendation;
+  /** The engine at the live price while the options market is closed; null while it is open. */
+  secondary: Recommendation | null;
+  optionsSnapshotPrice: number;
+  livePrice: number;
+  /** (live − snapshot) ÷ snapshot × 100 */
+  gapPercent: number;
+  optionsMarketOpen: boolean;
+}
+
+/** One factor's score: +1 bullish, 0 neutral, -1 bearish. */
+type FactorScore = -1 | 0 | 1;
+
+/** A usable gexByStrike row: a positive finite strike and a finite gex, coerced. */
+type GexPoint = Pick<GexRow, 'strike' | 'gex'>;
 
 /** Factors the engine can score; fewer are scored when inputs are missing. */
 const FACTOR_COUNT = 5;
@@ -29,18 +132,18 @@ const GEX_LEVEL_STRIKES = 8;
  * (Number(null) and Number('') are 0, which would score a missing input as a real one: a null
  * put/call ratio would read as bullish.)
  */
-function toNumber(v) {
+function toNumber(v: unknown): number {
   if (typeof v === 'number') return v;
   if (typeof v === 'string' && v.trim() !== '') return Number(v);
   return NaN;
 }
 
-const isPositive = (n) => Number.isFinite(n) && n > 0;
+const isPositive = (n: number): boolean => Number.isFinite(n) && n > 0;
 
 /** Rows of gexByStrike with a positive finite strike and a finite gex, coerced; junk rows are dropped. */
-function finiteGexRows(gexByStrike) {
+function finiteGexRows(gexByStrike: GexRowsInput): GexPoint[] {
   if (!Array.isArray(gexByStrike)) return [];
-  const rows = [];
+  const rows: GexPoint[] = [];
   for (const row of gexByStrike) {
     const strike = toNumber(row?.strike);
     const gex = toNumber(row?.gex);
@@ -50,7 +153,7 @@ function finiteGexRows(gexByStrike) {
 }
 
 /** The `count` rows with the largest |gex|, largest first. */
-function largestByAbsGex(rows, count) {
+function largestByAbsGex(rows: readonly GexPoint[], count: number): GexPoint[] {
   return [...rows].sort((a, b) => Math.abs(b.gex) - Math.abs(a.gex)).slice(0, count);
 }
 
@@ -71,22 +174,12 @@ function largestByAbsGex(rows, count) {
  * bullish and bearish camps): 0 → HIGH, 1 → MEDIUM, 2+ → LOW, so mirrored inputs give the mirrored
  * signal with the same confidence.
  *
- * @param {{ costBasis?: number|string|null, shares?: number|string|null, spotPrice: number|string,
- *   kpis: { maxPain?: number|null, netPremium?: number|null, putCallRatio?: number|null },
- *   gexByStrike?: Array<{ strike: number, gex: number }> }} params  numeric strings are coerced
- * @returns {{
- *   signal: 'BUY'|'HOLD'|'SELL',
- *   confidence: 'HIGH'|'MEDIUM'|'LOW',
- *   reasons: string[],
- *   pnl: { dollars: number|null, percent: number|null, marketValue: number },
- *   factorsUsed: number,
- *   threshold: number|null,
- *   score: number,
- * } | null}  null unless spot is a positive number and kpis is present. `pnl.dollars` and
+ * @param params  numeric strings are coerced
+ * @returns null unless spot is a positive number and kpis is present. `pnl.dollars` and
  *   `pnl.percent` are null without a positive cost basis; `threshold` is the net score a BUY needs
  *   (null when too few factors were scored); `score` is the net score.
  */
-export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike }) {
+export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexByStrike }: RecommendationInput): Recommendation | null {
   const spot = toNumber(spotPrice);
   if (!isPositive(spot) || !kpis) return null;
 
@@ -100,15 +193,15 @@ export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexB
     marketValue: spot * numShares,
   };
 
-  const scores = [];
-  const reasons = [];
-  const add = (score, reason) => {
+  const scores: number[] = [];
+  const reasons: string[] = [];
+  const add = (score: FactorScore, reason: string): void => {
     scores.push(score);
     reasons.push(reason);
   };
 
-  // Factor 1: P&L position (needs a cost basis)
-  if (hasBasis) {
+  // Factor 1: P&L position (needs a cost basis: pnl.percent is null without one)
+  if (pnl.percent !== null) {
     const pct = pnl.percent;
     if (pct > PNL_PCT.takeProfitAbove) {
       add(-1, `Up ${pct.toFixed(1)}% — consider taking profits`);
@@ -210,12 +303,10 @@ export function computeRecommendation({ costBasis, shares, spotPrice, kpis, gexB
  * on either side of spot among the GEX_LEVEL_STRIKES largest-|GEX| strikes (support = the highest
  * such strike at or below spot, resistance = the lowest above it). A level is included only when
  * its price is a positive number (numeric strings are coerced); the GEX walls also need a spot.
- * @param {{ costBasis?: number|string|null, spotPrice?: number|string|null,
- *   kpis?: { maxPain?: number|string|null }|null, gexByStrike?: Array<{ strike: number, gex: number }> }} params
- * @returns {Array<{ price: number, label: string, color: string }>} ascending by price
+ * @returns ascending by price
  */
-export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) {
-  const levels = [];
+export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }: PriceLevelsInput): PriceLevel[] {
+  const levels: PriceLevel[] = [];
   const basis = toNumber(costBasis);
   const spot = toNumber(spotPrice);
   const maxPain = toNumber(kpis?.maxPain);
@@ -225,8 +316,8 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
   if (isPositive(maxPain)) levels.push({ price: maxPain, label: 'Max Pain', color: 'var(--color-purple)' });
 
   if (isPositive(spot)) {
-    let support = null;
-    let resistance = null;
+    let support: GexPoint | null = null;
+    let resistance: GexPoint | null = null;
     for (const row of largestByAbsGex(finiteGexRows(gexByStrike), GEX_LEVEL_STRIKES)) {
       if (row.gex <= 0) continue;
       if (row.strike <= spot) {
@@ -244,11 +335,11 @@ export function extractPriceLevels({ costBasis, spotPrice, kpis, gexByStrike }) 
 
 /**
  * Compute dual recommendations for when options market is closed and spot price has diverged.
- * @param {{ costBasis: number|string, shares: number, optionsSnapshotPrice: number|string, livePrice: number|string, kpis: object, gexByStrike: Array, optionsMarketOpen: boolean }} params
+ * @param params
  *   - costBasis: Entry price per share (number or numeric string; coerced internally; must be > 0)
  *   - optionsSnapshotPrice: Spot from the options feed at the snapshot (CBOE ~15-min delayed, or Tradier; coerced internally)
  *   - livePrice: Real-time price from Yahoo/Finnhub (regular, pre- or post-market session; coerced internally)
- * @returns {{ primary: object, secondary: object|null, optionsSnapshotPrice: number, livePrice: number, gapPercent: number, optionsMarketOpen: boolean } | null}
+ * @returns
  *   Returned `optionsSnapshotPrice` and `livePrice` are normalized to numbers regardless of input type.
  */
 export function computeDualRecommendation({
@@ -256,7 +347,7 @@ export function computeDualRecommendation({
   optionsSnapshotPrice, livePrice,
   kpis, gexByStrike,
   optionsMarketOpen
-}) {
+}: DualRecommendationInput): DualRecommendation | null {
   // Coerce to numbers so string-typed prices (e.g. from API responses) are handled correctly
   const costBasisNum = Number(costBasis);
   const snapshotPriceNum = Number(optionsSnapshotPrice);

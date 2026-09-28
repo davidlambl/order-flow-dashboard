@@ -52,7 +52,7 @@ Alpha Vantage, Anthropic, OpenAI, Google Gemini.
   60 s otherwise.
 
 **Position Analysis (access token)**: cost basis and shares per ticker give P&L, a price-level bar (basis,
-spot, max pain, GEX support and resistance) and a BUY / HOLD / SELL signal from `src/lib/recommend.js`. It
+spot, max pain, GEX support and resistance) and a BUY / HOLD / SELL signal from `src/lib/recommend.ts`. It
 scores up to five factors (P&L, max-pain distance, GEX near spot, premium, put/call), skips missing ones,
 needs at least three for BUY or SELL, sets confidence by how many disagree and flags stale options data.
 *Single mode* scores the options feed's spot. *Dual mode*, when the options market is closed and the live
@@ -98,7 +98,7 @@ earnings (server key only).
 ## Key handling and privacy
 
 - **Your keys** (Tradier, Finnhub, Anthropic, OpenAI, Gemini) live only in this browser's localStorage
-  (`SECRET_KEYS` in `src/lib/store.js`): never synced, exported or imported; sign-out and Reset all
+  (`SECRET_KEYS` in `src/lib/store.ts`): never synced, exported or imported; sign-out and Reset all
   settings delete them. Requests carry them as `x-tradier-key`, `x-finnhub-key`, `x-api-key` (model
   lists) or `userApiKey` (chat body); the functions pass them on and store nothing.
 - **The access token** is in localStorage too, never synced or exported. It is sent as
@@ -217,10 +217,13 @@ netlify/functions/          One function per top-level file (HTTP: /.netlify/fun
 shared/                     Pure modules for src/ and netlify/
 ├── marketCalendar.js       ET clock, NYSE holidays, early closes, sessions (+ .test.js)
 └── thresholds.js           Cut-offs for the engine, KPI cards, chat context, prompt
+types/                      Contracts shared by src/ and netlify/ (declarations only; netlify/ never imports src/)
+└── market.ts               getMarketData, getLiveQuote, getTickerContext, getModels bodies; error bodies and codes
 src/                        Tests sit beside the code: *.node.test.js (node), other *.test.{js,jsx} (dom)
 ├── main.jsx                Entry: StrictMode, ErrorBoundary, App
 ├── App.jsx                 Layout, auth, per-account backend, SyncChoice, sign-out
 ├── index.css               Tailwind theme
+├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
 │   ├── AppSettings.jsx     Settings: AI, Data, Account, Backup
 │   ├── ChatBot.jsx         AI Co-Pilot
@@ -244,19 +247,19 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── useNow.js           Ticking clock for render code
 │   └── useTickerContext.js Research context, 15-minute cache
 ├── lib/
-│   ├── api.js              Function fetchers, chat SSE reader
-│   ├── auth.js             Access-token storage and check
+│   ├── api.ts              Function fetchers, chat SSE reader
+│   ├── auth.ts             Access-token storage and check
 │   ├── debouncedSaver.js   Debounce with a baseline
 │   ├── deepEqual.js        Key-order-insensitive equality
-│   ├── format.js           Number and date formatting
+│   ├── format.ts           Number and date formatting
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
-│   ├── mockData.js         Demo data
-│   ├── recommend.js        Recommendation engine
+│   ├── mockData.ts         Demo data, checked against types/market.ts
+│   ├── recommend.ts        Recommendation engine
 │   ├── retry.js            Exponential backoff
 │   ├── session.js          Sign-out, data-owner and skip flags
-│   ├── sse.js              SSE framing, per-provider events
+│   ├── sse.ts              SSE framing, per-provider events
 │   ├── staleness.js        Stale-data rule
-│   ├── store.js            localStorage store, key classes, export/import, events
+│   ├── store.ts            localStorage store, key classes, export/import, events
 │   ├── supabase.js         Browser Supabase client
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
@@ -271,7 +274,8 @@ index.html                  App shell, hidden access-request form for Netlify Fo
 netlify.toml                Build, NODE_VERSION 22, /api/* redirect, dev port, shared/** bundling
 vite.config.js              React and Tailwind plugins, dev proxy to :8888, ANALYZE=1 bundle report
 vitest.config.js            node and dom test projects, coverage
-eslint.config.js            Flat config: browser, node and test globals; react-hooks, react-refresh
+eslint.config.js            Flat config: browser, node and test globals; react-hooks, react-refresh, typescript-eslint
+tsconfig.json               Browser type-check program (src/, shared/, types/); tsconfig.functions.json the Node one
 .env.example · .nvmrc · .editorconfig · package.json · LICENSE · CLAUDE.md
 ```
 
@@ -282,11 +286,12 @@ eslint.config.js            Flat config: browser, node and test globals; react-h
 | `npm run dev` | Vite dev server on :5173 |
 | `npm run build` | Build into `dist/`; `ANALYZE=1 npm run build` also writes `dist/stats.html` |
 | `npm run preview` | Serve `dist/` |
-| `npm run lint` | ESLint 10 |
+| `npm run lint` | ESLint 10 (typescript-eslint 8 for `.ts`/`.tsx`) |
+| `npm run typecheck` | `tsc` over `tsconfig.json` (browser: `src/`, `shared/`, `types/`) and `tsconfig.functions.json` (Node: `netlify/`, `shared/`, `types/`, `scripts/`); blocking in CI |
 | `npm test` | Vitest 5, both projects |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Tests with coverage into `coverage/` (CI) |
-| `npm run check` | Lint (non-blocking), test, build |
+| `npm run check` | Lint (non-blocking), typecheck, test, build |
 
 - Lint has known `react-hooks` errors (and one `react-refresh` error) owned by roadmap Phase 5; see
   [CLAUDE.md](CLAUDE.md) for the baseline and don't add new ones. `check` and CI keep lint non-blocking
@@ -295,7 +300,7 @@ eslint.config.js            Flat config: browser, node and test globals; react-h
   `src/lib` modules under Node with the stand-ins in `test/helpers/`). The `dom` project runs the other
   `src/**/*.test.{js,jsx}` files under jsdom with Testing Library and an MSW server (`src/test/setup.js`).
 - CI (`.github/workflows/ci.yml`, pushes to `main` and pull requests) runs `npm ci`, lint (non-blocking),
-  `npm run test:coverage` and the build on Node 22 and 24 (`fail-fast: false`), plus a separate
+  `npm run typecheck`, `npm run test:coverage` and the build on Node 22 and 24 (`fail-fast: false`), plus a separate
   `npm audit --omit=dev --audit-level=high` job. Dependabot opens weekly npm and GitHub Actions updates.
 - [CLAUDE.md](CLAUDE.md) has the working notes; [docs/ROADMAP.md](docs/ROADMAP.md) the modernization plan.
 - License: MIT ([LICENSE](LICENSE)).

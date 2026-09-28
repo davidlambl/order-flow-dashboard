@@ -1,11 +1,12 @@
-// src/lib/mockData.js
+// src/lib/mockData.ts
 // Generates realistic mock data for development and demo purposes. The dashboard shows it
 // under `npm run dev` (Vite alone, no Netlify Functions) and whenever market data fails
 // before anything real has loaded for a ticker, so the UI is always demonstrable.
 
+import type { MarketData, GexRow, FlowHistoryRow } from '../../types/market.js';
 import { toLocalISODate } from './format.js';
 
-export function generateMockData(ticker = 'AVGO') {
+export function generateMockData(ticker = 'AVGO'): MarketData {
   const basePrice = ticker === 'AVGO' ? 178.50 : 150 + Math.random() * 200;
 
   // KPI data
@@ -17,7 +18,7 @@ export function generateMockData(ticker = 'AVGO') {
   const putCallRatio = 0.5 + Math.random() * 0.8;
 
   // GEX by strike
-  const strikes = [];
+  const strikes: GexRow[] = [];
   const center = Math.round(basePrice / 5) * 5;
   for (let s = center - 30; s <= center + 30; s += 5) {
     const dist = Math.abs(s - basePrice);
@@ -33,8 +34,8 @@ export function generateMockData(ticker = 'AVGO') {
   // 30-day net premium history, weekdays only. Rows are labelled with the local calendar
   // date, the same day getDay() tested (toISOString() gives the UTC date, a day off near
   // midnight in far time zones).
-  const flowHistory = [];
-  let date = new Date();
+  const flowHistory: FlowHistoryRow[] = [];
+  const date = new Date();
   date.setDate(date.getDate() - 30);
   let runningPrem = 0;
   for (let i = 0; i < 30; i++) {

@@ -8,15 +8,15 @@ import { join } from 'node:path';
 import * as sse from './sse.js';
 import * as api from './api.js';
 
-// Not new URL('./sse.js', import.meta.url): in the dom project Vite rewrites that into the served asset URL
-// (http://localhost:3000/src/lib/sse.js), which readFile cannot open.
-const SSE_PATH = join(import.meta.dirname, 'sse.js');
+// Not new URL('./sse.ts', import.meta.url): in the dom project Vite rewrites that into the served asset URL
+// (http://localhost:3000/src/lib/sse.ts), which readFile cannot open.
+const SSE_PATH = join(import.meta.dirname, 'sse.ts');
 const HOST_GLOBALS = /\b(?:console|process|window|document|navigator|globalThis|fetch|require|localStorage|sessionStorage|Buffer)\b/g;
 
 const { STOP_REASON } = sse;
 
 describe('sse', () => {
-  it('modules load; src/lib/sse.js is import-free and pure (no host globals)', async () => {
+  it('modules load; src/lib/sse.ts is import-free and pure (no host globals)', async () => {
     assert.equal(typeof sse.drainSSEBuffer, 'function');
     assert.equal(typeof sse.parseSSEEvents, 'function');
     assert.equal(typeof api.askLLMStream, 'function');
@@ -27,8 +27,8 @@ describe('sse', () => {
     // Strip comments (keeping string literals, so a '//' inside a string is not taken for one).
     const src = await readFile(SSE_PATH, 'utf8');
     const code = src.replace(/('(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"|`(?:\\.|[^`\\])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (_, str) => str ?? '');
-    assert.doesNotMatch(code, /^\s*import\b|\bimport\s*\(/m, 'sse.js must stay import-free');
-    assert.deepEqual(code.match(HOST_GLOBALS), null, 'sse.js must stay pure');
+    assert.doesNotMatch(code, /^\s*import\b|\bimport\s*\(/m, 'sse.ts must stay import-free');
+    assert.deepEqual(code.match(HOST_GLOBALS), null, 'sse.ts must stay pure');
   });
 
   it('drainSSEBuffer: data lines only ([DONE], event:, id:, retry:, comments dropped); partial tail kept; CRLF; final flush', async () => {

@@ -1,4 +1,4 @@
-// src/lib/auth.js
+// src/lib/auth.ts
 // Client-side token management for premium feature gating.
 //
 // The stored token is only *decoded* here (to show tier / days left). Whether it
@@ -12,13 +12,13 @@ const FUNCTION_BASE = '/.netlify/functions';
 export const AUTH_EVENT = 'auth-changed';
 
 /** Server codes that mean the stored token is no longer usable. */
-const DEAD_TOKEN_CODES = new Set(['TOKEN_EXPIRED', 'TOKEN_INVALID', 'TOKEN_REVOKED']);
+const DEAD_TOKEN_CODES: ReadonlySet<string | null | undefined> = new Set(['TOKEN_EXPIRED', 'TOKEN_INVALID', 'TOKEN_REVOKED']);
 
 function notify() {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(AUTH_EVENT));
 }
 
-export function getToken() {
+export function getToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
   } catch {
@@ -26,7 +26,7 @@ export function getToken() {
   }
 }
 
-export function setToken(token) {
+export function setToken(token: string): void {
   try {
     localStorage.setItem(TOKEN_KEY, token);
   } catch (e) {
@@ -35,7 +35,7 @@ export function setToken(token) {
   notify();
 }
 
-export function clearToken() {
+export function clearToken(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
   } catch { /* ignore */ }
@@ -45,22 +45,29 @@ export function clearToken() {
 /**
  * Drop the stored token if the server said it is dead. Returns true if cleared.
  */
-export function clearTokenIfDead(code) {
+export function clearTokenIfDead(code: string | null | undefined): boolean {
   if (!DEAD_TOKEN_CODES.has(code)) return false;
   if (getToken()) clearToken();
   return true;
 }
 
-export function getAuthHeaders() {
+export function getAuthHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** A JWT payload, decoded but not verified (the server verifies); the client only reads `exp` (epoch seconds) and `tier`. */
+export interface TokenPayload {
+  exp?: number;
+  tier?: string;
+  [claim: string]: unknown;
 }
 
 /**
  * Decode the JWT payload without verification (server handles that).
  * Returns null if the token is malformed.
  */
-export function decodeTokenPayload(token) {
+export function decodeTokenPayload(token: string | null | undefined): TokenPayload | null {
   if (!token) return null;
   try {
     const parts = token.split('.');
@@ -71,30 +78,49 @@ export function decodeTokenPayload(token) {
   }
 }
 
+/** validateToken.js's 200 body as-is, or the failure built here from any other status. */
+export type ValidateTokenResult =
+  | { valid: true; tier: string; sub: string; expiresAt: string; requestId: string }
+  | { valid: false; error: string; code: string | null };
+
+/** validateToken.js's JSON answer: the success body on a 200, else `{ valid: false, error, code, requestId }` (no `valid` on a 429). */
+interface ValidateTokenBody {
+  valid?: boolean;
+  tier?: string;
+  sub?: string;
+  expiresAt?: string;
+  error?: string;
+  code?: string;
+  requestId?: string;
+}
+
 /**
  * Returns { valid, tier, expiresAt } or { valid: false, error, code }.
  * Makes a server round-trip to cryptographically verify the token.
  */
-export async function validateToken(token) {
+export async function validateToken(token: string): Promise<ValidateTokenResult> {
   const res = await fetch(`${FUNCTION_BASE}/validateToken`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
   });
-  const body = await res.json().catch(() => null);
+  const body: ValidateTokenBody | null = await res.json().catch(() => null);
   if (!res.ok) {
     return { valid: false, error: body?.error || `Server error (${res.status})`, code: body?.code || null };
   }
-  return body;
+  // A 2xx is the success body; a 200 that is not JSON returns null (pinned in auth.test.js; callers read .valid in a try).
+  return body as ValidateTokenResult;
 }
+
+/** 'none': no stored token; 'cleared': the server rejected it and it was removed; 'unknown': no verdict, the token stays. */
+export type VerifyOutcome = 'valid' | 'cleared' | 'none' | 'unknown';
 
 /**
  * Startup check: verify the stored token with the server and clear it if the
  * server rejects it (expired, revoked, re-signed secret). Network failures keep
  * the token so an offline reload doesn't log the user out.
- * @returns {Promise<'valid'|'cleared'|'none'|'unknown'>}
  */
-export async function verifyStoredToken() {
+export async function verifyStoredToken(): Promise<VerifyOutcome> {
   const token = getToken();
   if (!token) return 'none';
   try {
@@ -114,7 +140,7 @@ export async function verifyStoredToken() {
  * Quick client-side check: is there a stored token that hasn't expired?
  * This does NOT verify the signature -- that happens server-side on each API call.
  */
-export function hasValidToken() {
+export function hasValidToken(): boolean {
   const payload = decodeTokenPayload(getToken());
   if (!payload?.exp) return false;
   return payload.exp * 1000 > Date.now();
@@ -123,7 +149,7 @@ export function hasValidToken() {
 /**
  * Returns days remaining until expiration, or 0 if expired/invalid.
  */
-export function daysRemaining() {
+export function daysRemaining(): number {
   const payload = decodeTokenPayload(getToken());
   if (!payload?.exp) return 0;
   const ms = payload.exp * 1000 - Date.now();
@@ -133,7 +159,7 @@ export function daysRemaining() {
 /**
  * Returns the tier from the stored token, or null.
  */
-export function getTokenTier() {
+export function getTokenTier(): string | null {
   const payload = decodeTokenPayload(getToken());
   return payload?.tier || null;
 }

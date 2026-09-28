@@ -13,8 +13,8 @@ export default defineConfig({
     env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.{js,jsx}', 'netlify/functions/**/*.js', 'shared/**/*.js'],
-      exclude: ['src/main.jsx', 'src/assets/**', 'src/test/**', 'netlify/functions/__tests__/**', '**/*.test.{js,jsx}'],
+      include: ['src/**/*.{js,jsx,ts,tsx}', 'netlify/functions/**/*.{js,ts}', 'shared/**/*.{js,ts}'],
+      exclude: ['src/main.{jsx,tsx}', 'src/assets/**', 'src/test/**', 'netlify/functions/__tests__/**', '**/*.test.{js,jsx,ts,tsx}', '**/*.d.ts', 'types/**'],
       reporter: ['text-summary', 'html', 'lcov'],
       reportsDirectory: 'coverage',
     },
@@ -24,7 +24,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['netlify/**/*.test.js', 'shared/**/*.test.js', 'scripts/**/*.test.js', 'src/**/*.node.test.js'],
+          include: ['netlify/**/*.test.{js,ts}', 'shared/**/*.test.{js,ts}', 'src/**/*.node.test.{js,ts}'],
         },
       },
       {
@@ -32,8 +32,8 @@ export default defineConfig({
         test: {
           name: 'dom',
           environment: 'jsdom',
-          include: ['src/**/*.test.{js,jsx}'],
-          exclude: [...configDefaults.exclude, '**/*.node.test.js'], // a project's exclude replaces the defaults
+          include: ['src/**/*.test.{js,jsx,ts,tsx}'],
+          exclude: [...configDefaults.exclude, '**/*.node.test.{js,ts}'], // a project's exclude replaces the defaults
           setupFiles: ['src/test/setup.js'],
         },
       },

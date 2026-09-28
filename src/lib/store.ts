@@ -1,4 +1,4 @@
-// src/lib/store.js
+// src/lib/store.ts
 // Storage abstraction layer for all persistent user data.
 // Backed by localStorage today; swap backend for Supabase (or other) via setBackend().
 //
@@ -32,7 +32,7 @@ const PREF_MAP = {
   // Data source keys (v2 — migrated from sessionStorage)
   data_tradier_key: 'data_tradier_key',
   data_finnhub_key: 'data_finnhub_key',
-};
+} as const;
 
 // Keys that contain secrets — excluded from export for security.
 const SECRET_KEYS = new Set([
@@ -52,25 +52,126 @@ const LAYOUT_KEYS = new Set(['sidebarWidth', 'section_position', 'section_resear
 // here: it would otherwise land in an arbitrary localStorage key.
 const PREF_NAMES = new Set(Object.keys(PREF_MAP));
 
+// PREF_MAP for any string: getPreference/setPreference also take a name outside it, which is then its own
+// localStorage key.
+const STORAGE_KEY_OF: Readonly<Record<string, string | undefined>> = PREF_MAP;
+
 // localStorage key → preference name (a Map, so keys like 'constructor' are not found on a prototype).
-const PREF_NAME_BY_STORAGE_KEY = new Map(Object.entries(PREF_MAP).map(([name, key]) => [key, name]));
+const PREF_NAME_BY_STORAGE_KEY = new Map<string, string>(Object.entries(PREF_MAP).map(([name, key]) => [key, name]));
+
+/** What the user holds in one ticker; null where unset (a position with neither is deleted). */
+export interface Position {
+  costBasis: number | null;
+  shares: number | null;
+}
+
+/**
+ * A chat message as ChatBot holds it. `pending` marks the reply still streaming; it and the `error` bubbles are
+ * shown but never stored (ChatBot's storableMessages drops them before it saves a history).
+ */
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'error';
+  content: string;
+  pending?: boolean;
+}
+
+/** A preference name the store knows: a key of PREF_MAP. */
+export type PrefName = keyof typeof PREF_MAP;
+
+/**
+ * The value each preference holds, as its writers store it. Writing null deletes a preference, so null is never
+ * a stored value.
+ */
+export interface PreferenceValues {
+  sidebarWidth: number;
+  section_position: boolean;
+  section_research: boolean;
+  section_charts: boolean;
+  strategic_context: string;
+  ai_provider: string;
+  ai_model: string;
+  ai_model_name: string;
+  ai_key_anthropic: string;
+  ai_key_openai: string;
+  ai_key_gemini: string;
+  data_tradier_key: string;
+  data_finnhub_key: string;
+}
+
+/** The `store-changed` detail: the one item that changed (see the event contract at the top). */
+export interface StoreChangeDetail {
+  kind: 'position' | 'chat' | 'pref';
+  /** The ticker, or the preference name. */
+  id: string;
+}
+
+/** What an import wrote, by ticker or preference name: what a backend's replaceCloud() makes the account hold. */
+export interface StoreSnapshot {
+  positions: Record<string, Position>;
+  chatHistories: Record<string, ChatMessage[]>;
+  preferences: Partial<PreferenceValues>;
+}
+
+/** A backup as exportAll() makes it: no API keys and no device flags. */
+export interface Backup {
+  version: number;
+  exportedAt: string;
+  positions: Record<string, Position>;
+  chatHistories: Record<string, ChatMessage[]>;
+  preferences: Partial<PreferenceValues>;
+}
+
+/** What importAll() did: how many items it wrote, and the preference names in the file it did not import. */
+export interface ImportResult {
+  imported: { positions: number; chats: number; prefs: number };
+  skipped: string[];
+}
+
+/**
+ * A storage backend: LocalStorageBackend (this browser), or SupabaseBackend, which wraps one and also sends every
+ * write to the account. The optional members are a cloud backend's; the store checks for each before calling it.
+ */
+export interface StoreBackend {
+  getPosition(ticker: string): Position;
+  setPosition(ticker: string, data: Position): void;
+  deletePosition(ticker: string): void;
+  getAllPositions(): Record<string, Position>;
+  getChatHistory(ticker: string): ChatMessage[];
+  setChatHistory(ticker: string, messages: ChatMessage[]): void;
+  deleteChatHistory(ticker: string): void;
+  getAllChatHistories(): Record<string, ChatMessage[]>;
+  /** The stored value, JSON-parsed (the raw string when it is not JSON); null when there is none. */
+  getPreference(name: string): unknown;
+  /** null or undefined removes the preference. */
+  setPreference(name: string, value: unknown): void;
+  getAllPreferences(opts?: { includeSecrets?: boolean }): Partial<PreferenceValues>;
+  clearAll(opts?: { keepSecrets?: boolean }): void;
+  /** Send the writes still queued for the account; resolves to how many are still waiting. */
+  flushPendingWrites?(opts?: { timeoutMs?: number }): Promise<number>;
+  /** Make the account's copy match `snapshot` (an import); nothing waits for it. */
+  replaceCloud?(snapshot: StoreSnapshot): Promise<unknown> | void;
+  /** Stop acting for this backend's account; setBackend() calls it on the backend it replaces. */
+  dispose?(): void;
+}
 
 // Browsers disagree on how a full store reports itself: QuotaExceededError (code 22)
 // in most engines, NS_ERROR_DOM_QUOTA_REACHED (code 1014) in older Firefox.
-function isQuotaError(e) {
-  return !!e && (
-    e.name === 'QuotaExceededError' ||
-    e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-    e.code === 22 || e.code === 1014
+function isQuotaError(e: unknown): boolean {
+  if (!e) return false;
+  const err: { name?: unknown; code?: unknown } = e; // whatever was thrown: a DOMException, an Error, anything else
+  return (
+    err.name === 'QuotaExceededError' ||
+    err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    err.code === 22 || err.code === 1014
   );
 }
 
 /**
  * localStorage.setItem that never throws: a full (or unavailable) store logs one
  * warning naming the caller and the key instead of breaking the UI mid-edit.
- * @returns {boolean} true when the value was written
+ * @returns true when the value was written
  */
-function safeSetItem(key, value, what) {
+function safeSetItem(key: string, value: string, what: string): boolean {
   try {
     localStorage.setItem(key, value);
     return true;
@@ -80,8 +181,8 @@ function safeSetItem(key, value, what) {
   }
 }
 
-class LocalStorageBackend {
-  getPosition(ticker) {
+class LocalStorageBackend implements StoreBackend {
+  getPosition(ticker: string): Position {
     if (!ticker) return { costBasis: null, shares: null };
     try {
       const raw = localStorage.getItem(POSITION_PREFIX + ticker);
@@ -90,7 +191,7 @@ class LocalStorageBackend {
     return { costBasis: null, shares: null };
   }
 
-  setPosition(ticker, { costBasis, shares }) {
+  setPosition(ticker: string, { costBasis, shares }: Position): void {
     if (!ticker) return;
     if (costBasis != null || shares != null) {
       safeSetItem(POSITION_PREFIX + ticker, JSON.stringify({ costBasis, shares }), 'setPosition');
@@ -99,24 +200,26 @@ class LocalStorageBackend {
     }
   }
 
-  deletePosition(ticker) {
+  deletePosition(ticker: string): void {
     if (ticker) localStorage.removeItem(POSITION_PREFIX + ticker);
   }
 
-  getAllPositions() {
-    const result = {};
+  getAllPositions(): Record<string, Position> {
+    const result: Record<string, Position> = {};
     for (let i = 0; i < localStorage.length; i++) {
+      // key(i) below length, and getItem() of a key it returned, are typed nullable but never null: `?.` only
+      // narrows the type, and `?? 'null'` parses to the same null JSON.parse(null) did.
       const key = localStorage.key(i);
-      if (key.startsWith(POSITION_PREFIX)) {
+      if (key?.startsWith(POSITION_PREFIX)) {
         try {
-          result[key.slice(POSITION_PREFIX.length)] = JSON.parse(localStorage.getItem(key));
+          result[key.slice(POSITION_PREFIX.length)] = JSON.parse(localStorage.getItem(key) ?? 'null');
         } catch { /* skip corrupted entries */ }
       }
     }
     return result;
   }
 
-  getChatHistory(ticker) {
+  getChatHistory(ticker: string): ChatMessage[] {
     if (!ticker) return [];
     try {
       const raw = localStorage.getItem(CHAT_PREFIX + ticker);
@@ -124,7 +227,7 @@ class LocalStorageBackend {
     } catch { return []; }
   }
 
-  setChatHistory(ticker, messages) {
+  setChatHistory(ticker: string, messages: ChatMessage[]): void {
     if (!ticker) return;
     if (messages?.length) {
       safeSetItem(CHAT_PREFIX + ticker, JSON.stringify(messages), 'setChatHistory');
@@ -133,32 +236,32 @@ class LocalStorageBackend {
     }
   }
 
-  deleteChatHistory(ticker) {
+  deleteChatHistory(ticker: string): void {
     if (ticker) localStorage.removeItem(CHAT_PREFIX + ticker);
   }
 
-  getAllChatHistories() {
-    const result = {};
+  getAllChatHistories(): Record<string, ChatMessage[]> {
+    const result: Record<string, ChatMessage[]> = {};
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key.startsWith(CHAT_PREFIX)) {
+      if (key?.startsWith(CHAT_PREFIX)) {
         try {
-          result[key.slice(CHAT_PREFIX.length)] = JSON.parse(localStorage.getItem(key));
+          result[key.slice(CHAT_PREFIX.length)] = JSON.parse(localStorage.getItem(key) ?? 'null');
         } catch { /* skip */ }
       }
     }
     return result;
   }
 
-  getPreference(name) {
-    const key = PREF_MAP[name] || name;
+  getPreference(name: string): unknown {
+    const key = STORAGE_KEY_OF[name] || name;
     const raw = localStorage.getItem(key);
     if (raw == null) return null;
     try { return JSON.parse(raw); } catch { return raw; }
   }
 
-  setPreference(name, value) {
-    const key = PREF_MAP[name] || name;
+  setPreference(name: string, value: unknown): void {
+    const key = STORAGE_KEY_OF[name] || name;
     if (value != null) {
       safeSetItem(key, JSON.stringify(value), 'setPreference');
     } else {
@@ -166,8 +269,8 @@ class LocalStorageBackend {
     }
   }
 
-  getAllPreferences({ includeSecrets = false } = {}) {
-    const result = {};
+  getAllPreferences({ includeSecrets = false }: { includeSecrets?: boolean } = {}): Partial<PreferenceValues> {
+    const result: Record<string, unknown> = {};
     for (const name of Object.keys(PREF_MAP)) {
       if (!includeSecrets && SECRET_KEYS.has(name)) continue;
       const val = this.getPreference(name);
@@ -178,14 +281,14 @@ class LocalStorageBackend {
 
   /**
    * Remove every position, chat history and preference from this browser.
-   * @param {{ keepSecrets?: boolean }} [opts] keepSecrets: leave the SECRET_KEYS preferences
+   * @param opts keepSecrets: leave the SECRET_KEYS preferences
    *   (the user's own API keys) in place, e.g. when replacing the data with a cloud copy.
    */
-  clearAll({ keepSecrets = false } = {}) {
-    const toRemove = [];
+  clearAll({ keepSecrets = false }: { keepSecrets?: boolean } = {}): void {
+    const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key.startsWith(POSITION_PREFIX) || key.startsWith(CHAT_PREFIX)) {
+      if (key?.startsWith(POSITION_PREFIX) || key?.startsWith(CHAT_PREFIX)) {
         toRemove.push(key);
       }
     }
@@ -196,20 +299,22 @@ class LocalStorageBackend {
   }
 }
 
-let backend = new LocalStorageBackend();
+let backend: StoreBackend = new LocalStorageBackend();
 
 /** Dispatch `store-changed` on window (no-op without one); see the event contract at the top. */
-export function emitStoreChanged(detail) {
+export function emitStoreChanged(detail?: StoreChangeDetail | null): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(STORE_CHANGED, detail == null ? undefined : { detail }));
 }
 
 /**
  * What a localStorage key holds, in `store-changed` detail form.
- * @param {string|null} key
- * @returns {{ kind: 'position'|'chat'|'pref', id: string } | null} null for keys the store does not own
+ * @returns null for keys the store does not own
  */
-export function describeStorageKey(key) {
+export function describeStorageKey(key: string | null): StoreChangeDetail | null;
+/** Anything that is not a string is not a key either: null. */
+export function describeStorageKey(key: unknown): StoreChangeDetail | null;
+export function describeStorageKey(key: unknown): StoreChangeDetail | null {
   if (typeof key !== 'string') return null;
   if (key.startsWith(POSITION_PREFIX) && key.length > POSITION_PREFIX.length) {
     return { kind: 'position', id: key.slice(POSITION_PREFIX.length) };
@@ -222,7 +327,7 @@ export function describeStorageKey(key) {
 }
 
 // A `storage` event for sessionStorage says nothing about the store (it only ever uses localStorage).
-function isLocalStorageArea(area) {
+function isLocalStorageArea(area: Storage | null): boolean {
   if (area == null) return true; // synthetic events carry none
   try {
     return area === globalThis.localStorage;
@@ -236,12 +341,12 @@ function isLocalStorageArea(area) {
  * others. A burst of writes (an import, a hydrate) becomes one event per macrotask: with the item's
  * detail when exactly one store key changed, without detail when several did or the storage was
  * cleared (`key === null`). Keys the store does not own are ignored.
- * @returns {() => void} unsubscribe (also drops an event still waiting to be dispatched)
+ * @returns unsubscribe (also drops an event still waiting to be dispatched)
  */
-export function subscribeCrossTab() {
+export function subscribeCrossTab(): () => void {
   if (typeof window === 'undefined') return () => {};
-  let timer = null;
-  let pending; // undefined: nothing yet; a detail: one item so far; null: several items or cleared
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let pending: StoreChangeDetail | null | undefined; // undefined: nothing yet; a detail: one item so far; null: several items or cleared
 
   const dispatch = () => {
     const detail = pending;
@@ -250,9 +355,9 @@ export function subscribeCrossTab() {
     emitStoreChanged(detail);
   };
 
-  const onStorage = (e) => {
+  const onStorage = (e: StorageEvent) => {
     if (!isLocalStorageArea(e.storageArea)) return;
-    let detail = null;
+    let detail: StoreChangeDetail | null = null;
     if (e.key !== null) {
       detail = describeStorageKey(e.key);
       if (!detail) return;
@@ -271,35 +376,44 @@ export function subscribeCrossTab() {
   };
 }
 
-export function getPosition(ticker) { return backend.getPosition(ticker); }
-export function setPosition(ticker, data) { backend.setPosition(ticker, data); }
-export function deletePosition(ticker) { backend.deletePosition(ticker); }
+export function getPosition(ticker: string): Position { return backend.getPosition(ticker); }
+export function setPosition(ticker: string, data: Position): void { backend.setPosition(ticker, data); }
+export function deletePosition(ticker: string): void { backend.deletePosition(ticker); }
 
-export function getChatHistory(ticker) { return backend.getChatHistory(ticker); }
+export function getChatHistory(ticker: string): ChatMessage[] { return backend.getChatHistory(ticker); }
 // No ticker, no write, whatever the backend: ChatBot saves the previous ticker's chat on every ticker change,
 // and the first one (market data arriving, from no ticker to the first) must reach neither storage nor the cloud.
-export function setChatHistory(ticker, messages) { if (ticker) backend.setChatHistory(ticker, messages); }
-export function deleteChatHistory(ticker) { if (ticker) backend.deleteChatHistory(ticker); }
+export function setChatHistory(ticker: string | null | undefined, messages: ChatMessage[]): void {
+  if (ticker) backend.setChatHistory(ticker, messages);
+}
+export function deleteChatHistory(ticker: string | null | undefined): void {
+  if (ticker) backend.deleteChatHistory(ticker);
+}
 
-export function getPreference(key) { return backend.getPreference(key); }
-export function setPreference(key, value) { backend.setPreference(key, value); }
+// A known name is typed by its value. Any string is still accepted with an unknown value (a name built at run
+// time, a JS caller), so a known name with a value of another type also gets through that second form.
+export function getPreference<K extends PrefName>(name: K): PreferenceValues[K] | null;
+export function getPreference(name: string): unknown;
+export function getPreference(name: string): unknown { return backend.getPreference(name); }
+export function setPreference<K extends PrefName>(name: K, value: PreferenceValues[K] | null): void;
+export function setPreference(name: string, value: unknown): void;
+export function setPreference(name: string, value?: unknown): void { backend.setPreference(name, value); }
 
 /**
  * Clear this browser's copy of the user data through the current backend (never the cloud copy).
- * @param {{ keepSecrets?: boolean }} [opts] see LocalStorageBackend#clearAll
+ * @param opts see LocalStorageBackend#clearAll
  */
-export function clearAll(opts) { backend.clearAll(opts); }
+export function clearAll(opts?: { keepSecrets?: boolean }): void { backend.clearAll(opts); }
 
 /**
  * Send the cloud writes still queued for the signed-in account (SupabaseBackend#flushPendingWrites),
  * waiting at most `opts.timeoutMs`. Resolves to how many are still waiting; 0 on a local-only backend.
- * @param {{ timeoutMs?: number }} [opts]
  */
-export async function flushPendingWrites(opts) {
+export async function flushPendingWrites(opts?: { timeoutMs?: number }): Promise<number> {
   return typeof backend.flushPendingWrites === 'function' ? backend.flushPendingWrites(opts) : 0;
 }
 
-export function exportAll() {
+export function exportAll(): Backup {
   return {
     version: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
@@ -309,7 +423,24 @@ export function exportAll() {
   };
 }
 
-function migrate(data) {
+/**
+ * A parsed backup whose schema version is a number: exportAll()'s shape, but read from a file, so a section may be
+ * missing (an older export) or malformed (a hand edit). importAll() checks a section before it reads it; the
+ * sections are read-only so that those checks, kept in consts, still narrow them where they are read.
+ */
+interface ParsedBackup {
+  version: number;
+  readonly positions?: unknown;
+  readonly chatHistories?: unknown;
+  readonly preferences?: unknown;
+}
+
+/** importAll()'s schema version check, as a type guard: it makes the parsed file a ParsedBackup. */
+function hasSchemaVersion(data: { version?: unknown }): data is ParsedBackup {
+  return typeof data.version === 'number';
+}
+
+function migrate(data: ParsedBackup): ParsedBackup {
   if (data.version < 2) {
     // v2: AI/data keys moved from sessionStorage to preferences — no import-level
     // migration needed since old exports never contained these keys.
@@ -323,7 +454,7 @@ function migrate(data) {
  * Safe to call multiple times — only migrates keys that exist in sessionStorage
  * and don't already exist in localStorage.
  */
-export function migrateSessionToLocal() {
+export function migrateSessionToLocal(): void {
   if (typeof window === 'undefined') return;
   try {
     const sessionKeys = [
@@ -357,9 +488,17 @@ export function migrateSessionToLocal() {
 }
 
 /** Dispatch a plain CustomEvent on window (no-op without one). */
-function emitWindowEvent(type) {
+function emitWindowEvent(type: string): void {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(type));
+}
+
+/**
+ * Whether `target` keeps a cloud copy it can replace (SupabaseBackend#replaceCloud). A type guard, so that the
+ * check still holds inside the Promise executor below (a typeof check on the method itself would not reach it).
+ */
+function keepsCloudCopy(target: StoreBackend): target is StoreBackend & Required<Pick<StoreBackend, 'replaceCloud'>> {
+  return typeof target?.replaceCloud === 'function';
 }
 
 /**
@@ -367,8 +506,8 @@ function emitWindowEvent(type) {
  * In the background: the import does not wait for the network, and a failure is only a warning (this browser
  * already holds the imported data).
  */
-function replaceCloudCopy(target, snapshot) {
-  if (typeof target?.replaceCloud !== 'function') return;
+function replaceCloudCopy(target: StoreBackend, snapshot: StoreSnapshot): void {
+  if (!keepsCloudCopy(target)) return;
   // Called inside the executor, so a synchronous throw ends up in .catch() like a rejection.
   new Promise((resolve) => { resolve(target.replaceCloud(snapshot)); })
     .catch((e) => console.warn('importAll: could not replace the cloud copy:', e?.message ?? e));
@@ -393,14 +532,14 @@ function replaceCloudCopy(target, snapshot) {
  *     view, the AI settings and the market-data hooks re-read.
  * Asking the user first is the caller's job (AppSettings).
  *
- * @param {object} data a parsed backup: { version, positions?, chatHistories?, preferences? }
- * @returns {{ imported: { positions: number, chats: number, prefs: number }, skipped: string[] }} how many
- *   items were written, and the preference names in the file that were not imported (file order, once each)
+ * @param data a parsed backup: { version, positions?, chatHistories?, preferences? }
+ * @returns how many items were written, and the preference names in the file that were not imported (file
+ *   order, once each)
  * @throws {Error} when `data` is not a backup this version can read; nothing has changed then
  */
-export function importAll(data) {
+export function importAll(data: unknown): ImportResult {
   if (!data || typeof data !== 'object') throw new Error('Invalid data format.');
-  if (typeof data.version !== 'number') throw new Error('Missing schema version.');
+  if (!hasSchemaVersion(data)) throw new Error('Missing schema version.');
   if (data.version > SCHEMA_VERSION) {
     throw new Error(`Unsupported schema v${data.version} — update the app first.`);
   }
@@ -438,14 +577,14 @@ export function importAll(data) {
 
   // What is written, as [key, value] entries: the counts and the cloud snapshot come from these. An item the
   // backend would not store (a position with neither field, an empty chat, a null preference) is left out.
-  const positions = [];
-  const chats = [];
-  const prefs = [];
-  const skipped = new Set();
+  const positions: [string, Position][] = [];
+  const chats: [string, ChatMessage[]][] = [];
+  const prefs: [string, unknown][] = [];
+  const skipped = new Set<string>();
   if (hasPositions) {
     for (const [ticker, pos] of Object.entries(migrated.positions)) {
       if (!ticker || pos == null || typeof pos !== 'object' || Array.isArray(pos)) continue;
-      const value = { costBasis: pos.costBasis ?? null, shares: pos.shares ?? null };
+      const value: Position = { costBasis: pos.costBasis ?? null, shares: pos.shares ?? null };
       if (value.costBasis == null && value.shares == null) continue;
       backend.setPosition(ticker, value);
       positions.push([ticker, value]);
@@ -495,7 +634,7 @@ export function importAll(data) {
  * dispose()): a SupabaseBackend swapped out by a sign-out or an account switch must not apply a
  * hydrate still in flight to what is now another account's (or nobody's) browser.
  */
-export function setBackend(newBackend) {
+export function setBackend(newBackend: StoreBackend): void {
   if (backend !== newBackend) backend?.dispose?.();
   backend = newBackend;
 }
