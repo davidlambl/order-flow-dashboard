@@ -1,9 +1,9 @@
 // src/hooks/useLiveQuote.test.jsx — the live-quote hook's observable contract: the request and its headers, the 60 s
 // per-ticker cache, ticker changes, forced refreshes (refresh(), data-source-changed) that clear the quote, the silent
-// 60 s background refresh, errors, a dead token, and aborts. Phase 5 moves the hook onto TanStack Query; these tests
-// must pass unchanged. Phase 5 (b) added one test, for the #37 fix: no committed render shows the old ticker's quote.
-// The cache is a module Map no test can clear, so every test takes fresh tickers. MSW (src/test/setup.js) answers
-// getLiveQuote and `requests` keeps every Request it saw; a gated reply holds its request in flight until release().
+// 60 s background refresh, errors, a dead token, and aborts. Phase 5 (b) moved the hook onto TanStack Query; these tests
+// passed unchanged, and it added the tests marked "Pin:" or "Regression:" (the first is the #37 fix). Each test takes
+// fresh tickers (a habit from the old module Map); src/test/setup.js clears the TanStack cache after each test. MSW
+// answers getLiveQuote and `requests` keeps every Request it saw; a gated reply holds its request until release().
 // Fake timers run with shouldAdvanceTime so waitFor and MSW keep working; the 60 s refresh is driven by advance(),
 // which fires it inside act, and vi.setSystemTime ages the cache without firing timers.
 import { useLayoutEffect } from 'react';

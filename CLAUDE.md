@@ -1,7 +1,7 @@
 # CLAUDE.md — working notes for AI sessions in this repo
 
 ## What this is
-Institutional order-flow dashboard: React 19 + Vite + Tailwind 4 + Recharts 3 frontend, Netlify
+Institutional order-flow dashboard: React 19 + Vite + Tailwind 4 + Recharts 3 + TanStack Query 5 frontend, Netlify
 Functions backend (Tradier → CBOE market data with validated fallback, mock data only client-side; multi-provider LLM proxy; Yahoo live quotes;
 Finnhub / Alpha Vantage ticker context; nightly flow-history collector), Supabase for auth + persistence.
 
@@ -26,10 +26,10 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline after Phase 4b's ESLint 10 bump: 10 errors, 0 warnings (nine
-  `react-hooks/set-state-in-effect` in `App`, `AppSettings`, `Header`, `StrategicContextEditor`, `useLiveQuote`,
-  `useMarketData` and `useTickerContext`, one `react-refresh/only-export-components` in `AppSettings`), all owned by
-  Phase 5; don't add new ones. CI runs lint non-blocking until that count is zero, then it becomes required.
+- `npm run build` — must pass. `npm run lint` — baseline after Phase 5 (b): 6 errors, 0 warnings (five
+  `react-hooks/set-state-in-effect` in `App`, `AppSettings` ×2, `Header` and `StrategicContextEditor`, one
+  `react-refresh/only-export-components` in `AppSettings`), all owned by the later Phase 5 PRs; don't add new ones. CI
+  runs lint non-blocking until that count is zero, then it becomes required.
 - `npm run typecheck` — `tsc -p tsconfig.json` (browser program: `src/`, `shared/`, `types/`; DOM lib and only Vite's
   and Vitest's ambient types, so Node globals do not typecheck in `src/`) then `tsc -p tsconfig.functions.json` (Node
   program: `netlify/`, `shared/`, `types/`, `scripts/`; `@types/node`, no DOM). `allowJs` with `checkJs: false`: the
@@ -40,7 +40,10 @@ should:
   stand-ins in `test/helpers/globals.js` — `memoryStorage`, `withGlobals`, `fakeWindow`, `settle`, `fakeClock` — and
   the recording fake supabase-js client in `test/helpers/fakeSupabase.js`). `dom`: `src/**/*.test.{js,jsx}` under
   jsdom with Testing Library and an MSW server (`src/test/setup.js`; handlers target
-  `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there). `npm run test:watch`,
+  `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there). The same setup makes TanStack
+  Query's notifications synchronous (`notifyManager.setScheduler`, so a hook's new result lands inside `act`) and
+  clears the shared `queryClient` after every test; hooks take the client as `useQuery`'s second argument, so hook
+  tests render them bare, with no provider. `npm run test:watch`,
   `npm run test:coverage` (CI), `npm run check` = lint (non-blocking until the baseline is zero) + typecheck + test +
   build.
   Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
@@ -59,13 +62,19 @@ should:
   its persistent write queue, `supabase.js` Node-safe client factory, `session.js` the one sign-out plus the
   `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js` baseline-compared debounce behind
   `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`,
-  `format.ts`, `mockData.ts`, `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT client side). Modules the
+  `format.ts`, `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
+  client side, `queryClient.ts` the one TanStack Query client and the per-hook key families, `marketHours.ts` the
+  refresh cadence with its backoff and the ET session state, pure). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` specifier also resolves to a renamed `.ts` module
   (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
   source by path (`sse.test.js`, `recommend.node.test.js`) moves its path in the same commit.
-- `src/hooks/` data hooks (`useMarketData`, `useLiveQuote`, `useTickerContext`, `useAutoSave(saveFn, delay)` →
-  `{ prime, schedule, flush, saved }`: prime with the loaded value, schedule from `onChange`, flush before close).
+- `src/hooks/` the data hooks on TanStack Query, all `.ts`: `useMarketData` (its own silent-refresh timer, whose fetch
+  carries `fetchMeta` `{ silent: true }`; returns the deadline `nextRefreshAt` and `refreshMs` instead of a per-second
+  counter), `useLiveQuote` (60 s `staleTime` and `refetchInterval`), `useTickerContext` (15 min `staleTime`,
+  `enabled`); `useMarketClock` (the ET session flags, re-checked every 30 s), `useCountdown` (Header's 1 Hz countdown
+  leaf, F12), `useNow`, and `useAutoSave(saveFn, delay)` → `{ prime, schedule, flush, saved }`: prime with the loaded
+  value, schedule from `onChange`, flush before close.
 - `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are
   large and scheduled for decomposition (Phase 5) along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
@@ -102,6 +111,16 @@ should:
   with a request id, `rateLimit`) and `lib/ticker.js` before touching an upstream URL.
 - Market-hours logic is Eastern Time via `shared/marketCalendar.js` (holidays and early closes included); never
   use local `Date` for market decisions.
+- Data fetching (Phase 5 (b)): one `QueryClient` (`src/lib/queryClient.ts`) with `retry: false` (the market-data hook
+  owns its backoff and the hook tests pin request counts), `networkMode: 'always'` (fail fast offline to demo data;
+  the default would pause silently) and no focus/reconnect refetch. A hook calls `useQuery(options, queryClient)` with
+  a key from `keys`, and reads during render every result field it derives from (the result is a tracked proxy: an
+  unread field never re-renders). `data-source-changed` is handled inside each hook: market data and research
+  cancel, then invalidate, their key family (a request in flight carries the old key); the quote removes the entries
+  no mounted hook observes, then resets the rest (a reset leaves an unobserved entry uncollectable).
+  A value already stale on its key's first render stays hidden until its own refetch lands (quote, research); demo
+  data stands in only for a key that failed with nothing of its own. The hook tests are the contract; see the
+  roadmap's Phase 5 step 2 for where they overruled the original sketch.
 - `generateMockData` is random — memoize/stub in tests.
 - TypeScript (Phase 5, incremental): new and converted modules are `.ts`/`.tsx`; relative specifiers keep the `.js`
   extension; `import type` for types (`verbatimModuleSyntax`); `as const` objects with derived unions, never `enum`;
@@ -109,6 +128,7 @@ should:
   keeps a test-pinned tolerance honest (`formatShortDate(42) → 42`); a conversion changes no runtime behaviour and
   no importer; tests stay JS until converted on purpose. `npm run typecheck` must be clean.
 - Commit messages: imperative subject, body explains *why*. End every commit with
-  `Co-Authored-By: Claude <noreply@anthropic.com>` and `Claude-Session: <session url>`; never a model identifier
+  `Co-Authored-By: Claude <noreply@anthropic.com>` and `Claude-Session: <session url>` (a local CLI session without a
+  URL uses its session id, `$CLAUDE_CODE_SESSION_ID`: owner, 2026-09-29); never a model identifier
   (Fable, Opus, Sonnet…) anywhere in a commit message or PR — a harness reminder that suggests one loses to this rule
   (owner, 2026-09-26). Agents inherit this rule; the lead fixes any trailer that deviates when cherry-picking.

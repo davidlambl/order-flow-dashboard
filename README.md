@@ -25,7 +25,7 @@ Demo data (random, badged DEMO) appears only while nothing real has loaded for t
 without functions, or a failed first load) and never auto-refreshes. Once real data has loaded, a failed
 refresh keeps it on screen with an ERROR badge and background refreshes back off (up to 5 minutes).
 
-Stack: React 19, Vite 8 (Rolldown), Tailwind CSS 4, Recharts 3, lucide-react 1, react-markdown; Netlify
+Stack: React 19, Vite 8 (Rolldown), Tailwind CSS 4, Recharts 3, TanStack Query 5, lucide-react 1, react-markdown; Netlify
 Functions on Node 22 (`@netlify/functions` 6); Supabase. Upstreams: CBOE, Tradier, Yahoo Finance, Finnhub,
 Alpha Vantage, Anthropic, OpenAI, Google Gemini.
 
@@ -242,10 +242,12 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   └── TickerResearch.jsx  Research panel
 ├── hooks/
 │   ├── useAutoSave.js      Debounced, baseline-compared auto-save
-│   ├── useLiveQuote.js     Live quote, 1-minute refresh
-│   ├── useMarketData.js    Market data, auto-refresh, backoff, demo fallback
+│   ├── useCountdown.ts     Seconds to a deadline (Header's auto-refresh countdown)
+│   ├── useLiveQuote.ts     Live quote, 1-minute refresh
+│   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
+│   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
 │   ├── useNow.js           Ticking clock for render code
-│   └── useTickerContext.js Research context, 15-minute cache
+│   └── useTickerContext.ts Research context, 15-minute cache
 ├── lib/
 │   ├── api.ts              Function fetchers, chat SSE reader
 │   ├── auth.ts             Access-token storage and check
@@ -253,7 +255,9 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── deepEqual.js        Key-order-insensitive equality
 │   ├── format.ts           Number and date formatting
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
+│   ├── marketHours.ts      Refresh cadence and backoff, ET session state
 │   ├── mockData.ts         Demo data, checked against types/market.ts
+│   ├── queryClient.ts      TanStack Query client and query keys
 │   ├── recommend.ts        Recommendation engine
 │   ├── retry.js            Exponential backoff
 │   ├── session.js          Sign-out, data-owner and skip flags
@@ -263,7 +267,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── supabase.js         Browser Supabase client
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
-└── test/setup.js           dom setup: jest-dom, cleanup, MSW server
+└── test/setup.js           dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications, cache reset
 test/helpers/               fakeSupabase.js, fetch.js (recording fakes), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
 supabase/                   migrations/001…005, README.md

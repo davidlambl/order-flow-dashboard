@@ -496,6 +496,31 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    (`staleTime 15 min`), `useLiveQuote` (`refetchInterval 60 s`, `keepPreviousData`). Deleted: both module
    `Map` caches, all abort/epoch/timer refs, the `data-source-changed` listeners (AppSettings calls
    `queryClient.invalidateQueries()`).
+   **Built in #64 (Phase 5 (b), 2026-09-29).** The Phase 4b hook tests were the contract and overruled this sketch:
+   - `retry: false`, not ×2: the tests pin one request per failed load and the 60/120/240 s backoff steps, so
+     `useMarketData` owns its backoff (`getBackoffMs` in `src/lib/marketHours.ts`, over `retry.js`).
+     `networkMode: 'always'`: the default `'online'` would pause a fetch silently offline instead of failing through
+     to demo data.
+   - No `refetchInterval` for market data. The tests pin a countdown that restarts when the silent fetch starts, on
+     `refresh()` and on re-enable, with `loading` false during that fetch. TanStack's interval cannot be read or
+     restarted, is re-armed on every update, pauses in a hidden tab, and its fetch cannot be told apart. So the hook
+     runs one `setTimeout` and starts its fetch with `query.fetch(undefined, { cancelRefetch: false, meta })`, tagged
+     by `fetchMeta` `{ silent: true }`. It returns `nextRefreshAt` (epoch ms) and `refreshMs`. Header's
+     `useCountdown(nextRefreshAt, refreshMs / 1000)` leaf derives the seconds (F12). The deadline counts from the
+     tick, so a slow silent fetch does not move it.
+   - Demo mode is `errorUpdateCount > 0 && (data === undefined || isPlaceholderData)`, not `!q.data && q.isError`: a
+     reload of a failed ticker is pending again, and `keepPreviousData` would otherwise show another ticker's payload.
+     `generateMockData` returns a complete `MarketData` (#60), which the hook shows as it is.
+   - No `keepPreviousData` for the quote: the tests pin a cleared quote on a ticker change, which also ends the
+     one-render stale quote. A quote or research entry already stale on its key's first render stays hidden until its
+     own refetch lands. That is a per-key snapshot, since `isFetchedAfterMount` is per fetch.
+   - The `data-source-changed` listeners stay, one inside each hook: the tests dispatch the event, and
+     `store.node.test.js` pins `importAll`'s event list. Market data and research cancel, then invalidate, their key
+     family, because a request in flight carries the old key. The quote removes the entries no mounted hook observes
+     and resets the rest. AppSettings does not call `invalidateQueries()`.
+   - The hooks take the client as `useQuery`'s second argument and their tests render them without a provider.
+     `src/test/setup.js` makes TanStack's notifications synchronous, for the tests' `expect` right after `act()`, and
+     clears the client after each test.
 3. **`useSyncExternalStore` stores**: `src/lib/storeEvents.ts` with `subscribe/notify/useStoreValue`; safe for
    primitive snapshots (`section_*`, `sidebarWidth`, `ai_provider`); for object snapshots (`getPosition`,
    `getChatHistory`) use a `version` counter + `useMemo` to avoid the infinite-loop trap. Replaces

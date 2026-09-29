@@ -1,10 +1,10 @@
 // src/hooks/useTickerContext.test.jsx — the research-context hook's observable contract: `enabled` gating, the request
-// and its headers, the 15 min per-ticker cache, the reset during render that keeps one ticker's context off another,
-// data-source-changed, refresh(), errors and aborts. Phase 5 moves the hook onto TanStack Query; these tests must
-// pass unchanged.
-// The cache is a module Map no test can clear, so every test takes fresh tickers. MSW (src/test/setup.js) answers
-// getTickerContext and `requests` keeps every Request it saw; a gated reply holds its request in flight until
-// release(). Fake timers run with shouldAdvanceTime so waitFor and MSW keep working; vi.setSystemTime ages the cache.
+// and its headers, the 15 min per-ticker cache, no committed render with another ticker's context, data-source-changed,
+// refresh(), errors and aborts. Phase 5 (b) moved the hook onto TanStack Query: these tests passed unchanged apart from
+// the news fixture's ISO datetime (#60) and the data-source-changed test's title, and it added those marked "Pin:" or
+// "Regression:". Each test takes fresh tickers (a habit from the old module Map); src/test/setup.js clears the TanStack
+// cache after each test. MSW answers getTickerContext and `requests` keeps every Request it saw; a gated reply holds its
+// request until release(). Fake timers run with shouldAdvanceTime (waitFor and MSW keep working); setSystemTime ages it.
 import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -174,7 +174,7 @@ describe('useTickerContext', () => {
     expect(requests).toHaveLength(2);
   });
 
-  it('data-source-changed drops the cached context and refetches with loading', async () => {
+  it('data-source-changed refetches with loading and hides the stale context from a new mount', async () => {
     const t = freshTicker();
     const later = gated((request) => ok(request, { technicals: { sma50: 99 } }));
     serve((request) => (requests.length === 1 ? ok(request) : later.reply(request)));
@@ -183,7 +183,7 @@ describe('useTickerContext', () => {
     act(() => { window.dispatchEvent(new Event('data-source-changed')); });
     expect(result.current.loading).toBe(true);
     await waitFor(() => expect(requests).toHaveLength(2));
-    // The cache entry is gone at once: a mount meanwhile finds nothing to show.
+    // The entry is marked stale at once: a mount meanwhile finds nothing to show until the refetch lands.
     const other = renderContext(t);
     expect(other.result.current.context).toBeNull();
 
