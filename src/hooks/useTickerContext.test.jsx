@@ -22,7 +22,7 @@ const freshTicker = () => `T${n++}`;
 function tickerContext(ticker, over = {}) {
   return {
     ticker,
-    news: [{ headline: `${ticker} raises guidance`, source: 'Reuters', datetime: 1_790_000_000 }],
+    news: [{ headline: `${ticker} raises guidance`, source: 'Reuters', datetime: '2026-09-21T14:13:20.000Z' }],
     earnings: { date: '2026-10-29', epsEstimate: 1.42 },
     analysts: null,
     technicals: { sma50: 98.2, sma200: 91.7, rsi14: 56 },
@@ -264,5 +264,81 @@ describe('useTickerContext', () => {
     unmount();
     expect(requests[0].signal.aborted).toBe(true);
     gate.release();
+  });
+
+  // Regression (review major): resetQueries blanked the shown research while it reloaded, and for good if that failed.
+  it('data-source-changed keeps the shown context through a failed reload', async () => {
+    const t = freshTicker();
+    const unavailable = { error: `Ticker context unavailable for ${t}`, code: 'CONTEXT_UNAVAILABLE' };
+    const reload = gated(() => HttpResponse.json(unavailable, { status: 502 }));
+    serve((request) => (requests.length === 1 ? ok(request) : reload.reply(request)));
+    const { result } = await renderLoaded(t);
+
+    act(() => { window.dispatchEvent(new Event('data-source-changed')); });
+    expect(result.current).toMatchObject({ context: tickerContext(t), loading: true });
+    await waitFor(() => expect(requests).toHaveLength(2));
+
+    reload.release();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current).toMatchObject({ context: tickerContext(t), error: unavailable.error });
+  });
+
+  // Pin: the listener's cancel; invalidateQueries alone would join a first load already sent with the old key.
+  it('data-source-changed during a first load aborts it and refetches with the new key', async () => {
+    setPreference('data_finnhub_key', 'fh-old');
+    const t = freshTicker();
+    const first = gated(ok);
+    serve((request) => (requests.length === 1 ? first.reply(request) : ok(request)));
+    const { result } = renderContext(t);
+    await waitFor(() => expect(requests).toHaveLength(1));
+
+    setPreference('data_finnhub_key', 'fh-new');
+    act(() => { window.dispatchEvent(new Event('data-source-changed')); });
+    expect(requests[0].signal.aborted).toBe(true);
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests.map((request) => request.headers.get('x-finnhub-key'))).toEqual(['fh-old', 'fh-new']);
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    first.release();
+    await advance(1_000);
+    expect(result.current).toMatchObject({ context: tickerContext(t), loading: false, error: null });
+  });
+
+  // Regression: disabling left the request in flight to land in the cache; the old hook's effect cleanup aborted it.
+  it('disabling aborts a request in flight', async () => {
+    const t = freshTicker();
+    const first = gated(ok);
+    serve((request) => (requests.length === 1 ? first.reply(request) : ok(request)));
+    const { result, rerender } = renderContext(t);
+    await waitFor(() => expect(requests).toHaveLength(1));
+
+    rerender({ ticker: t, enabled: false });
+    expect(requests[0].signal.aborted).toBe(true);
+    first.release();
+    await advance(1_000);
+    expect(result.current).toMatchObject({ context: null, loading: false, error: null });
+    expect(console.warn).not.toHaveBeenCalledWith('Ticker context fetch failed:', expect.anything());
+
+    // The aborted reply never landed: enabling again fetches afresh.
+    rerender({ ticker: t, enabled: true });
+    expect(result.current).toMatchObject({ context: null, loading: true });
+    await waitFor(() => expect(result.current.context).toEqual(tickerContext(t)));
+    expect(requests).toHaveLength(2);
+  });
+
+  // Pin: an entry already expired when first shown stays hidden until dataUpdatedAt moves, so a failed refetch keeps
+  // it hidden; the rejected `seen.expired && !isFetchedAfterMount` would count the failure and show it with the error.
+  it('a context older than 15 min whose refetch fails stays hidden, with the error', async () => {
+    const t = freshTicker();
+    const unavailable = { error: `Ticker context unavailable for ${t}`, code: 'CONTEXT_UNAVAILABLE' };
+    serve((request) => (requests.length === 1 ? ok(request) : HttpResponse.json(unavailable, { status: 502 })));
+    (await renderLoaded(t)).unmount();
+    vi.setSystemTime(Date.now() + 16 * 60_000);
+
+    const { result } = renderContext(t);
+    expect(result.current).toMatchObject({ context: null, loading: true });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(requests).toHaveLength(2);
+    expect(result.current).toMatchObject({ context: null, error: unavailable.error });
   });
 });
