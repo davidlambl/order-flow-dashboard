@@ -3,16 +3,19 @@
 
 // ─── getMarketData ───────────────────────────────────────────────────────────
 
-/** `provider` of getMarketData (marketDataHelpers.js:42, :159) plus generateMockData's 'mock' (mockData.js:59). */
+/** `provider` of getMarketData (marketDataHelpers.js:42, :159) plus generateMockData's 'mock' (mockData.ts:69). */
 export type MarketProvider = 'cboe' | 'tradier' | 'tradier-sandbox' | 'mock';
 
-/** `delay` label paired with each provider (marketDataHelpers.js:43, :160; mockData.js:60). */
+/** `delay` label paired with each provider (marketDataHelpers.js:43, :160; mockData.ts:70). */
 export type MarketDelay = '15-min delayed' | 'real-time' | 'sandbox (delayed)' | 'simulated';
 
-/** Why getMarketData served CBOE although Tradier was tried (getMarketData.js:125, :135); null when it was not tried or succeeded. */
+/**
+ * Why getMarketData served CBOE although Tradier was tried (getMarketData.js:125, :135); null when it was not tried or
+ * succeeded, and always in the demo payload (mockData.ts:74).
+ */
 export type FallbackReason = 'tradier-timeout' | 'tradier-error' | 'tradier-no-spot' | 'tradier-no-options';
 
-/** One strike of `gexByStrike`: computeGEX (marketDataHelpers.js:224, :235) or generateMockData (mockData.js:25-30). */
+/** One strike of `gexByStrike`: computeGEX (marketDataHelpers.js:224, :235) or generateMockData (mockData.ts:35-40). */
 export interface GexRow {
   strike: number;
   callGex: number;
@@ -22,7 +25,7 @@ export interface GexRow {
   gex: number;
 }
 
-/** One session of `flowHistory`: a flow_history row (getMarketData.js:67-73; migration 001) or a mock weekday (mockData.js:45-51). */
+/** One session of `flowHistory`: a flow_history row (getMarketData.js:67-73; migration 001) or a mock weekday (mockData.ts:55-61). */
 export interface FlowHistoryRow {
   /** 'YYYY-MM-DD'. */
   date: string;
@@ -33,8 +36,8 @@ export interface FlowHistoryRow {
 }
 
 /**
- * `kpis` of getMarketData (getMarketData.js:168-181). The six required fields are also produced by generateMockData
- * (mockData.js:61-68); the optional ones are always sent by the function and only omitted by the mock.
+ * `kpis` of getMarketData (getMarketData.js:168-181) and of generateMockData (mockData.ts:79-92), which sets whole
+ * volumes and open interest and derives both ratios from them (mockData.ts:22-27), as the function does.
  */
 export interface MarketKpis {
   netPremium: number;
@@ -46,21 +49,28 @@ export interface MarketKpis {
   maxPain: number | null;
   /** Puts ÷ calls by volume; null without call volume (marketDataHelpers.js:317). */
   putCallRatio: number | null;
-  /** Expiry max pain was measured on ('YYYY-MM-DD'); null together with maxPain. */
-  maxPainExpiry?: string | null;
+  /**
+   * Expiry max pain was measured on ('YYYY-MM-DD'); from the function, null together with maxPain. Always null in the
+   * demo payload, whose maxPain (the strike nearest spot) belongs to no expiry.
+   */
+  maxPainExpiry: string | null;
   /** Puts ÷ calls by open interest; null without call OI (marketDataHelpers.js:318). */
-  putCallOIRatio?: number | null;
-  callVolume?: number;
-  putVolume?: number;
-  callOI?: number;
-  putOI?: number;
+  putCallOIRatio: number | null;
+  /** Call volume in whole contracts over the expiry window (computePutCallRatio, marketDataHelpers.js:299-324); 0 if none. */
+  callVolume: number;
+  /** Put volume, summed the same way; 0 if none. */
+  putVolume: number;
+  /** Call open interest over the expiry window; 0 if none. */
+  callOI: number;
+  /** Put open interest over the expiry window; 0 if none. */
+  putOI: number;
 }
 
 /**
- * The getMarketData 200 body (getMarketData.js:156-191) and the generateMockData value (mockData.js:54-72).
- * The optional fields are always present in the function's body (see MarketDataResponse) and absent from the mock,
- * except flowHistory, which the function omits when Supabase is unconfigured, has no recent rows for the ticker or
- * the read fails (getMarketData.js:54, :64-65, :189-191).
+ * The getMarketData 200 body (getMarketData.js:156-191) and the generateMockData value (mockData.ts:64-96): both carry
+ * every field, so demo mode uses the mock as it is. flowHistory alone is optional: the mock always has it, and the
+ * function omits it when Supabase is unconfigured, has no recent rows for the ticker or the read fails
+ * (getMarketData.js:54, :64-65, :189-191).
  */
 export interface MarketData {
   ticker: string;
@@ -77,23 +87,27 @@ export interface MarketData {
   lastUpdated: string;
   /** Chronological, at most 30 rows from the last 45 days (getMarketData.js:40-41, :66-67). */
   flowHistory?: FlowHistoryRow[];
-  fallbackReason?: FallbackReason | null;
-  /** Percent (e.g. 31.4); null on Tradier (marketDataHelpers.js:164) and when CBOE omits it. */
-  iv30?: number | null;
-  /** CBOE: a date-time string; Tradier: epoch milliseconds (marketDataHelpers.js:49, :166). Read by nothing in src/. */
-  lastTradeTime?: string | number | null;
-  /** Contracts left after normalizeChain (the expiry window). */
-  totalOptionsCount?: number;
-  /** The expiry window: 'YYYY-MM-DD', ascending, at most EXPIRY_WINDOW = 6 (marketDataHelpers.js:9, :194). */
-  expiries?: string[];
+  fallbackReason: FallbackReason | null;
+  /** Percent (e.g. 31.4); null on Tradier (marketDataHelpers.js:164), when CBOE omits it, and in the demo payload. */
+  iv30: number | null;
+  /**
+   * CBOE: a date-time string; Tradier: epoch milliseconds (marketDataHelpers.js:49, :166); null in the demo payload.
+   * Read by nothing in src/.
+   */
+  lastTradeTime: string | number | null;
+  /** Contracts left after normalizeChain (the expiry window); the demo payload counts a call and a put per strike. */
+  totalOptionsCount: number;
+  /**
+   * The expiry window: 'YYYY-MM-DD', ascending, at most EXPIRY_WINDOW = 6 (marketDataHelpers.js:9, :194); [] in the
+   * demo payload.
+   */
+  expiries: string[];
 }
 
-/** Exactly what getMarketData sends on 200: the server-only fields required, no mock values, flowHistory still optional. */
-export interface MarketDataResponse extends Required<Omit<MarketData, 'flowHistory'>> {
+/** Exactly what getMarketData sends on 200: MarketData without the mock's provider and delay (flowHistory still optional). */
+export interface MarketDataResponse extends Omit<MarketData, 'provider' | 'delay'> {
   provider: Exclude<MarketProvider, 'mock'>;
   delay: Exclude<MarketDelay, 'simulated'>;
-  kpis: Required<MarketKpis>;
-  flowHistory?: FlowHistoryRow[];
 }
 
 // ─── getLiveQuote ────────────────────────────────────────────────────────────
