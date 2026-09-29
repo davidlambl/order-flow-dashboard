@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
 import { formatPrice } from '../lib/format';
+import { useCountdown } from '../hooks/useCountdown.js';
 
 // Why getMarketData served CBOE although a Tradier key was available (payload `fallbackReason`).
 const FALLBACK_REASON_TEXT = {
@@ -11,7 +12,22 @@ const FALLBACK_REASON_TEXT = {
   'tradier-no-options': 'Tradier returned no options',
 };
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, signedIn, onSignOut, onOpenSettings, earnings, autoRefresh, secondsLeft, optionsMarketOpen, onToggleAutoRefresh, liveQuote, spotPrice }) {
+// The auto-refresh countdown lives in its own leaf: it re-renders every second, Header and App do not (F12).
+function RefreshCountdown({ nextRefreshAt, refreshMs }) {
+  const secondsLeft = useCountdown(nextRefreshAt, refreshMs / 1000);
+  if (secondsLeft <= 0) return 'Auto';
+  return (
+    <>
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-bull)] opacity-75" />
+        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--color-bull)]" />
+      </span>
+      {secondsLeft}s
+    </>
+  );
+}
+
+export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, signedIn, onSignOut, onOpenSettings, earnings, autoRefresh, nextRefreshAt, refreshMs, optionsMarketOpen, onToggleAutoRefresh, liveQuote, spotPrice }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
@@ -133,18 +149,12 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               : !optionsMarketOpen
                 ? 'Options market closed (Mon\u2013Fri 9:30a\u20134:15p ET) \u2014 resumes at open'
               : autoRefresh
-                ? `Auto-refreshing every ${data?.provider === 'tradier' ? '30' : '60'}s \u2014 click to pause`
+                ? `Auto-refreshing every ${Math.round(refreshMs / 1000)}s \u2014 click to pause`
                 : 'Enable auto-refresh during options trading hours'
             }
           >
-            {autoRefresh && optionsMarketOpen && !usingMock && secondsLeft > 0 ? (
-              <>
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-bull)] opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--color-bull)]" />
-                </span>
-                {secondsLeft}s
-              </>
+            {autoRefresh && optionsMarketOpen && !usingMock && nextRefreshAt != null ? (
+              <RefreshCountdown nextRefreshAt={nextRefreshAt} refreshMs={refreshMs} />
             ) : autoRefresh && !optionsMarketOpen ? (
               'Paused'
             ) : (
