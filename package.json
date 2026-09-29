@@ -21,6 +21,7 @@
   "dependencies": {
     "@netlify/functions": "^6.0.0",
     "@supabase/supabase-js": "^2.117.2",
+    "@tanstack/react-query": "^5.104.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^1.48.0",
     "p-limit": "^7.3.3",
