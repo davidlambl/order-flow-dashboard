@@ -183,7 +183,7 @@ export default function App() {
       window.removeEventListener('store-changed', handler);
     };
   }, []);
-  const { data, loading, error, usingMock, refresh, autoRefresh, secondsLeft, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
+  const { data, loading, error, usingMock, refresh, autoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
   const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
@@ -354,7 +354,8 @@ export default function App() {
         onOpenSettings={openSettings}
         earnings={tickerContext?.earnings}
         autoRefresh={autoRefresh}
-        secondsLeft={secondsLeft}
+        nextRefreshAt={nextRefreshAt}
+        refreshMs={refreshMs}
         optionsMarketOpen={optionsMarketOpen}
         onToggleAutoRefresh={toggleAutoRefresh}
         liveQuote={liveQuote}
