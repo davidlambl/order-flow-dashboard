@@ -6,6 +6,14 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Majors of these two pins are planned roadmap work, not a weekly PR. typescript stays ~5.9 because
+    # typescript-eslint 8 peers typescript <6.1 (a major fails npm ci with ERESOLVE, #63); @types/node follows the
+    # Node 22 runtime (engines, netlify.toml NODE_VERSION), so a newer major would typecheck APIs production lacks (#62).
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
