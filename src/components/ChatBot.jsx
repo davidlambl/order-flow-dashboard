@@ -9,6 +9,9 @@ import { formatDollar, formatPct, formatRatio, formatPrice } from '../lib/format
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
 import { getChatHistory, setChatHistory, getPreference } from '../lib/store';
 import { isStaleData } from '../lib/staleness';
+import { useMarket } from '../contexts/MarketContext.js';
+import { useAuth } from '../contexts/AuthContext.js';
+import { useStoreValue } from '../hooks/useStoreValue.js';
 import StrategicContextEditor from './StrategicContextEditor';
 import { getAISettings } from './AppSettings';
 import { computeRecommendation, computeDualRecommendation, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
@@ -510,12 +513,10 @@ const SUGGESTIONS = [
   'Summarize the dark pool activity.',
 ];
 
-function ChatLockScreen({ onClose, onUnlock }) {
+function ChatLockScreen({ onClose }) {
   const [tokenInput, setTokenInput] = useState('');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
-  const unlockTimer = useRef(null);
-  useEffect(() => () => clearTimeout(unlockTimer.current), []);
 
   const handleActivate = async (e) => {
     e.preventDefault();
@@ -526,9 +527,9 @@ function ChatLockScreen({ onClose, onUnlock }) {
     try {
       const result = await validateTokenApi(raw);
       if (result.valid) {
+        // setToken dispatches auth-changed, and the lock lifts through AuthContext on that event; no callback.
         setToken(raw);
         setStatus('success');
-        unlockTimer.current = setTimeout(() => onUnlock?.(), 400);
       } else {
         setStatus('error');
         setError(result.error || 'Invalid token');
@@ -666,7 +667,19 @@ function storableMessages(msgs) {
   });
 }
 
-export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPremium, onUnlock, onOpenSettings, tickerContext, marketOpen, optionsMarketOpen, liveQuote }) {
+// The header's model name, as getAISettings() reads it, followed through the store events: a savePreference,
+// an import or a cloud pull of the name re-renders the label.
+// A stored value outside the string contract (importAll writes any JSON under a known name; a cloud row is applied as
+// it is) reads as the default: a fresh object per read would loop useSyncExternalStore, and ChatBot is mounted with the
+// chat closed, so that took the whole dashboard down at load.
+const readAiModelName = () => {
+  const v = getPreference('ai_model_name');
+  return typeof v === 'string' && v ? v : 'Default';
+};
+
+export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, shares }) {
+  const { data, tickerContext, marketOpen, optionsMarketOpen, liveQuote } = useMarket();
+  const { isPremium } = useAuth();
   const currentTicker = data?.ticker;
   const prevTickerRef = useRef(currentTicker);
   // D10: the chat is stored at a few persist points, never per streamed chunk (that was a localStorage write
@@ -682,10 +695,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   const [showContext, setShowContext] = useState(false);
   const [contextCopied, setContextCopied] = useState(false);
   const [contextEditorOpen, setContextEditorOpen] = useState(false);
-  const [aiLabel, setAiLabel] = useState(() => {
-    const s = getAISettings();
-    return { modelName: s.modelName, provider: s.provider };
-  });
+  const modelName = useStoreValue(readAiModelName);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const chunkBuf = useRef('');
@@ -781,15 +791,6 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
     window.addEventListener('store-changed', handler);
     return () => window.removeEventListener('store-changed', handler);
   }, [currentTicker]);
-
-  useEffect(() => {
-    const handler = () => {
-      const s = getAISettings();
-      setAiLabel({ modelName: s.modelName, provider: s.provider });
-    };
-    window.addEventListener('ai-settings-changed', handler);
-    return () => window.removeEventListener('ai-settings-changed', handler);
-  }, []);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -951,7 +952,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
   if (!isOpen) return null;
 
   if (!isPremium) {
-    return <ChatLockScreen onClose={onClose} onUnlock={onUnlock} />;
+    return <ChatLockScreen onClose={onClose} />;
   }
 
   return (
@@ -967,7 +968,7 @@ export default function ChatBot({ data, isOpen, onClose, costBasis, shares, isPr
               AI Co-Pilot
             </h3>
             <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
-              {aiLabel.modelName} · {data?.ticker || '—'} context
+              {modelName} · {data?.ticker || '—'} context
             </p>
           </div>
         </div>

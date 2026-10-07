@@ -5,8 +5,8 @@
 // it with unchanged props and nothing memoises it, so each call is an App render (two per render under StrictMode).
 // The tests after it pin what App reads through the store and auth events (Phase 5 (c)): the PRO badge following the
 // token, a position edit across an external store-changed, a ticker switch and a switch back, research turning on
-// with a Finnhub key, and (a regression against the unscoped design) an unrelated preference save costing no App
-// render.
+// with a Finnhub key, (a regression against the unscoped design) an unrelated preference save costing no App
+// render, and the chat's model label following the store.
 // Fake timers run with shouldAdvanceTime so waitFor and MSW keep working; the clock starts on Friday 2026-09-25 at
 // 11:00 ET, in the regular session.
 import { StrictMode } from 'react';
@@ -300,6 +300,46 @@ describe('App', () => {
       expect(screen.getByPlaceholderText('Shares')).toHaveValue(3);
     }, { timeout: 5_000 });
     await settled();
+    expect(error).not.toHaveBeenCalled();
+  }, 15_000);
+
+  // Regression: the pre-5 (c) ChatBot kept the model name in state and moved it on 'ai-settings-changed' only, an
+  // event importAll no longer dispatches and the Settings form stops dispatching in its own commit; a name written
+  // through the store bus (savePreference, as Settings writes it from then on) left the label at its mount-time
+  // value. Red there at the second label assertion, green with the label read through useStoreValue. The label is
+  // the premium panel's, so the token and the handlers are those of the tests above.
+  it("Regression: the chat's model label follows the store", async () => {
+    const error = vi.spyOn(console, 'error');
+    localStorage.setItem('access_token', proToken());
+    serveFunctions();
+    renderApp();
+    await costInput();
+    await settled();
+
+    fireEvent.click(screen.getByLabelText('Open AI Co-Pilot'));
+    expect(await screen.findByText(/Default · AVGO context/)).toBeInTheDocument();
+
+    act(() => { savePreference('ai_model_name', 'Claude X'); });
+    expect(await screen.findByText(/Claude X · AVGO context/)).toBeInTheDocument();
+    expect(error).not.toHaveBeenCalled();
+  }, 15_000);
+
+  // Regression (PR #70 review): a value outside the string contract under ai_model_name (importAll writes any JSON
+  // under a known name; a cloud row is applied as it is) reads as the default. Red on an unguarded read: the object is
+  // a fresh reference per read, useSyncExternalStore loops until React throws, and since ChatBot is mounted with the
+  // chat closed the whole dashboard fell into the ErrorBoundary at load (before the PR the same value broke only the
+  // opened chat).
+  it("Regression: a non-string ai_model_name reads as Default instead of taking the dashboard down at load", async () => {
+    const error = vi.spyOn(console, 'error');
+    localStorage.setItem('access_token', proToken());
+    localStorage.setItem('ai_model_name', JSON.stringify({ a: 1 }));
+    serveFunctions();
+    renderApp();
+    await costInput();
+    await settled();
+
+    fireEvent.click(screen.getByLabelText('Open AI Co-Pilot'));
+    expect(await screen.findByText(/Default · AVGO context/)).toBeInTheDocument();
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 });
