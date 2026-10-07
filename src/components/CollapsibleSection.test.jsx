@@ -1,7 +1,9 @@
 // src/components/CollapsibleSection.test.jsx — the collapsible panel around the position, research and chart
 // sections: open or collapsed, the choice it remembers per section (preference `section_<id>`, stored as JSON
-// `true`/`false`), and the re-read on `store-changed`. Phase 5 moves the preference to useSyncExternalStore; these
-// tests assert only what the user and the storage see, so they should pass unchanged across that rewrite.
+// `true`/`false`), and the re-read on `store-changed`. Phase 5 (c) moved the preference to useSyncExternalStore
+// (usePreference); these tests assert only what the user and the storage see, so they passed unchanged across that
+// rewrite. The last test pins the one behaviour change: a section whose stored choice disappears returns to its
+// defaultOpen, because the store is the source of truth now.
 import { StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
@@ -121,5 +123,16 @@ describe('CollapsibleSection', () => {
     await user.click(header());
     expect(setItem).toHaveBeenCalledTimes(2);
     expect(setItem).toHaveBeenLastCalledWith(KEY, 'true');
+  });
+
+  // The one behaviour change of the usePreference rewrite (red on the old component, which kept its toggled state).
+  it('returns to defaultOpen when the stored choice disappears (a sign-out or an import)', () => {
+    localStorage.setItem(KEY, 'false');
+    renderSection();
+    expectCollapsed();
+
+    localStorage.removeItem(KEY);
+    emitStoreChanged();
+    expectExpanded();
   });
 });
