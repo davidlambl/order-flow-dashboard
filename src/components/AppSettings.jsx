@@ -5,9 +5,12 @@ import {
   RefreshCw, Database, Cpu, Star, Eye, EyeOff, Download, Upload, FileText, HardDrive, RotateCcw, Pencil,
 } from 'lucide-react';
 import { fetchModels } from '../lib/api';
-import { setToken, validateToken as validateTokenApi, clearToken, hasValidToken, getTokenTier, daysRemaining } from '../lib/auth';
-import { exportAll, importAll, getPreference, setPreference, migrateSessionToLocal } from '../lib/store';
+import { setToken, validateToken as validateTokenApi, clearToken } from '../lib/auth';
+import { exportAll, importAll, getPreference, migrateSessionToLocal } from '../lib/store';
+import { savePreference } from '../lib/storeEvents.js';
 import { useAutoSave } from '../hooks/useAutoSave';
+import { useAuth } from '../contexts/AuthContext.js';
+import { useMarket } from '../contexts/MarketContext.js';
 import RequestAccessForm from './RequestAccessForm';
 import StrategicContextEditor from './StrategicContextEditor';
 
@@ -47,8 +50,9 @@ function SavedIndicator({ show }) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // ── Main Component ──
-// onSignIn: back to the sign-in screen; passed only when cloud sign-in is configured.
-export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource, userEmail, onSignOut, onSignIn }) {
+// The Data tab's banner reads the data source from MarketContext and the Account tab reads AuthContext (App provides
+// both); the sign-in button shows only while cloud sign-in is configured (signIn is undefined otherwise).
+export default function AppSettings({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState('ai');
 
   // AI state
@@ -83,23 +87,24 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
   const [contextEditorOpen, setContextEditorOpen] = useState(false);
   const [contextPreview, setContextPreview] = useState('');
 
-  const isPremium = hasValidToken();
-  const tier = getTokenTier();
-  const days = daysRemaining();
+  const { dataSource } = useMarket();
+  const { isPremium, tokenTier: tier, daysLeft: days, userEmail, signOut, signIn } = useAuth();
 
   // ── Auto-save wiring ──
+  // Every write here is a savePreference: the store bus tells this tab's readers (the chat's model label, App's
+  // Finnhub flag), where setPreference is silent by design. The data keys also dispatch data-source-changed, which
+  // the market-data, quote and research hooks listen to instead of the bus.
   const saveAiKey = useCallback((val) => {
-    setPreference(`ai_key_${provider}`, val?.trim() || null);
-    window.dispatchEvent(new CustomEvent('ai-settings-changed'));
+    savePreference(`ai_key_${provider}`, val?.trim() || null);
   }, [provider]);
 
   const saveTradierKey = useCallback((val) => {
-    setPreference('data_tradier_key', val?.trim() || null);
+    savePreference('data_tradier_key', val?.trim() || null);
     window.dispatchEvent(new CustomEvent('data-source-changed'));
   }, []);
 
   const saveFinnhubKey = useCallback((val) => {
-    setPreference('data_finnhub_key', val?.trim() || null);
+    savePreference('data_finnhub_key', val?.trim() || null);
     window.dispatchEvent(new CustomEvent('data-source-changed'));
   }, []);
 
@@ -131,8 +136,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
         if (!match) {
           const fallback = result.models[0];
           setSelectedModel(fallback.id);
-          setPreference('ai_model', fallback.id);
-          if (fallback.name) setPreference('ai_model_name', fallback.name);
+          savePreference('ai_model', fallback.id);
+          if (fallback.name) savePreference('ai_model_name', fallback.name);
         }
         setModelError(null);
       } else {
@@ -223,16 +228,14 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     setKeyTestStatus(null);
     setKeyTestError('');
     setShowApiKey(false);
-    setPreference('ai_provider', id);
-    window.dispatchEvent(new CustomEvent('ai-settings-changed'));
+    savePreference('ai_provider', id);
   }, [aiKeyFlush, aiKeyPrime, keys]);
 
   const handleModelChange = useCallback((modelId) => {
     setSelectedModel(modelId);
-    setPreference('ai_model', modelId);
+    savePreference('ai_model', modelId);
     const modelObj = models.find((m) => m.id === modelId);
-    setPreference('ai_model_name', modelObj?.name || modelId);
-    window.dispatchEvent(new CustomEvent('ai-settings-changed'));
+    savePreference('ai_model_name', modelObj?.name || modelId);
   }, [models]);
 
   // ── Test key ──
@@ -252,8 +255,8 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
         if (!match) {
           const fallback = result.models[0];
           setSelectedModel(fallback.id);
-          setPreference('ai_model', fallback.id);
-          if (fallback.name) setPreference('ai_model_name', fallback.name);
+          savePreference('ai_model', fallback.id);
+          if (fallback.name) savePreference('ai_model_name', fallback.name);
         }
       } else {
         setKeyTestStatus('error');
@@ -277,7 +280,6 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
       if (result.valid) {
         setToken(raw);
         setTokenStatus('success');
-        onAuthChange?.();
       } else {
         setTokenStatus('error');
         setTokenError(result.error || 'Invalid token');
@@ -286,15 +288,15 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
       setTokenStatus('error');
       setTokenError('Could not validate token.');
     }
-  }, [tokenInput, onAuthChange]);
+  }, [tokenInput]);
 
   // "Remove access token": deletes this browser's copy of the premium JWT (it is not revoked on the
-  // server, D9). The account sign-in is separate: "Sign out" above ends both.
+  // server, D9). The account sign-in is separate: "Sign out" above ends both. clearToken, like setToken,
+  // dispatches auth-changed, which AuthContext follows, so the tab tells nobody itself.
   const handleRevokeToken = useCallback(() => {
     clearToken();
     setTokenStatus(null);
-    onAuthChange?.();
-  }, [onAuthChange]);
+  }, []);
 
   // ── Reset all settings ──
   const handleReset = useCallback(() => {
@@ -304,7 +306,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
       'ai_key_anthropic', 'ai_key_openai', 'ai_key_gemini',
       'data_tradier_key', 'data_finnhub_key',
     ];
-    for (const key of settingKeys) setPreference(key, null);
+    for (const key of settingKeys) savePreference(key, null);
     setProvider('anthropic');
     setKeys({ anthropic: '', openai: '', gemini: '' });
     setSelectedModel('');
@@ -316,7 +318,6 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
     aiKeyPrime('');
     tradierPrime('');
     finnhubPrime('');
-    window.dispatchEvent(new CustomEvent('ai-settings-changed'));
     window.dispatchEvent(new CustomEvent('data-source-changed'));
     loadModelsForProvider('anthropic', '');
   }, [loadModelsForProvider, aiKeyPrime, tradierPrime, finnhubPrime]);
@@ -680,7 +681,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                     <span className="text-xs font-medium text-[var(--color-text-primary)]">Signed in</span>
                   </div>
                   <button
-                    onClick={() => { aiKeyFlush(); tradierFlush(); finnhubFlush(); onSignOut(); }}
+                    onClick={() => { aiKeyFlush(); tradierFlush(); finnhubFlush(); signOut(); }}
                     className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
                   >
                     Sign out
@@ -697,10 +698,10 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                   <p className="text-xs text-[var(--color-text-muted)]">
                     Not signed in — data is stored locally only.
                   </p>
-                  {onSignIn && (
+                  {signIn && (
                     <button
                       type="button"
-                      onClick={() => { aiKeyFlush(); tradierFlush(); finnhubFlush(); onSignIn(); }}
+                      onClick={() => { aiKeyFlush(); tradierFlush(); finnhubFlush(); signIn(); }}
                       className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
                     >
                       Sign in
@@ -853,7 +854,7 @@ export default function AppSettings({ isOpen, onClose, onAuthChange, dataSource,
                       type="button"
                       onClick={() => {
                         if (window.confirm('Clear all strategic context?')) {
-                          setPreference('strategic_context', null);
+                          savePreference('strategic_context', null);
                           setContextPreview('');
                         }
                       }}
