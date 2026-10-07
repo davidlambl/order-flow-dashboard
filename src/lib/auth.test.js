@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/setup.js';
 import {
-  AUTH_EVENT, clearToken, clearTokenIfDead, daysRemaining, decodeTokenPayload, getAuthHeaders, getToken, getTokenTier,
-  hasValidToken, setToken, validateToken, verifyStoredToken,
+  AUTH_EVENT, clearToken, clearTokenIfDead, daysRemaining, decodeTokenPayload, describeToken, getAuthHeaders, getToken,
+  getTokenTier, hasValidToken, setToken, subscribeAuth, validateToken, verifyStoredToken,
 } from './auth.js';
 
 const FN = 'http://localhost:3000/.netlify/functions';
@@ -262,5 +262,73 @@ describe('validateToken and verifyStoredToken', () => {
     expect(requests).toHaveLength(1);
     expect(localStorage.getItem('access_token')).toBe('tok-1');
     expect(authEvents).toBe(0);
+  });
+});
+
+describe('describeToken (client clock, no signature check)', () => {
+  const NOW = Date.parse('2026-09-26T12:00:00Z');
+  const nowSec = NOW / 1000;
+  const HOUR = 3600;
+  const DAY = 24 * HOUR;
+
+  beforeEach(() => {
+    vi.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a pro token with 9 days and 1 s left is premium, tier pro, with 10 days left (days round up)', () => {
+    expect(describeToken(jwt({ sub: 'user-1', tier: 'pro', exp: nowSec + 9 * DAY + 1 })))
+      .toEqual({ isPremium: true, tokenTier: 'pro', daysLeft: 10 });
+  });
+
+  it('an expired token is not premium and has 0 days left; its tier still reads', () => {
+    expect(describeToken(jwt({ tier: 'pro', exp: nowSec - 1 }))).toEqual({ isPremium: false, tokenTier: 'pro', daysLeft: 0 });
+  });
+
+  it.each([
+    ['null', null],
+    ['a malformed token', 'not-a-jwt'],
+    ['a token with neither exp nor tier', jwt({ sub: 'user-1' })],
+  ])('%s: not premium, no tier, 0 days', (_label, token) => {
+    expect(describeToken(token)).toEqual({ isPremium: false, tokenTier: null, daysLeft: 0 });
+  });
+
+  it('hasValidToken, getTokenTier and daysRemaining still read as describeToken(getToken())', () => {
+    const tokens = [
+      'not-a-jwt',
+      jwt({ sub: 'user-1', tier: 'premium', exp: nowSec + 36 * HOUR }),
+      jwt({ tier: 'trial', exp: nowSec + 1 }),
+      jwt({ tier: 'premium', exp: nowSec - 7 * DAY }),
+      jwt({ tier: 'premium' }),
+      jwt({ exp: nowSec + HOUR }),
+    ];
+    for (const token of tokens) {
+      setToken(token);
+      const { isPremium, tokenTier, daysLeft } = describeToken(getToken());
+      expect([hasValidToken(), getTokenTier(), daysRemaining()]).toEqual([isPremium, tokenTier, daysLeft]);
+    }
+    clearToken();
+    expect([hasValidToken(), getTokenTier(), daysRemaining()]).toEqual([false, null, 0]);
+    expect(describeToken(getToken())).toEqual({ isPremium: false, tokenTier: null, daysLeft: 0 });
+  });
+});
+
+describe('subscribeAuth', () => {
+  it('runs the listener once per auth-changed dispatch, and no longer after the unsubscribe', () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeAuth(listener);
+    window.dispatchEvent(new CustomEvent(AUTH_EVENT));
+    expect(listener).toHaveBeenCalledTimes(1);
+    setToken('tok-1');
+    clearToken();
+    expect(listener).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    setToken('tok-2');
+    expect(listener).toHaveBeenCalledTimes(3);
+    expect(authEvents).toBe(4); // the event itself still fires; only this listener is gone
   });
 });

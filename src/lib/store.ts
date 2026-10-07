@@ -8,10 +8,13 @@
 //   - `detail = { kind: 'position' | 'chat' | 'pref', id }`: one item changed (id is the ticker or
 //     the preference name), so a listener showing something else can ignore it.
 // Dispatch it with emitStoreChanged(); subscribeCrossTab() turns other tabs' localStorage writes
-// into it.
+// into it. The UI subscribes through storeEvents.ts (one window listener, versions scoped by the
+// detail, the useStoreValue hooks on top; ChatBot's chat-history handler apart, until 5 (d)) and
+// writes a preference with its savePreference(), which dispatches the item's detail;
+// setPreference() here stays silent.
 
 const SCHEMA_VERSION = 2;
-const STORE_CHANGED = 'store-changed';
+export const STORE_CHANGED = 'store-changed';
 
 const POSITION_PREFIX = 'position_';
 const CHAT_PREFIX = 'chat_history_';
@@ -528,8 +531,8 @@ function replaceCloudCopy(target: StoreBackend, snapshot: StoreSnapshot): void {
  *     per-browser flags in a file are never applied (exports never contain them, and a hand-edited file must
  *     not replace this device's keys); every other name is reported in `skipped`;
  *   - a backend with replaceCloud() is asked to make the cloud copy match what was imported (not awaited);
- *   - `store-changed` (no detail), `ai-settings-changed` and `data-source-changed` are dispatched, so every
- *     view, the AI settings and the market-data hooks re-read.
+ *   - `store-changed` (no detail) and `data-source-changed` are dispatched, so every view, the chat's model
+ *     label among them (it reads the store through storeEvents.ts), and the market-data hooks re-read.
  * Asking the user first is the caller's job (AppSettings).
  *
  * @param data a parsed backup: { version, positions?, chatHistories?, preferences? }
@@ -620,7 +623,6 @@ export function importAll(data: unknown): ImportResult {
   });
 
   emitStoreChanged();
-  emitWindowEvent('ai-settings-changed'); // AppSettings and ChatBot re-read the provider and model
   emitWindowEvent('data-source-changed'); // App and the market-data, quote and research hooks re-read
 
   return {

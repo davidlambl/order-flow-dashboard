@@ -1,29 +1,14 @@
 // src/components/CollapsibleSection.jsx
-import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { getPreference, setPreference } from '../lib/store';
+import { usePreference } from '../hooks/useStoreValue.js';
 
 export default function CollapsibleSection({ id, title, icon: Icon, badge, defaultOpen = true, noPadding = false, children }) {
-  const [open, setOpen] = useState(() => {
-    const saved = getPreference(`section_${id}`);
-    return saved != null ? saved : defaultOpen;
-  });
+  const [saved, save] = usePreference(`section_${id}`);
+  const open = saved ?? defaultOpen;
 
-  useEffect(() => {
-    const handler = () => {
-      const saved = getPreference(`section_${id}`);
-      if (saved != null) setOpen(saved);
-    };
-    window.addEventListener('store-changed', handler);
-    return () => window.removeEventListener('store-changed', handler);
-  }, [id]);
-
-  // The write stays out of the state updater, which StrictMode runs twice (D12).
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    setPreference(`section_${id}`, next);
-  };
+  // The store is the source of truth: the click handler writes it (once per click, never a render: D12) and
+  // usePreference re-renders every reader of the name, this one included.
+  const toggle = () => save(!open);
 
   return (
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] fade-in">

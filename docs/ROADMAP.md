@@ -116,7 +116,7 @@ Netlify deploy previews + GitGuardian are green on all of them.
   newer in-flight request.
 - **F10** `App.jsx:36-39` `getSession()` no `.catch` → spinner forever; `LoginForm.jsx:18` `signInWithOtp` no try/catch.
 - **F11** Expired token: `api.js:81,168` call `clearToken()` but App's `isPremium/tokenTier/daysLeft` never
-  update → Header shows PRO while every request 401s. Fix: `auth-changed` event + `useSyncExternalStore`.
+  update → Header shows PRO while every request 401s. Fix: `auth-changed` event + `useSyncExternalStore` (closed in 5 (c), #70).
 - **F12 Perf**: `setSecondsLeft` ticks 1 Hz in App state (`useMarketData.js:157-165`) → whole tree incl.
   every ReactMarkdown message and both Recharts charts re-render every second. `MessageBubble` not memoized,
   `onDelete={() => deleteMessage(i)}` new each render, `key={i}`. Fix: countdown state lives in Header;
@@ -526,13 +526,35 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `getChatHistory`) use a `version` counter + `useMemo` to avoid the infinite-loop trap. Replaces
    `store-changed`/`ai-settings-changed` `CustomEvent`s and the `set-state-in-effect` patterns in
    `CollapsibleSection`, `TickerResearch`, `App`. `MarketContext` + `AuthContext` end the 12-prop drilling.
+   **Built in #70 (Phase 5 (c), 2026-10-07).** The pinned tests and an attack stage on the design overruled parts of
+   this sketch:
+   - The `store-changed` window event stays as the bus: the store, sync and section tests pin it and the backends emit
+     it. What changed is the consumer side: `src/lib/storeEvents.ts` keeps ONE permanent window listener (attached by
+     the first subscriber, never detached; attaching bumps the versions, since React checks a store's snapshot right
+     after subscribing and a lazy listener lost an event fired between a render and its subscribe) and fans out to the
+     hooks in `src/hooks/useStoreValue.ts`. `notify` is the existing `emitStoreChanged`.
+   - Versions are scoped by the event's detail (`getStoreVersion(kind?, id?)`): a global counter made every preference
+     save — a section toggle, a sidebar mouseup, each settings autosave — a full App render, charts included.
+   - Object snapshots use `useStoreObject(read, key, kind, id)`, a per-instance snapshot adjusted during render (the
+     pattern `useTickerContext` already used), not `useMemo` over the version: that form is a `react-hooks/use-memo`
+     error plus an `exhaustive-deps` warning under the 0-warning baseline. `usePreference(name)` treats a non-primitive
+     stored value as unset (a hand-edited import would otherwise loop `useSyncExternalStore`).
+   - `setPreference` stays silent (import, hydrate and the sync paths rely on it); UI writers call `savePreference`,
+     always with a detail, because ChatBot aborts a streaming reply on a no-detail event. `ai-settings-changed` is gone
+     (its one listener, the chat's model label, reads the store); `data-source-changed` stays for the data hooks.
+   - F11 closed by `usePremiumStatus()` (`useSyncExternalStore` on `auth-changed`; snapshot = the token string), which
+     made App's `refreshAuth` and the `onUnlock` / `onAuthChange` callbacks redundant. The contexts are provided by App
+     from its existing state (the `useSupabaseAuth` / `useResizableSidebar` extraction is step 4's). `getChatHistory`
+     is left to step 4's `useChatHistory`: the chat's history is a streaming state machine with its own listener.
+   - One behaviour change: a section whose stored choice disappears (a sign-out, an import without it) returns to its
+     default instead of keeping the toggled state.
 4. **Decomposition order** (chosen to avoid conflicts with the March PRs, which touch ChatBot ×3,
    PositionAnalysis ×2, store, recommend, the three hooks, getLiveQuote, marketDataHelpers, KPICards):
    `TickerResearch` (no PR overlap; already 7 internal components → `components/research/*.tsx`,
    `timeAgo` → lib) → `AppSettings` (no overlap; by tab → `components/settings/*`, `useModelList`,
    `useKeyTester`, `getAISettings` → `lib/aiSettings.ts`) → `ChatBot` (after Phase 0; `lib/financialContext.ts`
    with tests, `components/chat/*`, `useChatStream`, `useChatHistory`) → `PositionAnalysis`
-   (`components/position/*`) → `App` (`useSupabaseAuth`, `useResizableSidebar`, `usePremiumStatus`).
+   (`components/position/*`) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
    Extract pure logic first, presentational leaves second, stateful hooks last.
 5. **Code-splitting** (after Vite 8): `React.lazy` + `Suspense` (existing skeletons as fallbacks) for
    `ChatBot` (+ markdown graph; mount only while open, `requestIdleCallback` preload), `ChartsPanel`

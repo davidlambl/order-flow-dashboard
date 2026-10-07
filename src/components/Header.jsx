@@ -1,8 +1,10 @@
 // src/components/Header.jsx
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
 import { formatPrice } from '../lib/format';
 import { useCountdown } from '../hooks/useCountdown.js';
+import { useMarket } from '../contexts/MarketContext.js';
+import { useAuth } from '../contexts/AuthContext.js';
 
 // Why getMarketData served CBOE although a Tradier key was available (payload `fallbackReason`).
 const FALLBACK_REASON_TEXT = {
@@ -27,23 +29,59 @@ function RefreshCountdown({ nextRefreshAt, refreshMs }) {
   );
 }
 
-export default function Header({ ticker, onTickerChange, onRefresh, loading, usingMock, data, isPremium, tokenTier, daysLeft, signedIn, onSignOut, onOpenSettings, earnings, autoRefresh, nextRefreshAt, refreshMs, optionsMarketOpen, onToggleAutoRefresh, liveQuote, spotPrice }) {
+// The ticker field, keyed on the ticker by Header (<TickerSearch key={ticker}>): a new ticker, from a submit here or
+// a change elsewhere, mounts a fresh field seeded with it, so nothing syncs the input state in an effect after the
+// fact. Only the input group and its form are in here; the refresh and auto-refresh buttons sit beside it in Header,
+// where the remount never reaches them or the countdown.
+function TickerSearch({ ticker, setTicker }) {
   const [input, setInput] = useState(ticker);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef(null);
-
-  useEffect(() => {
-    setInput(ticker);
-  }, [ticker]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     const val = input.trim().toUpperCase();
     if (val && val !== ticker) {
-      onTickerChange(val);
+      setTicker(val);
     }
     inputRef.current?.blur();
   };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div
+        className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-all duration-200 ${
+          focused
+            ? 'border-[var(--color-accent)] bg-[var(--color-surface-2)] ring-1 ring-[var(--color-accent)]/30'
+            : 'border-[var(--color-border)] bg-[var(--color-surface-2)]'
+        }`}
+      >
+        <Search size={14} className="text-[var(--color-text-muted)] shrink-0" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value.toUpperCase())}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="Ticker"
+          spellCheck={false}
+          className="w-16 sm:w-20 bg-transparent text-sm font-mono font-semibold text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
+          aria-label="Stock ticker symbol"
+        />
+      </div>
+    </form>
+  );
+}
+
+export default function Header({ onOpenSettings }) {
+  const {
+    ticker, setTicker, refresh, loading, usingMock, data, tickerContext, autoRefresh, nextRefreshAt, refreshMs,
+    optionsMarketOpen, toggleAutoRefresh, liveQuote,
+  } = useMarket();
+  const { isPremium, tokenTier, daysLeft, signedIn, signOut } = useAuth();
+  const earnings = tickerContext?.earnings;
+  const spotPrice = data?.spotPrice;
 
   const timeStr = data?.lastUpdated
     ? new Date(data.lastUpdated).toLocaleTimeString('en-US', {
@@ -102,31 +140,12 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             </div>
           );
         })()}
-        <form onSubmit={handleSubmit} className="flex items-center gap-1.5 sm:gap-2">
-          <div
-            className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg border transition-all duration-200 ${
-              focused
-                ? 'border-[var(--color-accent)] bg-[var(--color-surface-2)] ring-1 ring-[var(--color-accent)]/30'
-                : 'border-[var(--color-border)] bg-[var(--color-surface-2)]'
-            }`}
-          >
-            <Search size={14} className="text-[var(--color-text-muted)] shrink-0" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value.toUpperCase())}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              placeholder="Ticker"
-              spellCheck={false}
-              className="w-16 sm:w-20 bg-transparent text-sm font-mono font-semibold text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
-              aria-label="Stock ticker symbol"
-            />
-          </div>
+        {/* The search is keyed on the ticker (TickerSearch); the two buttons beside it outlive a ticker change. */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <TickerSearch key={ticker} ticker={ticker} setTicker={setTicker} />
           <button
             type="button"
-            onClick={onRefresh}
+            onClick={refresh}
             disabled={loading}
             className="p-1.5 sm:p-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-muted)] transition-all duration-200 disabled:opacity-40"
             aria-label="Refresh data"
@@ -137,7 +156,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
           {/* Auto-refresh toggle */}
           <button
             type="button"
-            onClick={onToggleAutoRefresh}
+            onClick={toggleAutoRefresh}
             aria-label={autoRefresh ? 'Disable auto-refresh' : 'Enable auto-refresh'}
             className={`flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1.5 rounded-lg border text-[10px] font-semibold tabular-nums transition-all ${
               autoRefresh && optionsMarketOpen && !usingMock
@@ -161,7 +180,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
               'Auto'
             )}
           </button>
-        </form>
+        </div>
 
         {/* Earnings badge */}
         {earnings?.date && (() => {
@@ -204,7 +223,7 @@ export default function Header({ ticker, onTickerChange, onRefresh, loading, usi
             {signedIn && (
               <button
                 type="button"
-                onClick={onSignOut}
+                onClick={signOut}
                 className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
                 title="Sign out"
                 aria-label="Sign out"

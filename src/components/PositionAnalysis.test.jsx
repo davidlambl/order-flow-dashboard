@@ -1,8 +1,9 @@
 // src/components/PositionAnalysis.test.jsx — the position panel: unrealised P&L, the recommendation badge and its
 // reasons, the price-level legend, dual mode (the live price has moved while the options market is closed), the
-// staleness and price-source badges, and the average-cost / shares inputs. Phase 5 splits the component into
-// components/position/*; these tests render the default export and assert only what it shows and sends, so they
-// should pass unchanged across that decomposition.
+// staleness and price-source badges, and the average-cost / shares inputs. Since Phase 5 (c) the panel reads its
+// market data from App's MarketContext and takes only the position draft as props, so renderPanel renders it inside
+// src/test/contexts.jsx's withContexts; the tests still assert only what it shows and sends, and should pass
+// unchanged across the components/position/* decomposition still to come in Phase 5.
 //
 // Not covered here; tracked separately: typing shares while the cost basis is empty. handleSharesChange sends
 // `costBasisNum ?? null` with costBasisNum = Number(costBasis), which is never null or undefined, so a null basis
@@ -13,6 +14,7 @@ import userEvent from '@testing-library/user-event';
 import PositionAnalysis from './PositionAnalysis.jsx';
 import { computeRecommendation } from '../lib/recommend.js';
 import { GAP_DUAL_REC_THRESHOLD_PCT } from '../../shared/thresholds.js';
+import { withContexts } from '../test/contexts.jsx';
 
 // The staleness badge formats with toLocaleTimeString / toLocaleString in the process time zone. Vitest moves
 // vi.hoisted above the imports, so the whole file runs on Eastern Time (2026-09-25 is EDT, UTC-4).
@@ -46,7 +48,7 @@ const GEX = [{ strike: 95, gex: 5e8 }];
 const QUOTE_TIME = Date.parse('2026-09-25T20:58:00Z'); // two minutes before NOW
 
 function renderPanel(overrides = {}) {
-  const props = {
+  const { costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, lastUpdated, dataProvider, ...rest } = {
     costBasis: 90,
     shares: 10,
     spotPrice: SPOT,
@@ -60,7 +62,11 @@ function renderPanel(overrides = {}) {
     loading: false,
     ...overrides,
   };
-  return { ...render(<PositionAnalysis {...props} />), props };
+  // The position draft is the panel's props; the rest goes into the context the way App provides it, the payload
+  // fields under `data` (dataProvider is data.provider) and loading, the session flags and the live quote beside it.
+  const props = { costBasis, shares, onUpdate };
+  const market = { ...rest, data: { spotPrice, kpis, gexByStrike, lastUpdated, provider: dataProvider } };
+  return { ...render(withContexts(<PositionAnalysis {...props} />, { market })), props };
 }
 
 /** A live quote at `current` from `source`, stamped two minutes before NOW. */

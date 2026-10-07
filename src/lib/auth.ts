@@ -4,7 +4,10 @@
 // The stored token is only *decoded* here (to show tier / days left). Whether it
 // is actually valid is decided by the server: at startup via verifyStoredToken()
 // and on every API call. Any change to the stored token dispatches AUTH_EVENT so
-// UI state can follow.
+// UI state can follow: subscribeAuth() is how a hook follows it (usePremiumStatus,
+// through useSyncExternalStore), and describeToken() is the status it derives.
+// No window is touched at module load, so Node can import this: without one,
+// notify() is silent and subscribeAuth() subscribes nothing.
 
 const TOKEN_KEY = 'access_token';
 const FUNCTION_BASE = '/.netlify/functions';
@@ -136,30 +139,57 @@ export async function verifyStoredToken(): Promise<VerifyOutcome> {
   }
 }
 
+/** What the UI shows for a token: the PRO / TRIAL badge, the gates and the days-left count. */
+export interface TokenStatus {
+  /** A token whose `exp` is still ahead of the client clock; the signature is the server's to check. */
+  isPremium: boolean;
+  /** The token's `tier` claim, read whether or not it has expired; null without one. */
+  tokenTier: string | null;
+  /** Whole days until `exp`, rounded up; 0 once expired, and for a token without `exp`. */
+  daysLeft: number;
+}
+
+/**
+ * The status of one token string (the stored one, or null) against the client clock: decoded, not verified.
+ * The clock is read once, so the three fields agree with each other.
+ */
+export function describeToken(token: string | null): TokenStatus {
+  const payload = decodeTokenPayload(token);
+  const tokenTier = payload?.tier || null;
+  if (!payload?.exp) return { isPremium: false, tokenTier, daysLeft: 0 };
+  const msLeft = payload.exp * 1000 - Date.now();
+  return { isPremium: msLeft > 0, tokenTier, daysLeft: Math.max(0, Math.ceil(msLeft / 86_400_000)) };
+}
+
 /**
  * Quick client-side check: is there a stored token that hasn't expired?
  * This does NOT verify the signature -- that happens server-side on each API call.
  */
 export function hasValidToken(): boolean {
-  const payload = decodeTokenPayload(getToken());
-  if (!payload?.exp) return false;
-  return payload.exp * 1000 > Date.now();
+  return describeToken(getToken()).isPremium;
 }
 
 /**
  * Returns days remaining until expiration, or 0 if expired/invalid.
  */
 export function daysRemaining(): number {
-  const payload = decodeTokenPayload(getToken());
-  if (!payload?.exp) return 0;
-  const ms = payload.exp * 1000 - Date.now();
-  return Math.max(0, Math.ceil(ms / 86_400_000));
+  return describeToken(getToken()).daysLeft;
 }
 
 /**
  * Returns the tier from the stored token, or null.
  */
 export function getTokenTier(): string | null {
-  const payload = decodeTokenPayload(getToken());
-  return payload?.tier || null;
+  return describeToken(getToken()).tokenTier;
+}
+
+/**
+ * Follow the stored token: `listener` runs after every setToken and clearToken (clearTokenIfDead and
+ * verifyStoredToken included), in the shape useSyncExternalStore's subscribe takes. Returns the unsubscribe.
+ * Without a window nothing is subscribed and the returned function does nothing.
+ */
+export function subscribeAuth(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(AUTH_EVENT, listener);
+  return () => window.removeEventListener(AUTH_EVENT, listener);
 }
