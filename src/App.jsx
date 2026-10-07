@@ -16,8 +16,11 @@ import SyncChoice from './components/SyncChoice';
 import { useMarketData } from './hooks/useMarketData';
 import { useTickerContext } from './hooks/useTickerContext';
 import { useLiveQuote } from './hooks/useLiveQuote';
-import { hasValidToken, getTokenTier, daysRemaining, verifyStoredToken, AUTH_EVENT } from './lib/auth';
-import { getPosition, setPosition as storeSetPosition, getPreference, setPreference, migrateSessionToLocal, setBackend, LocalStorageBackend, emitStoreChanged, subscribeCrossTab } from './lib/store';
+import { usePremiumStatus } from './hooks/usePremiumStatus.js';
+import { useStoreObject, useStoreValue } from './hooks/useStoreValue.js';
+import { verifyStoredToken } from './lib/auth';
+import { getPosition, setPosition as storeSetPosition, getPreference, migrateSessionToLocal, setBackend, LocalStorageBackend, emitStoreChanged, subscribeCrossTab } from './lib/store';
+import { savePreference, subscribeStore } from './lib/storeEvents.js';
 import { supabase } from './lib/supabase';
 import { SupabaseBackend } from './lib/SupabaseBackend';
 import { signOut, claimLocalData, isAuthSkipped, setAuthSkipped as persistAuthSkipped } from './lib/session';
@@ -33,6 +36,15 @@ const POSITION_SAVE_DELAY_MS = 300;
 // The value carries its ticker, so a save that runs after a ticker change still lands on the
 // ticker it was typed for.
 const savePosition = ({ ticker, costBasis, shares }) => storeSetPosition(ticker, { costBasis, shares });
+
+// What App reads from the store through useStoreValue. Module level: a snapshot function with a new identity per
+// render costs React a passive effect to re-check it.
+const readHasFinnhubKey = () => Boolean(getPreference('data_finnhub_key'));
+// The stored sidebar width when this layout can show it; the default otherwise.
+const readSidebarWidth = () => {
+  const n = getPreference('sidebarWidth');
+  return typeof n === 'number' && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
+};
 
 const AUTH_CHECK_FAILED = 'Could not check your sign-in status. You can retry or continue without signing in.';
 
@@ -169,47 +181,45 @@ export default function App() {
   const [ticker, setTicker] = useState('AVGO');
   const [chatOpen, setChatOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [costBasis, setCostBasis] = useState(null);
-  const [shares, setShares] = useState(null);
-  const [isPremium, setIsPremium] = useState(() => hasValidToken());
+
+  // The stored access token's status, following every set and clear through the auth event (F11). On startup the
+  // server is asked whether the stored token is still valid (expired, revoked, re-signed): a rejection clears it,
+  // and that clear arrives through the same event.
+  const { isPremium, tokenTier, daysLeft } = usePremiumStatus();
+  useEffect(() => { void verifyStoredToken(); }, []);
+
   // Research data needs either an access token or the user's own Finnhub key.
-  const [hasFinnhubKey, setHasFinnhubKey] = useState(() => Boolean(getPreference('data_finnhub_key')));
-  useEffect(() => {
-    const handler = () => setHasFinnhubKey(Boolean(getPreference('data_finnhub_key')));
-    window.addEventListener('data-source-changed', handler);
-    window.addEventListener('store-changed', handler);
-    return () => {
-      window.removeEventListener('data-source-changed', handler);
-      window.removeEventListener('store-changed', handler);
-    };
-  }, []);
+  const hasFinnhubKey = useStoreValue(readHasFinnhubKey);
   const { data, loading, error, usingMock, refresh, autoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
   const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const n = getPreference('sidebarWidth');
-    return typeof n === 'number' && n >= SIDEBAR_MIN && n <= SIDEBAR_MAX ? n : SIDEBAR_DEFAULT;
-  });
-  const [isResizing, setIsResizing] = useState(false);
-  const sidebarWRef = useRef(sidebarWidth);
-  useEffect(() => { sidebarWRef.current = sidebarWidth; }, [sidebarWidth]);
+  // The sidebar is as wide as the store says, except during a drag, when it follows the mouse. The mouseup stores
+  // the dragged width before it hands the aside back to the store, so the width does not move.
+  const savedWidth = useStoreValue(readSidebarWidth);
+  const [dragWidth, setDragWidth] = useState(null); // the width under the mouse while a drag is under way
+  const isResizing = dragWidth !== null;
+  const sidebarWidth = dragWidth ?? savedWidth;
 
   const dragCleanupRef = useRef(null);
 
+  // A new handler whenever the width changes (it starts a drag from it): the handle is a plain div, so nothing
+  // memoises on its identity.
   const handleResizeStart = useCallback((e) => {
     e.preventDefault();
-    setIsResizing(true);
     const startX = e.clientX;
-    const startW = sidebarWRef.current;
+    const startW = sidebarWidth;
+    let w = startW;
+    setDragWidth(startW);
 
     const onMove = (ev) => {
       const delta = startX - ev.clientX;
-      setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + delta)));
+      w = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, startW + delta));
+      setDragWidth(w);
     };
     const cleanup = () => {
-      setIsResizing(false);
-      setPreference('sidebarWidth', sidebarWRef.current);
+      savePreference('sidebarWidth', w);
+      setDragWidth(null);
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', cleanup);
       document.body.style.cursor = '';
@@ -228,58 +238,34 @@ export default function App() {
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', cleanup);
-  }, []);
+  }, [sidebarWidth]);
 
   useEffect(() => {
     return () => { if (dragCleanupRef.current) dragCleanupRef.current(); };
   }, []);
 
-  const [tokenTier, setTokenTier] = useState(() => getTokenTier());
-  const [daysLeft, setDaysLeft] = useState(() => daysRemaining());
+  // This ticker's stored position, re-read when it or the whole store changes. The inputs follow every keystroke
+  // of an edit; the store (and through it the cloud) gets the value once typing pauses (roadmap D10).
+  const storedPosition = useStoreObject(() => getPosition(ticker), ticker, 'position', ticker);
+  const [edit, setEdit] = useState(null); // { ticker, costBasis, shares } while an edit is being typed
+  const position = edit && edit.ticker === ticker ? edit : storedPosition;
+  const { costBasis, shares } = position;
 
-  const refreshAuth = useCallback(() => {
-    setIsPremium(hasValidToken());
-    setTokenTier(getTokenTier());
-    setDaysLeft(daysRemaining());
-  }, []);
-
-  // Keep premium state in sync with the stored token: any set/clear (including a
-  // server-side rejection during an API call) dispatches AUTH_EVENT. On startup,
-  // ask the server whether the stored token is still valid (expired/revoked/re-signed).
-  useEffect(() => {
-    window.addEventListener(AUTH_EVENT, refreshAuth);
-    verifyStoredToken().then(refreshAuth);
-    return () => window.removeEventListener(AUTH_EVENT, refreshAuth);
-  }, [refreshAuth]);
-
-  useEffect(() => {
-    const saved = getPosition(ticker);
-    setCostBasis(saved.costBasis);
-    setShares(saved.shares);
-  }, [ticker]);
-
-  useEffect(() => {
-    const handler = () => {
-      // A position edit still inside its debounce is newer than the stored copy: write it before
-      // re-reading, so the inputs never jump back to the old value while the store gets the new one.
-      positionSaver.flush();
-      const saved = getPosition(ticker);
-      setCostBasis(saved.costBasis);
-      setShares(saved.shares);
-      const w = getPreference('sidebarWidth');
-      if (typeof w === 'number' && w >= SIDEBAR_MIN && w <= SIDEBAR_MAX) setSidebarWidth(w);
-    };
-    window.addEventListener('store-changed', handler);
-    return () => window.removeEventListener('store-changed', handler);
-  }, [ticker, positionSaver]);
-
-  // The inputs follow every keystroke; the store (and through it the cloud) gets the value once
-  // typing pauses (roadmap D10).
   const updatePosition = useCallback((newCost, newShares) => {
-    setCostBasis(newCost);
-    setShares(newShares);
+    setEdit({ ticker, costBasis: newCost, shares: newShares });
     positionSaver.schedule({ ticker, costBasis: newCost, shares: newShares }, savePosition);
   }, [ticker, positionSaver]);
+
+  // A whole-store change (a cloud pull, an import, a sign-out) or this ticker's position changing elsewhere (another
+  // tab) shows the stored position; an edit still inside its debounce is written first, so the inputs never jump
+  // back while the store gets the new value. A detail for another item (a preference save, another ticker) does
+  // nothing: with an unfiltered listener the same-value setEdit(null) alone re-rendered the whole App on every
+  // section toggle.
+  useEffect(() => subscribeStore((detail) => {
+    if (detail !== null && !(detail.kind === 'position' && detail.id === ticker)) return;
+    positionSaver.flush();
+    setEdit(null);
+  }), [positionSaver, ticker]);
 
   // Closing the tab or unmounting inside the debounce saves the edit instead of dropping it.
   useEffect(() => {
@@ -292,7 +278,8 @@ export default function App() {
   }, [positionSaver]);
 
   const handleTickerChange = useCallback((newTicker) => {
-    positionSaver.flush(); // the old ticker's edit is stored before the new ticker's position loads
+    positionSaver.flush(); // the old ticker's edit is stored before the new ticker's position shows
+    setEdit(null);
     setTicker(newTicker);
   }, [positionSaver]);
 
@@ -402,7 +389,7 @@ export default function App() {
 
           {/* Position Analysis */}
           <CollapsibleSection id="position" title="Position Analysis" icon={Target}>
-            <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Position Analysis">
+            <PremiumGate isPremium={isPremium} featureName="Position Analysis">
               <PositionAnalysis
                 costBasis={costBasis}
                 shares={shares}
@@ -421,7 +408,7 @@ export default function App() {
           </CollapsibleSection>
 
           {/* Research */}
-          <PremiumGate isPremium={isPremium} onUnlock={refreshAuth} featureName="Ticker Research">
+          <PremiumGate isPremium={isPremium} featureName="Ticker Research">
             <TickerResearch context={tickerContext} loading={contextLoading} spotPrice={data?.spotPrice} />
           </PremiumGate>
 
@@ -485,7 +472,6 @@ export default function App() {
             costBasis={costBasis}
             shares={shares}
             isPremium={isPremium}
-            onUnlock={refreshAuth}
             onOpenSettings={openSettings}
             tickerContext={tickerContext}
             marketOpen={marketOpen}
@@ -511,7 +497,6 @@ export default function App() {
       <AppSettings
         isOpen={settingsOpen}
         onClose={closeSettings}
-        onAuthChange={refreshAuth}
         dataSource={dataSource}
         userEmail={authSession?.user?.email}
         onSignOut={handleSignOut}
