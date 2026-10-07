@@ -3,6 +3,7 @@ import {
   Newspaper, Calendar, TrendingUp, ChevronDown, ChevronRight,
   ExternalLink, Clock, Globe,
 } from 'lucide-react';
+import { useMarket } from '../contexts/MarketContext.js';
 import { usePreference } from '../hooks/useStoreValue.js';
 
 function timeAgo(isoDate) {
@@ -371,7 +372,9 @@ function MarketHeadlines({ news }) {
   );
 }
 
-export default function TickerResearch({ context, loading, spotPrice }) {
+export default function TickerResearch() {
+  const { tickerContext: context, contextLoading: loading, data } = useMarket();
+  const spotPrice = data?.spotPrice;
   const [saved, save] = usePreference('section_research');
   const open = saved ?? true;
 
