@@ -347,28 +347,7 @@ export default function App() {
     <div key={authSession?.user?.id ?? 'local'} className="h-full flex flex-col overflow-hidden">
       <AuthContext value={auth}>
         <MarketContext value={market}>
-          <Header
-            ticker={ticker}
-            onTickerChange={handleTickerChange}
-            onRefresh={handleRefresh}
-            loading={loading}
-            usingMock={usingMock}
-            data={data}
-            isPremium={isPremium}
-            tokenTier={tokenTier}
-            daysLeft={daysLeft}
-            signedIn={Boolean(authSession)}
-            onSignOut={handleSignOut}
-            onOpenSettings={openSettings}
-            earnings={tickerContext?.earnings}
-            autoRefresh={autoRefresh}
-            nextRefreshAt={nextRefreshAt}
-            refreshMs={refreshMs}
-            optionsMarketOpen={optionsMarketOpen}
-            onToggleAutoRefresh={toggleAutoRefresh}
-            liveQuote={liveQuote}
-            spotPrice={data?.spotPrice}
-          />
+          <Header onOpenSettings={openSettings} />
 
           <div className="flex-1 flex overflow-hidden">
             {/* Main Content */}
@@ -410,27 +389,14 @@ export default function App() {
 
               {/* Position Analysis */}
               <CollapsibleSection id="position" title="Position Analysis" icon={Target}>
-                <PremiumGate isPremium={isPremium} featureName="Position Analysis">
-                  <PositionAnalysis
-                    costBasis={costBasis}
-                    shares={shares}
-                    onUpdate={updatePosition}
-                    spotPrice={data?.spotPrice}
-                    kpis={data?.kpis}
-                    gexByStrike={data?.gexByStrike}
-                    loading={loading}
-                    lastUpdated={data?.lastUpdated}
-                    marketOpen={marketOpen}
-                    optionsMarketOpen={optionsMarketOpen}
-                    liveQuote={liveQuote}
-                    dataProvider={data?.provider}
-                  />
+                <PremiumGate featureName="Position Analysis">
+                  <PositionAnalysis costBasis={costBasis} shares={shares} onUpdate={updatePosition} />
                 </PremiumGate>
               </CollapsibleSection>
 
               {/* Research */}
-              <PremiumGate isPremium={isPremium} featureName="Ticker Research">
-                <TickerResearch context={tickerContext} loading={contextLoading} spotPrice={data?.spotPrice} />
+              <PremiumGate featureName="Ticker Research">
+                <TickerResearch />
               </PremiumGate>
 
               {/* Charts */}
@@ -487,17 +453,11 @@ export default function App() {
               style={{ width: chatOpen ? sidebarWidth : 0 }}
             >
               <ChatBot
-                data={data}
                 isOpen={chatOpen}
                 onClose={() => setChatOpen(false)}
+                onOpenSettings={openSettings}
                 costBasis={costBasis}
                 shares={shares}
-                isPremium={isPremium}
-                onOpenSettings={openSettings}
-                tickerContext={tickerContext}
-                marketOpen={marketOpen}
-                optionsMarketOpen={optionsMarketOpen}
-                liveQuote={liveQuote}
               />
             </aside>
           </div>
@@ -515,14 +475,7 @@ export default function App() {
           )}
 
           {/* Global Settings Modal */}
-          <AppSettings
-            isOpen={settingsOpen}
-            onClose={closeSettings}
-            dataSource={dataSource}
-            userEmail={authSession?.user?.email}
-            onSignOut={handleSignOut}
-            onSignIn={supabase ? handleSignIn : undefined}
-          />
+          <AppSettings isOpen={settingsOpen} onClose={closeSettings} />
 
           {/* Sign-in found different data here and in the account: nothing syncs until the user picks */}
           {syncConflict && syncConflict.userId === authSession?.user?.id && (
