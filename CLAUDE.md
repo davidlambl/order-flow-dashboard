@@ -26,10 +26,10 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline after Phase 5 (b): 6 errors, 0 warnings (five
-  `react-hooks/set-state-in-effect` in `App`, `AppSettings` ×2, `Header` and `StrategicContextEditor`, one
-  `react-refresh/only-export-components` in `AppSettings`), all owned by the later Phase 5 PRs; don't add new ones. CI
-  runs lint non-blocking until that count is zero, then it becomes required.
+- `npm run build` — must pass. `npm run lint` — baseline after Phase 5 (c): 4 errors, 0 warnings (three
+  `react-hooks/set-state-in-effect` in `AppSettings` ×2 and `StrategicContextEditor`, one
+  `react-refresh/only-export-components` in `AppSettings`), all owned by Phase 5 (d); don't add new ones. CI runs lint
+  non-blocking until that count is zero, then it becomes required.
 - `npm run typecheck` — `tsc -p tsconfig.json` (browser program: `src/`, `shared/`, `types/`; DOM lib and only Vite's
   and Vitest's ambient types, so Node globals do not typecheck in `src/`) then `tsc -p tsconfig.functions.json` (Node
   program: `netlify/`, `shared/`, `types/`, `scripts/`; `@types/node`, no DOM). `allowJs` with `checkJs: false`: the
@@ -43,7 +43,9 @@ should:
   `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there). The same setup makes TanStack
   Query's notifications synchronous (`notifyManager.setScheduler`, so a hook's new result lands inside `act`) and
   clears the shared `queryClient` after every test; hooks take the client as `useQuery`'s second argument, so hook
-  tests render them bare, with no provider. `npm run test:watch`,
+  tests render them bare, with no provider. A component that reads the contexts renders inside them with
+  `src/test/contexts.jsx` (`marketValue(overrides)`, `authValue(overrides)`, `withContexts(ui, { market, auth })`),
+  which replaced the props those tests used to pass. `npm run test:watch`,
   `npm run test:coverage` (CI), `npm run check` = lint (non-blocking until the baseline is zero) + typecheck + test +
   build.
   Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
@@ -63,8 +65,10 @@ should:
   `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js` baseline-compared debounce behind
   `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`,
   `format.ts`, `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
-  client side, `queryClient.ts` the one TanStack Query client and the per-hook key families, `marketHours.ts` the
-  refresh cadence with its backoff and the ET session state, pure). Modules the
+  client side with `describeToken` and `subscribeAuth`, `storeEvents.ts` the subscription side of `store-changed` (one
+  permanent window listener, versions scoped by the event's detail, `savePreference` for UI writes), `queryClient.ts`
+  the one TanStack Query client and the per-hook key families, `marketHours.ts` the refresh cadence with its backoff and
+  the ET session state, pure). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` specifier also resolves to a renamed `.ts` module
   (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
@@ -73,8 +77,16 @@ should:
   carries `fetchMeta` `{ silent: true }`; returns the deadline `nextRefreshAt` and `refreshMs` instead of a per-second
   counter), `useLiveQuote` (60 s `staleTime` and `refetchInterval`), `useTickerContext` (15 min `staleTime`,
   `enabled`); `useMarketClock` (the ET session flags, re-checked every 30 s), `useCountdown` (Header's 1 Hz countdown
-  leaf, F12), `useNow`, and `useAutoSave(saveFn, delay)` → `{ prime, schedule, flush, saved }`: prime with the loaded
-  value, schedule from `onChange`, flush before close.
+  leaf, F12), `useNow`, `useAutoSave(saveFn, delay)` → `{ prime, schedule, flush, saved }` (prime with the loaded
+  value, schedule from `onChange`, flush before close); the store readers on `useSyncExternalStore` in `useStoreValue.ts`
+  (`useStoreValue(read)` for a primitive, `useStoreObject(read, key, kind, id)` for an object such as `getPosition`,
+  `usePreference(name)` → `[value, save]`, `useStoreVersion`); and `usePremiumStatus()` → `{ isPremium, tokenTier,
+  daysLeft }` from the stored access token on `auth-changed` (F11).
+- `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
+  provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
+  ChatBot, TickerResearch, AppSettings and PremiumGate read them instead of App's props; `KPICards`, `GexChart` and
+  `FlowChart` keep their data props (pure leaves, and `App.test.jsx` counts App's renders through KPICards'), and the
+  position draft, `isOpen`/`onClose` and `onOpenSettings` stay props.
 - `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are
   large and scheduled for decomposition (Phase 5) along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
@@ -104,7 +116,15 @@ should:
   Cloud writes go through a per-user outbox persisted in localStorage (`src/lib/syncOutbox.js`, `sync_outbox_<uid>`)
   that retries network failures (a returned `{ error }` without a code) with backoff; deletes are tombstones
   (`deleted_at`, migration 005); where both sides changed an item, the newer `updated_at` wins (`sync_meta_<uid>`).
-  `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything".
+  `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything" (ChatBot aborts a streaming
+  reply on one). Components do not add their own window listener for it (the one exception, ChatBot's detail-filtered
+  chat-history handler, is left to 5 (d)'s `useChatHistory`): they read through `src/hooks/useStoreValue.ts`, and a
+  UI write that this tab must see goes through `savePreference(name, value)` in `src/lib/storeEvents.ts` (the write plus
+  `store-changed` with a `pref` detail); `setPreference` itself stays silent, which the import, hydrate and sync paths
+  rely on. `storeEvents.ts` keeps one permanent window listener and counts events per kind and per item, so a reader
+  scoped to its item (`useStoreObject(read, key, 'position', ticker)`) is not re-rendered by a preference save.
+  `ai-settings-changed` no longer exists; `data-source-changed` stays for the data hooks; `auth-changed` feeds
+  `usePremiumStatus`.
 - Functions accept BYOK via headers/body (`x-tradier-key`, `x-finnhub-key`, `userApiKey`); server keys are
   only for access-token holders (`netlify/functions/lib/auth.js`), and refused with 503 if `TOKEN_SECRET`
   is unset. New functions must use `lib/http.js` (CORS allowlist, `fetchWithTimeout`, `errorResponse`
