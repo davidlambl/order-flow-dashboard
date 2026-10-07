@@ -5,6 +5,7 @@ import { computeRecommendation, computeDualRecommendation, extractPriceLevels, G
 import { isStaleData } from '../lib/staleness';
 import { formatDollar, formatPrice } from '../lib/format';
 import { useNow } from '../hooks/useNow';
+import { useMarket } from '../contexts/MarketContext.js';
 
 const SIGNAL_STYLES = {
   BUY: {
@@ -291,7 +292,15 @@ function PriceDisplay({ spotPrice, liveQuote, optionsMarketOpen, dataProvider, n
   );
 }
 
-export default function PositionAnalysis({ costBasis, shares, onUpdate, spotPrice, kpis, gexByStrike, loading, lastUpdated, marketOpen, optionsMarketOpen, liveQuote, dataProvider }) {
+export default function PositionAnalysis({ costBasis, shares, onUpdate }) {
+  // Market data from App's context; the position draft stays props (App holds the edit and its debounced save).
+  const { data, loading, marketOpen, optionsMarketOpen, liveQuote } = useMarket();
+  const spotPrice = data?.spotPrice;
+  const kpis = data?.kpis;
+  const gexByStrike = data?.gexByStrike;
+  const lastUpdated = data?.lastUpdated;
+  const dataProvider = data?.provider;
+
   // Ticks once a minute, so staleness and relative times re-evaluate while idle without reading the clock in render
   const now = useNow(60_000);
 
