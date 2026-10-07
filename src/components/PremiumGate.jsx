@@ -1,18 +1,18 @@
 // src/components/PremiumGate.jsx
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { Lock, KeyRound, LoaderCircle, ShieldCheck, CircleAlert } from 'lucide-react';
 import { setToken, validateToken as validateTokenApi } from '../lib/auth';
+import { useAuth } from '../contexts/AuthContext.js';
 import RequestAccessForm from './RequestAccessForm';
 
-export default function PremiumGate({ isPremium, onUnlock, featureName, children }) {
+export default function PremiumGate({ featureName, children }) {
+  const { isPremium } = useAuth();
   const [tokenInput, setTokenInput] = useState('');
   const [status, setStatus] = useState(null);
   const [error, setError] = useState('');
   const [showRequest, setShowRequest] = useState(false);
-  // The post-success unlock is delayed for the checkmark; it must not fire after unmount.
-  // Hooks stay above the isPremium early return so their order never changes.
-  const unlockTimer = useRef(null);
-  useEffect(() => () => clearTimeout(unlockTimer.current), []);
+  // The form's state stays above the early return: the gate stays mounted when it lifts (it renders its
+  // children) and locks again when the token is cleared, and a render in either state must call the same hooks.
 
   if (isPremium) return children;
 
@@ -27,10 +27,10 @@ export default function PremiumGate({ isPremium, onUnlock, featureName, children
     try {
       const result = await validateTokenApi(raw);
       if (result.valid) {
+        // setToken dispatches auth-changed and the gate lifts through AuthContext on that event, so the success
+        // state never paints as a checkmark: it records the activation, and the user sees the feature instead.
         setToken(raw);
         setStatus('success');
-        clearTimeout(unlockTimer.current); // a second quick submit must not orphan the first timer
-        unlockTimer.current = setTimeout(() => onUnlock?.(), 400);
       } else {
         setStatus('error');
         setError(result.error || 'Invalid token');

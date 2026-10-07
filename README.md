@@ -221,7 +221,7 @@ types/                      Contracts shared by src/ and netlify/ (declarations 
 └── market.ts               getMarketData, getLiveQuote, getTickerContext, getModels bodies; error bodies and codes
 src/                        Tests sit beside the code: *.node.test.js (node), other *.test.{js,jsx} (dom)
 ├── main.jsx                Entry: StrictMode, ErrorBoundary, App
-├── App.jsx                 Layout, auth, per-account backend, SyncChoice, sign-out
+├── App.jsx                 Layout, auth, per-account backend, SyncChoice, sign-out; provides MarketContext and AuthContext
 ├── index.css               Tailwind theme
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
@@ -240,6 +240,9 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── StrategicContextEditor.jsx  Strategic context editor
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
 │   └── TickerResearch.jsx  Research panel
+├── contexts/
+│   ├── AuthContext.ts      Who is using the app: token status, session, sign-out (useAuth)
+│   └── MarketContext.ts    The ticker's market data, quote and research for the components (useMarket)
 ├── hooks/
 │   ├── useAutoSave.js      Debounced, baseline-compared auto-save
 │   ├── useCountdown.ts     Seconds to a deadline (Header's auto-refresh countdown)
@@ -247,6 +250,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
 │   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
 │   ├── useNow.js           Ticking clock for render code
+│   ├── usePremiumStatus.ts Access-token status on auth-changed
+│   ├── useStoreValue.ts    useSyncExternalStore readers of the store: values, objects, preferences
 │   └── useTickerContext.ts Research context, 15-minute cache
 ├── lib/
 │   ├── api.ts              Function fetchers, chat SSE reader
@@ -264,10 +269,12 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── sse.ts              SSE framing, per-provider events
 │   ├── staleness.js        Stale-data rule
 │   ├── store.ts            localStorage store, key classes, export/import, events
+│   ├── storeEvents.ts      store-changed subscriptions, scoped versions, savePreference
 │   ├── supabase.js         Browser Supabase client
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
-└── test/setup.js           dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications, cache reset
+└── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
+                            cache reset), contexts.jsx (the two contexts for component tests)
 test/helpers/               fakeSupabase.js, fetch.js (recording fakes), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
 supabase/                   migrations/001…005, README.md

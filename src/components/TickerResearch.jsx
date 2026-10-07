@@ -1,10 +1,10 @@
 // src/components/TickerResearch.jsx
-import { useState, useEffect } from 'react';
 import {
   Newspaper, Calendar, TrendingUp, ChevronDown, ChevronRight,
   ExternalLink, Clock, Globe,
 } from 'lucide-react';
-import { getPreference, setPreference } from '../lib/store';
+import { useMarket } from '../contexts/MarketContext.js';
+import { usePreference } from '../hooks/useStoreValue.js';
 
 function timeAgo(isoDate) {
   if (!isoDate) return '';
@@ -372,27 +372,15 @@ function MarketHeadlines({ news }) {
   );
 }
 
-export default function TickerResearch({ context, loading, spotPrice }) {
-  const [open, setOpen] = useState(() => {
-    const saved = getPreference('section_research');
-    return saved != null ? saved : true;
-  });
+export default function TickerResearch() {
+  const { tickerContext: context, contextLoading: loading, data } = useMarket();
+  const spotPrice = data?.spotPrice;
+  const [saved, save] = usePreference('section_research');
+  const open = saved ?? true;
 
-  useEffect(() => {
-    const handler = () => {
-      const saved = getPreference('section_research');
-      if (saved != null) setOpen(saved);
-    };
-    window.addEventListener('store-changed', handler);
-    return () => window.removeEventListener('store-changed', handler);
-  }, []);
-
-  // The write stays out of the state updater, which StrictMode runs twice (D12).
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    setPreference('section_research', next);
-  };
+  // The store is the source of truth: the click handler writes it (once per click, never a render: D12) and
+  // usePreference re-renders every reader of the name, this one included.
+  const toggle = () => save(!open);
 
   const hasTickerData = context && (
     (context.news?.length > 0) || context.earnings || context.analysts

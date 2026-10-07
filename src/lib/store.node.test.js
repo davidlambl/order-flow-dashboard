@@ -213,7 +213,7 @@ describe('store', () => {
     });
   });
 
-  it('importAll (D8): the API keys here are kept; API keys, auth_skipped and unknown names in the file are not imported and are listed in skipped (file order, once each); positions, chats and known prefs written and counted; store-changed, ai-settings-changed, data-source-changed', async () => {
+  it('importAll (D8): the API keys here are kept; API keys, auth_skipped and unknown names in the file are not imported and are listed in skipped (file order, once each); positions, chats and known prefs written and counted; store-changed, data-source-changed', async () => {
     const storage = filledStorage();
     const win = fakeWindow();
     await withGlobals({ localStorage: storage, window: win }, async (warnings) => {
@@ -235,7 +235,7 @@ describe('store', () => {
         ai_provider: JSON.stringify('openai'),
       });
       assert.equal({}.polluted, undefined, 'a __proto__ entry pollutes nothing');
-      assert.deepEqual(win.events.map((e) => e.type), ['store-changed', 'ai-settings-changed', 'data-source-changed']);
+      assert.deepEqual(win.events.map((e) => e.type), ['store-changed', 'data-source-changed']);
       assert.equal(win.events[0].detail, null, 'store-changed without detail: everything may have changed');
       assert.deepEqual(warnings, []);
     });
