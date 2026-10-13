@@ -239,7 +239,9 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── RequestAccessForm.jsx  Netlify Forms access request
 │   ├── StrategicContextEditor.jsx  Strategic context editor
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
-│   └── TickerResearch.jsx  Research panel
+│   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
+│   └── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
+│                           MarketIndicesStrip, MarketHeadlines, LoadingSkeleton
 ├── contexts/
 │   ├── AuthContext.ts      Who is using the app: token status, session, sign-out (useAuth)
 │   └── MarketContext.ts    The ticker's market data, quote and research for the components (useMarket)
@@ -258,7 +260,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── auth.ts             Access-token storage and check
 │   ├── debouncedSaver.js   Debounce with a baseline
 │   ├── deepEqual.js        Key-order-insensitive equality
-│   ├── format.ts           Number and date formatting
+│   ├── format.ts           Number and date formatting, timeAgo and daysUntil
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
 │   ├── marketHours.ts      Refresh cadence and backoff, ET session state
 │   ├── mockData.ts         Demo data, checked against types/market.ts
