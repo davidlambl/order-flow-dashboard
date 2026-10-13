@@ -1,7 +1,8 @@
-// src/lib/format.test.js — the number and date formatters behind the KPI cards, tables and chart labels.
+// src/lib/format.test.js — the number and date formatters behind the KPI cards, tables, charts and research panel.
 import { describe, expect, it } from 'vitest';
 import {
-  formatCompact, formatDollar, formatDollarFull, formatPct, formatPrice, formatRatio, formatShortDate, toLocalISODate,
+  daysUntil, formatCompact, formatDollar, formatDollarFull, formatPct, formatPrice, formatRatio, formatShortDate,
+  timeAgo, toLocalISODate,
 } from './format.js';
 
 // What every numeric formatter shows for a value it cannot format.
@@ -161,5 +162,94 @@ describe('toLocalISODate', () => {
     expect(toLocalISODate('2026-01-05')).toBe('');
     expect(toLocalISODate(Date.UTC(2026, 0, 5))).toBe('');
     expect(toLocalISODate(null)).toBe('');
+  });
+});
+
+describe('timeAgo', () => {
+  const NOW = Date.UTC(2026, 9, 13, 12);
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+  // An ISO datetime `ms` before NOW, as the news items carry it.
+  const before = (ms) => new Date(NOW - ms).toISOString();
+
+  it('counts whole minutes under an hour, rounded down', () => {
+    expect(timeAgo(before(30 * MINUTE), NOW)).toBe('30m ago');
+    expect(timeAgo(before(59 * MINUTE + 30_000), NOW)).toBe('59m ago');
+  });
+
+  it('switches to whole hours at an hour and to whole days at a day, rounded down', () => {
+    expect(timeAgo(before(60 * MINUTE), NOW)).toBe('1h ago');
+    expect(timeAgo(before(23 * HOUR + 59 * MINUTE), NOW)).toBe('23h ago');
+    expect(timeAgo(before(DAY), NOW)).toBe('1d ago');
+    expect(timeAgo(before(10 * DAY), NOW)).toBe('10d ago');
+  });
+
+  it('reads a datetime after now (clock skew) as 0m ago, never a negative age', () => {
+    expect(timeAgo(before(-30_000), NOW)).toBe('0m ago');
+  });
+
+  it.each([null, undefined, '', 'garbage'])('returns an empty string for %o', (value) => {
+    expect(timeAgo(value, NOW)).toBe('');
+  });
+});
+
+describe('daysUntil', () => {
+  // Local noon on 2026-10-13: the count runs from now's local date.
+  const NOW = new Date(2026, 9, 13, 12).getTime();
+
+  // Runs fn with the process in time zone `tz` (Node applies a TZ assignment at once), restoring it afterwards.
+  function inZone(tz, fn) {
+    const originalTZ = process.env.TZ;
+    try {
+      process.env.TZ = tz;
+      fn();
+    } finally {
+      if (originalTZ === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTZ;
+    }
+  }
+
+  it('counts calendar days to the date: 0 today, 1 tomorrow, 7 a week out', () => {
+    expect(daysUntil('2026-10-13', NOW)).toBe(0);
+    expect(daysUntil('2026-10-14', NOW)).toBe(1);
+    expect(daysUntil('2026-10-20', NOW)).toBe(7);
+  });
+
+  it('counts from midnight, whatever the hour of now', () => {
+    expect(daysUntil('2026-10-14', new Date(2026, 9, 13, 0, 1).getTime())).toBe(1);
+    expect(daysUntil('2026-10-14', new Date(2026, 9, 13, 23, 59).getTime())).toBe(1);
+  });
+
+  it('goes negative once the date has passed', () => {
+    expect(daysUntil('2026-10-12', NOW)).toBe(-1);
+    expect(daysUntil('2025-10-13', NOW)).toBe(-365);
+  });
+
+  it('counts the 23- and 25-hour days of a DST change as whole days', () => {
+    // CI runs in UTC, which has no DST. New York springs forward on 2026-03-08, so the two midnights are 47 hours
+    // apart and only the rounding makes them 2 days; it falls back on 2026-11-01, a 25-hour day that only the
+    // rounding keeps at one (a ceiling would read 2). Both halves are pins on the inline formula too.
+    inZone('America/New_York', () => {
+      expect(new Date(2026, 2, 9) - new Date(2026, 2, 7)).toBe(47 * 3_600_000);
+      expect(daysUntil('2026-03-09', new Date(2026, 2, 7, 12).getTime())).toBe(2);
+      expect(new Date(2026, 10, 2) - new Date(2026, 10, 1)).toBe(25 * 3_600_000);
+      expect(daysUntil('2026-11-02', new Date(2026, 10, 1, 12).getTime())).toBe(1);
+    });
+  });
+
+  it('reads the date as local midnight, not UTC midnight', () => {
+    // At UTC+14 the UTC midnight of 2026-10-14 is 14:00 local, which would round tomorrow up to 2 days.
+    inZone('Pacific/Kiritimati', () => {
+      expect(daysUntil('2026-10-14', new Date(2026, 9, 13, 12).getTime())).toBe(1);
+    });
+  });
+
+  it.each([null, undefined, '', 'garbage'])('returns null for %o', (value) => {
+    expect(daysUntil(value, NOW)).toBeNull();
+  });
+
+  it('returns null for a datetime, which is not a calendar date', () => {
+    expect(daysUntil('2026-10-13T12:00:00Z', NOW)).toBeNull();
   });
 });
