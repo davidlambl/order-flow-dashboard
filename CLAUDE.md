@@ -64,13 +64,13 @@ should:
   its persistent write queue, `supabase.js` Node-safe client factory, `session.js` the one sign-out plus the
   `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js` baseline-compared debounce behind
   `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`,
-  `format.ts`, `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
+  `format.ts` (numbers and dates, incl. `timeAgo` / `daysUntil` on a caller's `now`), `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
   client side with `describeToken` and `subscribeAuth`, `storeEvents.ts` the subscription side of `store-changed` (one
   permanent window listener, versions scoped by the event's detail, `savePreference` for UI writes), `queryClient.ts`
   the one TanStack Query client and the per-hook key families, `marketHours.ts` the refresh cadence with its backoff and
   the ET session state, pure). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
-  `window`/`localStorage` access. A `.js` specifier also resolves to a renamed `.ts` module
+  `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
   (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
   source by path (`sse.test.js`, `recommend.node.test.js`) moves its path in the same commit.
 - `src/hooks/` the data hooks on TanStack Query, all `.ts`: `useMarketData` (its own silent-refresh timer, whose fetch
@@ -87,8 +87,10 @@ should:
   ChatBot, TickerResearch, AppSettings and PremiumGate read them instead of App's props; `KPICards`, `GexChart` and
   `FlowChart` keep their data props (pure leaves, and `App.test.jsx` counts App's renders through KPICards'), and the
   position draft, `isOpen`/`onClose` and `onOpenSettings` stay props.
-- `src/components/` UI; `ChatBot.jsx`, `AppSettings.jsx`, `PositionAnalysis.jsx`, `TickerResearch.jsx` are
-  large and scheduled for decomposition (Phase 5) along the seams listed in the roadmap.
+- `src/components/` UI. `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
+  typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
+  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `ChatBot.jsx`, `AppSettings.jsx` and
+  `PositionAnalysis.jsx` are large and scheduled for decomposition (Phase 5 (d)) along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
   `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
   with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
@@ -143,7 +145,8 @@ should:
   roadmap's Phase 5 step 2 for where they overruled the original sketch.
 - `generateMockData` is random — memoize/stub in tests.
 - TypeScript (Phase 5, incremental): new and converted modules are `.ts`/`.tsx`; relative specifiers keep the `.js`
-  extension; `import type` for types (`verbatimModuleSyntax`); `as const` objects with derived unions, never `enum`;
+  extension, except that a not-yet-converted `.jsx` module is imported by its real `.jsx` extension (Vite maps `.js`
+  to `.ts`/`.tsx` only, and `.jsx` to `.tsx` once the target converts); `import type` for types (`verbatimModuleSyntax`); `as const` objects with derived unions, never `enum`;
   no `any`, no `!`, no `@ts-ignore`/`@ts-expect-error`; types state the documented contract and a permissive overload
   keeps a test-pinned tolerance honest (`formatShortDate(42) → 42`); a conversion changes no runtime behaviour and
   no importer; tests stay JS until converted on purpose. `npm run typecheck` must be clean.
