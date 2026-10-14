@@ -19,17 +19,17 @@ should:
    (`git worktree add <path> <branch tip>`; the Agent tool's worktree isolation starts from `main`, so reset it to
    the branch tip first), have each commit in its worktree, then cherry-pick in the planned order and re-run the
    gate after each. Only units that share `package.json`/the lockfile or the same source files run sequentially.
-5. Before pushing: `npm run check` (lint with the known baseline, typecheck, test, build) and
+5. Before pushing: `npm run check` (lint, typecheck, test and build, each blocking) and
    `npm audit --omit=dev --audit-level=high`.
 6. Line numbers in the roadmap were taken at commit `9cf9ccd` + the Phase 0 merge; re-grep before editing.
 
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — baseline after Phase 5 (c): 4 errors, 0 warnings (three
-  `react-hooks/set-state-in-effect` in `AppSettings` ×2 and `StrategicContextEditor`, one
-  `react-refresh/only-export-components` in `AppSettings`), all owned by Phase 5 (d); don't add new ones. CI runs lint
-  non-blocking until that count is zero, then it becomes required.
+- `npm run build` — must pass. `npm run lint` — must be clean (0 errors, 0 warnings): the Phase 5 (c) baseline of four
+  `react-hooks` and `react-refresh` findings closed with the AppSettings decomposition (Phase 5 (d), #75), and lint
+  has been blocking in CI's required build job and in `npm run check` since. `.remember` (the remember plugin's scratch
+  folder in this checkout) is in the config's global ignores.
 - `npm run typecheck` — `tsc -p tsconfig.json` (browser program: `src/`, `shared/`, `types/`; DOM lib and only Vite's
   and Vitest's ambient types, so Node globals do not typecheck in `src/`) then `tsc -p tsconfig.functions.json` (Node
   program: `netlify/`, `shared/`, `types/`, `scripts/`; `@types/node`, no DOM). `allowJs` with `checkJs: false`: the
@@ -46,8 +46,7 @@ should:
   tests render them bare, with no provider. A component that reads the contexts renders inside them with
   `src/test/contexts.jsx` (`marketValue(overrides)`, `authValue(overrides)`, `withContexts(ui, { market, auth })`),
   which replaced the props those tests used to pass. `npm run test:watch`,
-  `npm run test:coverage` (CI), `npm run check` = lint (non-blocking until the baseline is zero) + typecheck + test +
-  build.
+  `npm run test:coverage` (CI), `npm run check` = lint + typecheck + test + build, each blocking.
   Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
   only at file top level; never enable fake timers globally; time-dependent code takes an injectable `now` (and the
   saver injectable timers), so tests never depend on the wall clock.
@@ -68,7 +67,8 @@ should:
   client side with `describeToken` and `subscribeAuth`, `storeEvents.ts` the subscription side of `store-changed` (one
   permanent window listener, versions scoped by the event's detail, `savePreference` for UI writes), `queryClient.ts`
   the one TanStack Query client and the per-hook key families, `marketHours.ts` the refresh cadence with its backoff and
-  the ET session state, pure). Modules the
+  the ET session state, pure; `aiSettings.ts` the AI provider table (`AI_PROVIDERS`, `providerMeta`, `KEY_PREF`) and the
+  string-guarded preference readers `getAISettings` / `readAiModelName` that ChatBot and the Settings AI tab share). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
   (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
@@ -77,20 +77,33 @@ should:
   carries `fetchMeta` `{ silent: true }`; returns the deadline `nextRefreshAt` and `refreshMs` instead of a per-second
   counter), `useLiveQuote` (60 s `staleTime` and `refetchInterval`), `useTickerContext` (15 min `staleTime`,
   `enabled`); `useMarketClock` (the ET session flags, re-checked every 30 s), `useCountdown` (Header's 1 Hz countdown
-  leaf, F12), `useNow`, `useAutoSave(saveFn, delay)` → `{ prime, schedule, flush, saved }` (prime with the loaded
-  value, schedule from `onChange`, flush before close); the store readers on `useSyncExternalStore` in `useStoreValue.ts`
+  leaf, F12), `useNow`, `useAutoSave(saveFn, delay, initialValue?)` → `{ prime, schedule, flush, saved }` (prime with the
+  loaded value or pass it as the third argument at creation, schedule from `onChange`; it flushes in its unmount cleanup
+  and on `pagehide`, so a tab mounted only while shown needs no close handler); `useAIModels(provider, key)` →
+  `{ models, loading, error, refresh }` (the `['models', provider, key]` family on `keys.models`, 5 min `staleTime`; on
+  `auth-changed` the unobserved entries are removed and a shown one reset and refetched; one request per saved key), `useKeyTester()` (the AI tab's Test: a fetch-id guard,
+  and a success seeds the trimmed key's query), `useTokenActivation()` → `{ status, error, activate, reset }`
+  (`validateToken` then `setToken`; `TokenActivationForm` is its leaf for Settings and PremiumGate); the store readers on
+  `useSyncExternalStore` in `useStoreValue.ts`
   (`useStoreValue(read)` for a primitive, `useStoreObject(read, key, kind, id)` for an object such as `getPosition`,
   `usePreference(name)` → `[value, save]`, `useStoreVersion`); and `usePremiumStatus()` → `{ isPremium, tokenTier,
   daysLeft }` from the stored access token on `auth-changed` (F11).
 - `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
   provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
-  ChatBot, TickerResearch, AppSettings and PremiumGate read them instead of App's props; `KPICards`, `GexChart` and
+  ChatBot, TickerResearch, the Settings tabs (AccountTab, BackupTab, DataTab) and PremiumGate read them instead of App's
+  props; `KPICards`, `GexChart` and
   `FlowChart` keep their data props (pure leaves, and `App.test.jsx` counts App's renders through KPICards'), and the
   position draft, `isOpen`/`onClose` and `onOpenSettings` stay props.
 - `src/components/` UI. `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
-  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `ChatBot.jsx`, `AppSettings.jsx` and
-  `PositionAnalysis.jsx` are large and scheduled for decomposition (Phase 5 (d)) along the seams listed in the roadmap.
+  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `AppSettings.tsx` renders
+  `settings/SettingsDialog.tsx` only while open, and the dialog mounts ONE tab at a time
+  (`settings/{AITab,DataTab,AccountTab,BackupTab}.tsx`, with `SecretInput` and `DataSourceBanner` as leaves): a tab's
+  state is born fresh on every switch and its autosaves flush in its unmount cleanup, which is what keeps Sign out safe
+  without a hand flush. `TokenActivationForm.tsx` is the activation leaf shared with `PremiumGate.tsx` (its lock screen
+  mounts only while locked); `StrategicContextEditor.tsx` mounts its editor only while open and saves through
+  `savePreference`. `ChatBot.jsx` and `PositionAnalysis.jsx` are large and scheduled for decomposition (Phase 5 (d))
+  along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
   `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
   with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
