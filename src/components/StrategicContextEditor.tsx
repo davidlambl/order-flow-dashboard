@@ -1,46 +1,59 @@
-// src/components/StrategicContextEditor.jsx
-// Full-screen modal editor for the Strategic Context document.
+// src/components/StrategicContextEditor.tsx
+// Full-screen modal editor for the Strategic Context document. The dialog mounts only while open, so each opening
+// starts from the stored text without an effect copying it into state; it saves through savePreference, so a component
+// following the preference through the store events (usePreference) shows each save.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, FileText, Check } from 'lucide-react';
-import { getPreference, setPreference } from '../lib/store';
-import { useAutoSave } from '../hooks/useAutoSave';
+import { getPreference } from '../lib/store.js';
+import { savePreference } from '../lib/storeEvents.js';
+import { useAutoSave } from '../hooks/useAutoSave.js';
 
-export default function StrategicContextEditor({ isOpen, onClose }) {
-  const [content, setContent] = useState('');
-  const textareaRef = useRef(null);
+interface StrategicContextEditorProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
 
-  const save = useCallback((val) => {
-    setPreference('strategic_context', val?.trim() || null);
-  }, []);
+/** The stored document as text: a hand-edited import or cloud row can hold a number, which has no .split(). */
+function readStrategicContext(): string {
+  const value = getPreference('strategic_context');
+  return typeof value === 'string' ? value : '';
+}
 
-  const { prime, schedule, flush, saved } = useAutoSave(save, 1000);
+/** Stored trimmed; an emptied document removes the preference. */
+function saveStrategicContext(value: string): void {
+  savePreference('strategic_context', value.trim() || null);
+}
 
+function EditorDialog({ onClose }: { onClose: () => void }) {
+  // Read once per opening: the textarea's first value and the autosave's baseline, so it is never written back.
+  const [loaded] = useState(readStrategicContext);
+  const [content, setContent] = useState(loaded);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const { schedule, flush, saved } = useAutoSave(saveStrategicContext, 1000, loaded);
+
+  // Flushed before onClose, not left to the unmount: the parent's onClose may read the store.
   const handleClose = useCallback(() => {
     flush();
     onClose();
   }, [flush, onClose]);
 
+  // Focus textarea after mount
   useEffect(() => {
-    if (!isOpen) return;
-    const loaded = getPreference('strategic_context') ?? '';
-    setContent(loaded);
-    prime(loaded); // the loaded text is the baseline: it is never written back, the first real edit is
-    // Focus textarea after mount
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [isOpen, prime]);
+    const frame = requestAnimationFrame(() => textareaRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
-  // Escape to close
+  // Escape to close, in the capture phase: this runs before the Settings dialog's window listener, and
+  // stopPropagation keeps that one from closing Settings on the same key.
   useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); handleClose(); }
     };
-    window.addEventListener('keydown', handleKeyDown, true); // capture phase to beat AppSettings
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isOpen, handleClose]);
-
-  if (!isOpen) return null;
+  }, [handleClose]);
 
   const charCount = content.length;
   const lineCount = content ? content.split('\n').length : 0;
@@ -90,4 +103,8 @@ export default function StrategicContextEditor({ isOpen, onClose }) {
     </div>,
     document.body,
   );
+}
+
+export default function StrategicContextEditor({ isOpen, onClose }: StrategicContextEditorProps) {
+  return isOpen ? <EditorDialog onClose={onClose} /> : null;
 }
