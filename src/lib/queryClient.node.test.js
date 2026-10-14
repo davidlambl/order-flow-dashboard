@@ -1,7 +1,8 @@
 // src/lib/queryClient.node.test.js — the one TanStack Query client behind the data hooks (src/lib/queryClient.ts):
 // it loads with no DOM, its query defaults (no retries, no focus or reconnect refetch, fail fast offline) reach every
 // query while a hook's own staleTime wins, and each hook's key family is selectable by its prefix, as the hooks'
-// data-source-changed listeners select it. Queries a test adds to the shared client are cleared in a finally.
+// data-source-changed listeners select it; the AI model lists' family also by provider. Queries a test adds to the
+// shared client are cleared in a finally.
 import { describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { keys, queryClient } from './queryClient.js';
@@ -24,7 +25,7 @@ describe('queryClient', () => {
       const fresh = await import('./queryClient.js'); // fresh instance, loaded without the globals
       assert.notEqual(fresh.queryClient, queryClient, 'the module was evaluated again');
       assert.ok(fresh.queryClient instanceof QueryClient);
-      assert.deepEqual(Object.keys(fresh.keys), ['marketData', 'liveQuote', 'tickerContext']);
+      assert.deepEqual(Object.keys(fresh.keys), ['marketData', 'liveQuote', 'tickerContext', 'models']);
     });
   });
 
@@ -50,6 +51,23 @@ describe('queryClient', () => {
         const selected = queryClient.getQueryCache().findAll({ queryKey: [family] }).map((query) => query.queryKey);
         assert.deepEqual(selected, [key('AVGO'), key('NVDA')], `the ['${family}'] prefix`);
       }
+    } finally {
+      queryClient.clear();
+    }
+  });
+
+  it("keys.models: the provider second and the user's key third, so a prefix selects every list or one provider's", () => {
+    assert.deepEqual(keys.models('gemini', 'AIza1'), ['models', 'gemini', 'AIza1']);
+    assert.deepEqual(keys.models('anthropic', ''), ['models', 'anthropic', ''], "Anthropic, no key of the user's own");
+    const lists = [keys.models('anthropic', ''), keys.models('gemini', 'AIza1'), keys.models('gemini', 'AIza2')];
+    const select = (queryKey) => queryClient.getQueryCache().findAll({ queryKey }).map((query) => query.queryKey);
+    try {
+      for (const key of lists) queryClient.setQueryData(key, { models: [] });
+      queryClient.setQueryData(keys.marketData('AVGO'), { ticker: 'AVGO' });
+      assert.deepEqual(select(['models']), lists, 'every model list, and no data query');
+      assert.deepEqual(select(['models', 'gemini']), lists.slice(1), "one provider's lists, whatever the key");
+      assert.deepEqual(select(keys.models('gemini', 'AIza1')), [lists[1]], 'one list');
+      assert.deepEqual(select(['marketData']), [keys.marketData('AVGO')], 'a data prefix selects no model list');
     } finally {
       queryClient.clear();
     }

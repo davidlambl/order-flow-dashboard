@@ -13,7 +13,7 @@ import { useMarket } from '../contexts/MarketContext.js';
 import { useAuth } from '../contexts/AuthContext.js';
 import { useStoreValue } from '../hooks/useStoreValue.js';
 import StrategicContextEditor from './StrategicContextEditor';
-import { getAISettings } from './AppSettings';
+import { getAISettings, readAiModelName } from '../lib/aiSettings.js';
 import { computeRecommendation, computeDualRecommendation, GAP_DUAL_REC_THRESHOLD_PCT } from '../lib/recommend';
 import { GEX_NEAR_SPOT_CHAT_PCT, DARK_POOL_PCT, PUT_CALL } from '../../shared/thresholds.js';
 
@@ -666,16 +666,6 @@ function storableMessages(msgs) {
     return rest.content ? [rest] : [];
   });
 }
-
-// The header's model name, as getAISettings() reads it, followed through the store events: a savePreference,
-// an import or a cloud pull of the name re-renders the label.
-// A stored value outside the string contract (importAll writes any JSON under a known name; a cloud row is applied as
-// it is) reads as the default: a fresh object per read would loop useSyncExternalStore, and ChatBot is mounted with the
-// chat closed, so that took the whole dashboard down at load.
-const readAiModelName = () => {
-  const v = getPreference('ai_model_name');
-  return typeof v === 'string' && v ? v : 'Default';
-};
 
 export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, shares }) {
   const { data, tickerContext, marketOpen, optionsMarketOpen, liveQuote } = useMarket();

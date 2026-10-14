@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', '.netlify', '.claude']),
+  globalIgnores(['dist', 'coverage', '.netlify', '.claude', '.remember']),
 
   // Base rules for every JS/JSX file.
   {
