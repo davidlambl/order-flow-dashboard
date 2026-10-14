@@ -26,9 +26,15 @@ export const queryClient = new QueryClient({
   },
 });
 
-/** One key family per hook with the ticker second, so a data-source change can target a whole family by its prefix. */
+/**
+ * One key family per hook, each selectable by its prefix: the data hooks' with the ticker second, so a data-source
+ * change can target a whole family; the AI model list's with the provider second and the user's own API key ('' for
+ * none) third. That key is a secret, safe in a query key only while the cache stays in memory (no persister, no
+ * devtools).
+ */
 export const keys = {
   marketData: (ticker: string) => ['marketData', ticker] as const,
   liveQuote: (ticker: string) => ['liveQuote', ticker] as const,
   tickerContext: (ticker: string) => ['tickerContext', ticker] as const,
+  models: (provider: string, key: string) => ['models', provider, key] as const,
 };

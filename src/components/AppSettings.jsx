@@ -8,17 +8,12 @@ import { fetchModels } from '../lib/api';
 import { setToken, validateToken as validateTokenApi, clearToken } from '../lib/auth';
 import { exportAll, importAll, getPreference, migrateSessionToLocal } from '../lib/store';
 import { savePreference } from '../lib/storeEvents.js';
+import { AI_PROVIDERS } from '../lib/aiSettings.js';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useAuth } from '../contexts/AuthContext.js';
 import { useMarket } from '../contexts/MarketContext.js';
 import RequestAccessForm from './RequestAccessForm';
 import StrategicContextEditor from './StrategicContextEditor';
-
-const PROVIDERS = [
-  { id: 'anthropic', label: 'Anthropic', hint: 'sk-ant-...', needsKey: false, recommended: true },
-  { id: 'gemini', label: 'Gemini', hint: 'AIza...', needsKey: true },
-  { id: 'openai', label: 'OpenAI', hint: 'sk-...', needsKey: true },
-];
 
 const TABS = [
   { id: 'ai', label: 'AI', icon: Cpu },
@@ -26,17 +21,6 @@ const TABS = [
   { id: 'account', label: 'Account', icon: KeyRound },
   { id: 'backup', label: 'Backup', icon: HardDrive },
 ];
-
-// ── Shared export: read AI settings from the store abstraction ──
-export function getAISettings() {
-  const provider = getPreference('ai_provider') || 'anthropic';
-  return {
-    provider,
-    model: getPreference('ai_model') || '',
-    modelName: getPreference('ai_model_name') || 'Default',
-    apiKey: getPreference(`ai_key_${provider}`) || '',
-  };
-}
 
 function SavedIndicator({ show }) {
   if (!show) return null;
@@ -117,7 +101,7 @@ export default function AppSettings({ isOpen, onClose }) {
 
   // ── Model loading ──
   const loadModelsForProvider = useCallback(async (prov, key) => {
-    const provMeta = PROVIDERS.find((p) => p.id === prov);
+    const provMeta = AI_PROVIDERS.find((p) => p.id === prov);
     if (provMeta?.needsKey && !key) {
       setModels([]);
       setModelError(`Enter your ${provMeta.label} API key to load models.`);
@@ -378,7 +362,7 @@ export default function AppSettings({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const providerMeta = PROVIDERS.find((p) => p.id === provider);
+  const providerMeta = AI_PROVIDERS.find((p) => p.id === provider);
   const hasModels = models.length > 0;
 
   return (
@@ -432,7 +416,7 @@ export default function AppSettings({ isOpen, onClose }) {
           <div className="p-6 space-y-4 fade-in">
             {/* Provider picker */}
             <div className="flex gap-1.5 p-1 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]">
-              {PROVIDERS.map((p) => (
+              {AI_PROVIDERS.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => handleProviderChange(p.id)}
