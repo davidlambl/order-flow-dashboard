@@ -27,10 +27,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - name: Lint
-        # Non-blocking until the remaining react-hooks errors are closed (roadmap Phases 2/5).
-        continue-on-error: true
-        run: npm run lint
+      - run: npm run lint
       - run: npm run typecheck
       - name: Test (with coverage)
         run: npm run test:coverage
