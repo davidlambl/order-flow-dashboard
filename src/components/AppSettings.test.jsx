@@ -172,6 +172,7 @@ describe('AppSettings', () => {
     serveModels();
     const { rerender } = await openAccount();
     expect(screen.getByText(SIGNED_OUT)).toBeInTheDocument();
+    expect(screen.getByText('Unlocks premium features: AI Co-Pilot, Position Analysis, and Ticker Research.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
 
@@ -284,6 +285,7 @@ describe('AppSettings', () => {
     serveModels();
     await openAccount();
     expect(screen.getByText("Don't have a token?")).toBeInTheDocument();
+    expect(screen.getByText('Request early access to premium features.')).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Your name')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Request' }));

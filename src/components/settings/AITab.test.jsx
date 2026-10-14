@@ -295,4 +295,24 @@ describe('AI tab', () => {
     expect(screen.queryByRole('combobox')).toBeNull();
     expect(screen.queryByText(/models? available/)).toBeNull();
   });
+
+  // Appended after the decomposition: the loaded key is the autosave's baseline from the mount (useAutoSave's third
+  // argument), so an edit that ends where it started writes nothing and flashes nothing. Green on the one-file dialog
+  // too, which primed the loaded key in its open effect.
+  it('Pin: retyping a stored key writes nothing', async () => {
+    setPreference('ai_key_anthropic', 'sk-ant-stored');
+    serveModels();
+    const user = openSettings();
+    await screen.findByRole('combobox');
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    setItem.mockClear();
+    const input = screen.getByPlaceholderText('sk-ant-...');
+    await user.type(input, 'x{Backspace}');
+    expect(input).toHaveValue('sk-ant-stored');
+    await advance(1000);
+    expect(setItem.mock.calls.filter(([key]) => key === 'ai_key_anthropic')).toHaveLength(0);
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(getPreference('ai_key_anthropic')).toBe('sk-ant-stored');
+    await listSettled();
+  });
 });

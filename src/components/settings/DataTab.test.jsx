@@ -281,4 +281,24 @@ describe('AppSettings: the Data tab', () => {
     expect(getPreference(FINNHUB.pref)).toBe('fh-closing');
     expect(dataSourceChanges).toBe(2);
   });
+
+  // Appended after the decomposition: each loaded key is its autosave's baseline from the mount (useAutoSave's third
+  // argument), so an edit that ends where it started writes nothing and refetches nothing. Green on the one-file dialog
+  // too, which primed the loaded keys in its open effect.
+  it('Pin: retyping a stored key writes nothing and dispatches no data-source-changed', async () => {
+    serveModels();
+    setPreference(TRADIER.pref, 'tr-stored');
+    setPreference(FINNHUB.pref, 'fh-stored');
+    const { user } = await openDataTab();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    setItem.mockClear();
+    await user.type(input(TRADIER), 'x{Backspace}');
+    await user.type(input(FINNHUB), 'y{Backspace}');
+    expect(input(TRADIER)).toHaveValue('tr-stored');
+    expect(input(FINNHUB)).toHaveValue('fh-stored');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(setItem.mock.calls.filter(([key]) => key === TRADIER.pref || key === FINNHUB.pref)).toHaveLength(0);
+    expect(dataSourceChanges).toBe(0);
+    expect(screen.queryByText('Saved')).toBeNull();
+  });
 });

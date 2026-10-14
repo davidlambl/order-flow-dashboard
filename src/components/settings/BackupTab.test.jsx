@@ -5,7 +5,8 @@
 // behind a confirm (the report and the settings it skipped, a "no", a file the store refuses) and Reset all settings
 // behind a confirm. The dialog is about to become a shell over one tab at a time, each mounted only while shown, with
 // the editor mounted only while open and the preview following the store's events instead of being re-read when the
-// editor closes, so every test is a pin that must pass on both trees: it asserts what the user sees and what the store
+// editor closes, so every test but the regression appended after the decomposition (red on the one-file dialog) is a
+// pin that must pass on both trees: it asserts what the user sees and what the store
 // holds once an action has settled (and the editor's 1000 ms debounce, which both keep), never the order of a write
 // and a close, how many getModels requests the dialog sends, or what a tab keeps across a switch. Reset is pinned up
 // to its eight cleared settings and its data-source-changed: today it also reloads the default model list, whose
@@ -330,5 +331,22 @@ describe('the Backup tab', () => {
     expect(sourceChanges).toHaveBeenCalledTimes(1);
     expect(getPreference('strategic_context')).toBe('Long AVGO into earnings');
     expect(getPosition('AVGO')).toEqual({ costBasis: 150, shares: 10 });
+  });
+
+  // Decision 13 of the decomposition: the preview reads the stored context through a string guard. Red on the
+  // one-file dialog, which read the preference as it was and threw on a number (contextPreview.trim is not a
+  // function); appended after the decomposition, so the pins above stayed byte-identical across it.
+  it('Regression: a stored context that is not a string reads as no context, and the editor opens empty', async () => {
+    setPreference('strategic_context', 42);
+    serveModels();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderSettings();
+    await openBackup(user);
+    expect(addButton()).toBeInTheDocument();
+    expect(screen.queryByText(/ characters · /)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
+
+    await user.click(addButton());
+    expect(editor()).toHaveValue('');
   });
 });
