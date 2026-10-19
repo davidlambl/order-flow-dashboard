@@ -1,8 +1,9 @@
 // src/components/Header.jsx
 import { useState, useRef } from 'react';
 import { Search, RefreshCw, Activity, Wifi, WifiOff, ShieldCheck, LogOut, Settings, Calendar } from 'lucide-react';
-import { formatPrice } from '../lib/format';
+import { daysUntil, formatPrice } from '../lib/format.js';
 import { useCountdown } from '../hooks/useCountdown.js';
+import { useNow } from '../hooks/useNow.js';
 import { useMarket } from '../contexts/MarketContext.js';
 import { useAuth } from '../contexts/AuthContext.js';
 
@@ -80,6 +81,9 @@ export default function Header({ onOpenSettings }) {
     optionsMarketOpen, toggleAutoRefresh, liveQuote,
   } = useMarket();
   const { isPremium, tokenTier, daysLeft, signedIn, signOut } = useAuth();
+  // The earnings badge counts days on this clock rather than a Date read during render, so render stays pure and the
+  // count turns over within a minute of midnight while the page sits idle; the tick re-renders Header, not App.
+  const now = useNow(60_000);
   const earnings = tickerContext?.earnings;
   const spotPrice = data?.spotPrice;
 
@@ -184,11 +188,8 @@ export default function Header({ onOpenSettings }) {
 
         {/* Earnings badge */}
         {earnings?.date && (() => {
-          const now = new Date();
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          const target = new Date(earnings.date + 'T00:00:00');
-          const daysTo = Math.round((target - today) / 86_400_000);
-          if (daysTo < 0 || daysTo > 7) return null;
+          const daysTo = daysUntil(earnings.date, now);
+          if (daysTo == null || daysTo < 0 || daysTo > 7) return null;
           return (
             <span
               className="hidden lg:flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-[var(--color-warn)]/10 text-[var(--color-warn)] border-[var(--color-warn)]/30"

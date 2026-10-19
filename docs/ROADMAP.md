@@ -176,9 +176,9 @@ in `Header.jsx:17`.
   `usePositionSignals()` (284-347), `PositionInputs` (376-403), `PnLStat` (×3), `ReasonList` (×3),
   `DualRecommendationView` (435-560).
 - `TickerResearch.jsx` → reuse `CollapsibleSection` (370-481 re-implements it), `NewsPanel`, `EarningsCard`,
-  `RatingBar`, `AnalystPanel`, `MarketIndicesStrip`, `MarketHeadlines`; `timeAgo` → `format.js`.
+  `RatingBar`, `AnalystPanel`, `MarketIndicesStrip`, `MarketHeadlines`; `timeAgo` → `format.ts` (built in 5 (d), #74).
 - Duplicates: token activation ×3 (`ChatBot.jsx:507-527`, `PremiumGate.jsx:15-37`, `AppSettings.jsx:262-282`)
-  → `useTokenActivation()`; "days until earnings" ×3; `isStale` ×2; `useTickerContext`/`useLiveQuote` cache
+  → `useTokenActivation()`; "days until earnings" ×3 (→ `daysUntil` in #74; ChatBot's copy waits for its own PR); `isStale` ×2; `useTickerContext`/`useLiveQuote` cache
   code → `createCachedResource(fetcher, ttl)`; `MarketContext` + `AuthContext` to kill 12-prop drilling.
 - Dead: `formatDollarFull`, `deletePosition` (unused → use it for a "clear position" button), unused hook
   returns (`error`/`refresh`), `handleTickerChange` wrapper, stale "UW API" comment in `mockData.js:3`.
@@ -556,6 +556,18 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    with tests, `components/chat/*`, `useChatStream`, `useChatHistory`) → `PositionAnalysis`
    (`components/position/*`) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
    Extract pure logic first, presentational leaves second, stateful hooks last.
+   **Built in #74 (Phase 5 (d), TickerResearch, 2026-10-13).** `TickerResearch.tsx` is the shell over
+   `components/research/*.tsx` (seven pure leaves, the data props typed from `types/market.ts`, default-exported one per
+   file) and
+   renders its header through `CollapsibleSection` — the title in a `span`, `aria-expanded` on the button and the
+   hover transitions the other sections have; the `section_research` preference and its write path are unchanged.
+   `timeAgo` and `daysUntil` moved to `format.ts` with a required `now`: the shell and Header each call
+   `useNow(60_000)`, so the "Nm ago" labels and the earnings countdown move while the page sits idle instead of
+   freezing until something re-renders the panel. The pins (`TickerResearch.test.jsx`) were written against the old
+   component first and stayed green unchanged across the extraction; Header's earnings badge stopped reading
+   `new Date()` in render on the way. The helpers' edges, both unreachable with getTickerContext's data: `timeAgo`
+   reads '' for an unparsable datetime (was "NaNd ago") and '0m ago' for one after `now` (was "-1m ago");
+   `daysUntil` returns null for an unparsable date, so Header shows no badge where it showed "Earnings in NaNd".
 5. **Code-splitting** (after Vite 8): `React.lazy` + `Suspense` (existing skeletons as fallbacks) for
    `ChatBot` (+ markdown graph; mount only while open, `requestIdleCallback` preload), `ChartsPanel`
    (GexChart+FlowChart+recharts), `AppSettings`/`LoginForm`/`StrategicContextEditor`/`RequestAccessForm`.
