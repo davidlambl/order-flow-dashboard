@@ -551,9 +551,10 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
 4. **Decomposition order** (chosen to avoid conflicts with the March PRs, which touch ChatBot ×3,
    PositionAnalysis ×2, store, recommend, the three hooks, getLiveQuote, marketDataHelpers, KPICards):
    `TickerResearch` (no PR overlap; already 7 internal components → `components/research/*.tsx`,
-   `timeAgo` → lib) → `AppSettings` (no overlap; by tab → `components/settings/*`, `useModelList`,
-   `useKeyTester`, `getAISettings` → `lib/aiSettings.ts`) → `ChatBot` (after Phase 0; `lib/financialContext.ts`
-   with tests, `components/chat/*`, `useChatStream`, `useChatHistory`) → `PositionAnalysis`
+   `timeAgo` → lib) → `AppSettings` (no overlap; by tab → `components/settings/*`, `useAIModels` (planned as
+   `useModelList`), `useKeyTester`, `getAISettings` → `lib/aiSettings.ts`; built in 5 (d), #75) → `ChatBot` (after
+   Phase 0; `lib/financialContext.ts` with tests, `components/chat/*`, `useChatStream`, `useChatHistory`) →
+   `PositionAnalysis`
    (`components/position/*`) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
    Extract pure logic first, presentational leaves second, stateful hooks last.
    **Built in #74 (Phase 5 (d), TickerResearch, 2026-10-13).** `TickerResearch.tsx` is the shell over
@@ -568,6 +569,20 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `new Date()` in render on the way. The helpers' edges, both unreachable with getTickerContext's data: `timeAgo`
    reads '' for an unparsable datetime (was "NaNd ago") and '0m ago' for one after `now` (was "-1m ago");
    `daysUntil` returns null for an unparsable date, so Header shows no badge where it showed "Earnings in NaNd".
+   **Built in #75 (Phase 5 (d), AppSettings, 2026-10-14).** `AppSettings.tsx` renders `settings/SettingsDialog.tsx` only
+   while open, and the dialog mounts one tab at a time (`AITab`, `DataTab`, `AccountTab`, `BackupTab`, with `SecretInput`
+   and `DataSourceBanner` as leaves): a tab's state is born fresh on every switch and its autosaves flush in its unmount
+   cleanup, so the dialog's close is `onClose` alone and the 20-setState open effect is gone. The AI tab reads its model
+   list through `useAIModels` (a TanStack query keyed on the provider and the SAVED key, 5 min `staleTime`; on
+   `auth-changed` the unobserved entries are removed and a shown one reset and refetched): one `getModels` request per saved key instead of two per open and one per keystroke (F13);
+   `useKeyTester` runs Test with a fetch-id guard and seeds the trimmed key's query. `useTokenActivation` +
+   `TokenActivationForm.tsx` are the one activation path for Settings and `PremiumGate.tsx` (its lock screen mounts only
+   while locked, so a re-lock starts clean); `StrategicContextEditor.tsx` mounts its editor only while open and saves
+   through `savePreference`; `useAutoSave` takes an initial value; `getAISettings` and the provider table moved to
+   `lib/aiSettings.ts`. Four pin files were written against the old dialog, tab by tab, and stayed green unchanged.
+   Stated divergences: a Reset reloads no model list until the AI tab next mounts; the activation error reads
+   "Could not validate token. Try again."; a second open within 5 min sends no request and a reply landing after a close
+   is cached. Lint reached 0 / 0 here, and CI's lint step and `npm run check` became blocking.
 5. **Code-splitting** (after Vite 8): `React.lazy` + `Suspense` (existing skeletons as fallbacks) for
    `ChatBot` (+ markdown graph; mount only while open, `requestIdleCallback` preload), `ChartsPanel`
    (GexChart+FlowChart+recharts), `AppSettings`/`LoginForm`/`StrategicContextEditor`/`RequestAccessForm`.

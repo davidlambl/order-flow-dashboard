@@ -111,7 +111,8 @@ export async function validateToken(token: string): Promise<ValidateTokenResult>
   if (!res.ok) {
     return { valid: false, error: body?.error || `Server error (${res.status})`, code: body?.code || null };
   }
-  // A 2xx is the success body; a 200 that is not JSON returns null (pinned in auth.test.js; callers read .valid in a try).
+  // A 2xx is the success body; a 200 that is not JSON returns null (pinned in auth.test.js; callers read .valid in a try,
+  // or treat null as no verdict, as useTokenActivation does).
   return body as ValidateTokenResult;
 }
 
