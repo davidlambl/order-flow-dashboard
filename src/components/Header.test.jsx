@@ -8,9 +8,12 @@
 // tooltip. Fake timers per test with shouldAdvanceTime, as in src/hooks/useCountdown.test.jsx; no network, so
 // synchronous act. Then two pins (green on the Header that took props too): the status area's badge and sign-out
 // button from AuthContext, and the ticker search, keyed on the ticker, submitting upper-cased only when it differs.
+// Last, under a fake clock, the price block and the earnings badge from MarketContext: two more pins, and the badge
+// turning over at local midnight on Header's own minute clock (useNow).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import Header from './Header.jsx';
+import { toLocalISODate } from '../lib/format.js';
 import { withContexts } from '../test/contexts.jsx';
 
 /** The market fields the toggle reads, as App provides them in the options session with real data; tests add nextRefreshAt. */
@@ -120,5 +123,87 @@ describe('Header from the contexts', () => {
     expect(field()).toHaveValue('MS');
     rerender(header({ ticker: 'AMD', setTicker }));
     expect(field()).toHaveValue('AMD');
+  });
+});
+
+// The price block and the earnings badge, as Header reads them from MarketContext (data.spotPrice, liveQuote,
+// tickerContext.earnings): PR #70's review found that a wrong mapping of the spot price or of the earnings passed the
+// suite. Both pins are green on the Header that read new Date() while rendering the badge, too; the last two tests are
+// not: that Header counted the days again only when a context change re-rendered it, and read "Earnings in NaNd" for
+// a date it could not count. The fake clock starts at local
+// noon, clear of any midnight, and the earnings dates are built on the local calendar, the one the badge counts in.
+describe('Header price and earnings badge', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 9, 13, 12));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The local calendar date `days` after the clock's today (before it, when negative), as 'YYYY-MM-DD'. */
+  const localDate = (days) => {
+    const today = new Date();
+    return toLocalISODate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + days));
+  };
+
+  /** A complete getTickerContext body (types/market.ts) whose only research is an earnings date. */
+  const research = (date) => ({
+    ticker: 'AVGO', news: [], analysts: null, technicals: null, fundamentals: null, marketNews: [], marketQuotes: null,
+    errors: {},
+    earnings: {
+      date, epsEstimate: null, epsActual: null, revenueEstimate: null, revenueActual: null, quarter: null, year: null,
+      surprise: null,
+    },
+  });
+
+  /** The earnings badge's text, found by its 'Earnings: <date>' title; undefined while no badge shows. */
+  const badgeText = () => screen.queryByTitle(/^Earnings: /)?.textContent;
+
+  it('Pin: shows the spot price until a live quote lands, then the quote and its change', () => {
+    const data = { spotPrice: 123.45 };
+    const { rerender } = render(header({ liveQuote: null, data }));
+    expect(screen.getByText('$123.45')).toBeInTheDocument();
+    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+
+    rerender(header({ liveQuote: { current: 124.5, changePercent: 0.85 }, data }));
+    expect(screen.getByText('$124.50')).toBeInTheDocument();
+    expect(screen.getByText('+0.85%')).toBeInTheDocument();
+    expect(screen.queryByText('$123.45')).not.toBeInTheDocument();
+  });
+
+  it('Pin: shows the earnings badge from today to a week out, and none once the date is past or further off', () => {
+    const inTwoDays = localDate(2);
+    const { rerender } = render(header({ tickerContext: research(inTwoDays) }));
+    expect(badgeText()).toBe('Earnings in 2d');
+    expect(screen.getByTitle(`Earnings: ${inTwoDays}`)).toBeInTheDocument();
+
+    const badgeTextIn = (days) => {
+      rerender(header({ tickerContext: research(localDate(days)) }));
+      return badgeText();
+    };
+    expect(badgeTextIn(0)).toBe('Earnings TODAY');
+    expect(badgeTextIn(1)).toBe('Earnings TOMORROW');
+    expect(badgeTextIn(7)).toBe('Earnings in 7d');
+    expect(badgeTextIn(8)).toBeUndefined();
+    expect(badgeTextIn(-1)).toBeUndefined();
+  });
+
+  it('turns the badge over at local midnight on its own clock, with nothing else re-rendering Header', () => {
+    vi.setSystemTime(new Date(2026, 9, 13, 23, 59, 30));
+    render(header({ tickerContext: research(localDate(1)) }));
+    expect(badgeText()).toBe('Earnings TOMORROW');
+    // The context value never changes here: only Header's minute tick, now past midnight, can move the badge.
+    advance(60_000);
+    expect(badgeText()).toBe('Earnings TODAY');
+  });
+
+  // getTickerContext sends 'YYYY-MM-DD' or null; anything else read "Earnings in NaNd" on the Header that counted
+  // the days inline (red there), and shows no badge now that daysUntil answers null.
+  it('shows no badge for a date it cannot count', () => {
+    render(header({ tickerContext: research('garbage') }));
+    expect(badgeText()).toBeUndefined();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
   });
 });

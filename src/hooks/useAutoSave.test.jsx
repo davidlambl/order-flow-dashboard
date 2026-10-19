@@ -1,6 +1,7 @@
 // src/hooks/useAutoSave.test.jsx — the React half of auto-save (roadmap D7): a primed value is never written (StrictMode
-// included), the 600 ms debounce keeps the latest value and the save function current when it was scheduled, the
-// "Saved" flash lasts 1500 ms, and flush(), unmount and pagehide write an edit still inside the debounce window.
+// included), whether prime() set it or the third argument did at mount (read once; without it nothing is primed), the
+// 600 ms debounce keeps the latest value and the save function current when it was scheduled, the "Saved" flash lasts
+// 1500 ms, and flush(), unmount and pagehide write an edit still inside the debounce window.
 // The debounce and baseline compare themselves are unit-tested in src/lib/debouncedSaver.node.test.js.
 // No network here, so plain fake timers and synchronous act.
 import { StrictMode } from 'react';
@@ -191,5 +192,44 @@ describe('useAutoSave', () => {
     expect(result.current.prime).toBe(prime);
     expect(result.current.schedule).toBe(schedule);
     expect(result.current.flush).toBe(flush);
+  });
+
+  it('a third argument primes the saver at mount, read once: that value is never written, even on unmount', () => {
+    const save = vi.fn();
+    const { result, rerender, unmount } = renderHook(
+      ({ initial }) => useAutoSave(save, 600, initial),
+      { initialProps: { initial: 'a' } },
+    );
+    rerender({ initial: 'b' }); // a later value is not a new baseline
+    let queued;
+    act(() => { queued = result.current.schedule('a'); });
+    expect(queued).toBe(false);
+    advance(10_000);
+    unmount();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('under StrictMode a value primed at mount is never written, and an edit is written once', () => {
+    const save = vi.fn();
+    const { result, unmount } = renderHook(() => useAutoSave(save, 600, 'a'), { wrapper: StrictMode });
+    act(() => { result.current.schedule('a'); });
+    advance(10_000);
+    expect(save).not.toHaveBeenCalled();
+
+    act(() => { result.current.schedule('b'); });
+    unmount(); // inside the debounce window: the unmount writes it, and its timer is gone
+    advance(10_000);
+    expect(save.mock.calls).toEqual([['b']]);
+  });
+
+  // Green before the third argument existed; red if the hook primed it unconditionally (baseline undefined).
+  it('Pin: without a third argument nothing is primed, so until prime() even undefined is an edit to write', () => {
+    const save = vi.fn();
+    const { result } = renderAutoSave(save);
+    let queued;
+    act(() => { queued = result.current.schedule(undefined); });
+    expect(queued).toBe(true);
+    advance(600);
+    expect(save.mock.calls).toEqual([[undefined]]);
   });
 });

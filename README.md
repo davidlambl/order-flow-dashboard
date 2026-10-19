@@ -225,7 +225,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 ├── index.css               Tailwind theme
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
-│   ├── AppSettings.jsx     Settings: AI, Data, Account, Backup
+│   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open
 │   ├── ChatBot.jsx         AI Co-Pilot
 │   ├── CollapsibleSection.jsx  Section with a remembered open state
 │   ├── ErrorBoundary.jsx   Recovery screen
@@ -235,30 +235,39 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── KPICards.jsx        The four KPI cards
 │   ├── LoginForm.jsx       Magic-link sign-in, skip
 │   ├── PositionAnalysis.jsx  Position, P&L, recommendation
-│   ├── PremiumGate.jsx     Token lock screen
+│   ├── PremiumGate.tsx     Token lock screen, mounted only while locked
 │   ├── RequestAccessForm.jsx  Netlify Forms access request
-│   ├── StrategicContextEditor.jsx  Strategic context editor
+│   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
-│   └── TickerResearch.jsx  Research panel
+│   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
+│   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab and PremiumGate
+│   ├── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
+│   │                       MarketIndicesStrip, MarketHeadlines, LoadingSkeleton
+│   └── settings/           The Settings tabs (.tsx): SettingsDialog, AITab, DataTab, AccountTab, BackupTab,
+│                           SecretInput, DataSourceBanner
 ├── contexts/
 │   ├── AuthContext.ts      Who is using the app: token status, session, sign-out (useAuth)
 │   └── MarketContext.ts    The ticker's market data, quote and research for the components (useMarket)
 ├── hooks/
-│   ├── useAutoSave.js      Debounced, baseline-compared auto-save
+│   ├── useAIModels.ts      Model list per provider and saved key (TanStack Query, 5-minute cache)
+│   ├── useAutoSave.js      Debounced, baseline-compared auto-save; flushes on unmount
 │   ├── useCountdown.ts     Seconds to a deadline (Header's auto-refresh countdown)
+│   ├── useKeyTester.ts     The AI tab's Test: validates an API key, seeds the model list
 │   ├── useLiveQuote.ts     Live quote, 1-minute refresh
 │   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
 │   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
 │   ├── useNow.js           Ticking clock for render code
 │   ├── usePremiumStatus.ts Access-token status on auth-changed
 │   ├── useStoreValue.ts    useSyncExternalStore readers of the store: values, objects, preferences
-│   └── useTickerContext.ts Research context, 15-minute cache
+│   ├── useTickerContext.ts Research context, 15-minute cache
+│   └── useTokenActivation.ts  Access-token validation and activation
 ├── lib/
+│   ├── aiSettings.ts       AI provider table and the AI preference readers
 │   ├── api.ts              Function fetchers, chat SSE reader
 │   ├── auth.ts             Access-token storage and check
 │   ├── debouncedSaver.js   Debounce with a baseline
 │   ├── deepEqual.js        Key-order-insensitive equality
-│   ├── format.ts           Number and date formatting
+│   ├── format.ts           Number and date formatting, timeAgo and daysUntil
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
 │   ├── marketHours.ts      Refresh cadence and backoff, ET session state
 │   ├── mockData.ts         Demo data, checked against types/market.ts
@@ -302,15 +311,14 @@ tsconfig.json               Browser type-check program (src/, shared/, types/); 
 | `npm test` | Vitest 5, both projects |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Tests with coverage into `coverage/` (CI) |
-| `npm run check` | Lint (non-blocking), typecheck, test, build |
+| `npm run check` | Lint, typecheck, test, build (each blocking) |
 
-- Lint has known `react-hooks` errors (and one `react-refresh` error) owned by roadmap Phase 5; see
-  [CLAUDE.md](CLAUDE.md) for the baseline and don't add new ones. `check` and CI keep lint non-blocking
-  until the baseline is zero.
+- Lint must be clean: the last `react-hooks` and `react-refresh` findings closed with the AppSettings decomposition
+  (roadmap Phase 5 (d), #75), and `check` and CI fail on any finding since.
 - Vitest's `node` project runs the function tests, `shared/*.test.js` and `src/**/*.node.test.js` (pure
   `src/lib` modules under Node with the stand-ins in `test/helpers/`). The `dom` project runs the other
   `src/**/*.test.{js,jsx}` files under jsdom with Testing Library and an MSW server (`src/test/setup.js`).
-- CI (`.github/workflows/ci.yml`, pushes to `main` and pull requests) runs `npm ci`, lint (non-blocking),
+- CI (`.github/workflows/ci.yml`, pushes to `main` and pull requests) runs `npm ci`, `npm run lint`,
   `npm run typecheck`, `npm run test:coverage` and the build on Node 22 and 24 (`fail-fast: false`), plus a separate
   `npm audit --omit=dev --audit-level=high` job. Dependabot opens weekly npm and GitHub Actions updates.
 - [CLAUDE.md](CLAUDE.md) has the working notes; [docs/ROADMAP.md](docs/ROADMAP.md) the modernization plan.
