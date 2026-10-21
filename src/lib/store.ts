@@ -9,7 +9,7 @@
 //     the preference name), so a listener showing something else can ignore it.
 // Dispatch it with emitStoreChanged(); subscribeCrossTab() turns other tabs' localStorage writes
 // into it. The UI subscribes through storeEvents.ts (one window listener, versions scoped by the
-// detail, the useStoreValue hooks on top; ChatBot's chat-history handler apart, until 5 (d)) and
+// detail, the useStoreValue hooks on top, and useChatHistory's subscribeStore listener) and
 // writes a preference with its savePreference(), which dispatches the item's detail;
 // setPreference() here stays silent.
 
@@ -69,8 +69,8 @@ export interface Position {
 }
 
 /**
- * A chat message as ChatBot holds it. `pending` marks the reply still streaming; it and the `error` bubbles are
- * shown but never stored (ChatBot's storableMessages drops them before it saves a history).
+ * A chat message as the chat shell holds it. `pending` marks the reply still streaming; it and the `error` bubbles are
+ * shown but never stored (lib/chatMessages.ts's storableMessages drops them before useChatHistory saves a history).
  */
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
@@ -384,7 +384,7 @@ export function setPosition(ticker: string, data: Position): void { backend.setP
 export function deletePosition(ticker: string): void { backend.deletePosition(ticker); }
 
 export function getChatHistory(ticker: string): ChatMessage[] { return backend.getChatHistory(ticker); }
-// No ticker, no write, whatever the backend: ChatBot saves the previous ticker's chat on every ticker change,
+// No ticker, no write, whatever the backend: useChatHistory saves the previous ticker's chat on every ticker change,
 // and the first one (market data arriving, from no ticker to the first) must reach neither storage nor the cloud.
 export function setChatHistory(ticker: string | null | undefined, messages: ChatMessage[]): void {
   if (ticker) backend.setChatHistory(ticker, messages);

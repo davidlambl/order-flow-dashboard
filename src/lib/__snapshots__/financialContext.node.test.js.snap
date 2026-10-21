@@ -1,0 +1,1133 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a live quote below the gap > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a live quote below the gap > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a position, full research > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RECENT NEWS (last 7 days):
+  Sep 25 (Reuters): Broadcom extends its AI deal [sentiment: positive]
+  Sep 23 (Bloomberg): Chip stocks slip [sentiment: negative]
+   (AP): No-date item
+
+EARNINGS:
+  Date: 2026-09-27 (2 days away)
+  EPS Estimate: $1.5 | Actual: $1.6
+  Revenue Estimate: $12.30B | Actual: $12.10B
+  Surprise: +$0.10 beat
+
+ANALYST CONSENSUS:
+  Ratings: 5 Strong Buy, 10 Buy, 3 Hold, 1 Sell, 0 Strong Sell (19 total)
+  Price targets: Median $125.00, Mean $120.00 (+25.0% from spot) | High $150.00 | Low $90.00
+
+TECHNICAL LEVELS:
+  50-day MA: $95.00 (spot +5.3% from 50-MA)
+  200-day MA: $85.00 (spot +17.6% from 200-MA)
+  RSI-14: 72.3 (OVERBOUGHT)
+  52-Week Range: $70.00 — $110.00 (spot at 75% of range)
+
+FUNDAMENTALS:
+  Market Cap: $650.0B
+  P/E (TTM): 35.2
+  Forward P/E: 28.1
+  Dividend Yield: 1.20%
+  Beta: 1.10
+  Revenue Growth (QoQ YoY): 20.5%
+  Gross Margin: 75.3%
+  Operating Margin: 45.1%
+  ROE (TTM): 30.2%
+
+Position annual dividend income (est.): ~$120.00
+
+MARKET INDICES (ETF proxies, last close when market closed):
+  S&P 500: $520.10  +2.30 (+0.45%)
+  VIX: $18.25  -0.50 (-2.67%)
+
+BROAD MARKET NEWS:
+  Sep 24 (Reuters): Stocks rally
+   (AP): No date"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a position, full research > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RECENT NEWS (last 7 days):
+  Sep 25 (Reuters): Broadcom extends its AI deal [sentiment: positive]
+  Sep 24 (Bloomberg): Chip stocks slip [sentiment: negative]
+   (AP): No-date item
+
+EARNINGS:
+  Date: 2026-09-27 (2 days away)
+  EPS Estimate: $1.5 | Actual: $1.6
+  Revenue Estimate: $12.30B | Actual: $12.10B
+  Surprise: +$0.10 beat
+
+ANALYST CONSENSUS:
+  Ratings: 5 Strong Buy, 10 Buy, 3 Hold, 1 Sell, 0 Strong Sell (19 total)
+  Price targets: Median $125.00, Mean $120.00 (+25.0% from spot) | High $150.00 | Low $90.00
+
+TECHNICAL LEVELS:
+  50-day MA: $95.00 (spot +5.3% from 50-MA)
+  200-day MA: $85.00 (spot +17.6% from 200-MA)
+  RSI-14: 72.3 (OVERBOUGHT)
+  52-Week Range: $70.00 — $110.00 (spot at 75% of range)
+
+FUNDAMENTALS:
+  Market Cap: $650.0B
+  P/E (TTM): 35.2
+  Forward P/E: 28.1
+  Dividend Yield: 1.20%
+  Beta: 1.10
+  Revenue Growth (QoQ YoY): 20.5%
+  Gross Margin: 75.3%
+  Operating Margin: 45.1%
+  ROE (TTM): 30.2%
+
+Position annual dividend income (est.): ~$120.00
+
+MARKET INDICES (ETF proxies, last close when market closed):
+  S&P 500: $520.10  +2.30 (+0.45%)
+  VIX: $18.25  -0.50 (-2.67%)
+
+BROAD MARKET NEWS:
+  Sep 25 (Reuters): Stocks rally
+   (AP): No date"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a position, no research > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a position, no research > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a strategic context > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals.
+
+STRATEGIC CONTEXT (user-provided):
+Thesis: hold through earnings."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > a strategic context > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals.
+
+STRATEGIC CONTEXT (user-provided):
+Thesis: hold through earnings."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > an unparsable earnings date > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+EARNINGS:
+  Date: garbage
+  EPS Estimate: $1.5 | Actual: $1.6
+  Revenue Estimate: $12.30B | Actual: $12.10B
+  Surprise: +$0.10 beat"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > an unparsable earnings date > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+EARNINGS:
+  Date: garbage
+  EPS Estimate: $1.5 | Actual: $1.6
+  Revenue Estimate: $12.30B | Actual: $12.10B
+  Surprise: +$0.10 beat"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > news items without a datetime > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RECENT NEWS (last 7 days):
+   (AP): No-date item
+
+BROAD MARKET NEWS:
+   (AP): No date"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > news items without a datetime > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RECENT NEWS (last 7 days):
+   (AP): No-date item
+
+BROAD MARKET NEWS:
+   (AP): No date"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > no data at all > America/New_York 1`] = `"Dashboard data not yet loaded."`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > no data at all > UTC 1`] = `"Dashboard data not yet loaded."`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > no position, full research > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RECENT NEWS (last 7 days):
+  Sep 25 (Reuters): Broadcom extends its AI deal [sentiment: positive]
+  Sep 23 (Bloomberg): Chip stocks slip [sentiment: negative]
+   (AP): No-date item
+
+EARNINGS:
+  Date: 2026-09-27 (2 days away)
+  EPS Estimate: $1.5 | Actual: $1.6
+  Revenue Estimate: $12.30B | Actual: $12.10B
+  Surprise: +$0.10 beat
+
+ANALYST CONSENSUS:
+  Ratings: 5 Strong Buy, 10 Buy, 3 Hold, 1 Sell, 0 Strong Sell (19 total)
+  Price targets: Median $125.00, Mean $120.00 (+25.0% from spot) | High $150.00 | Low $90.00
+
+TECHNICAL LEVELS:
+  50-day MA: $95.00 (spot +5.3% from 50-MA)
+  200-day MA: $85.00 (spot +17.6% from 200-MA)
+  RSI-14: 72.3 (OVERBOUGHT)
+  52-Week Range: $70.00 — $110.00 (spot at 75% of range)
+
+FUNDAMENTALS:
+  Market Cap: $650.0B
+  P/E (TTM): 35.2
+  Forward P/E: 28.1
+  Dividend Yield: 1.20%
+  Beta: 1.10
+  Revenue Growth (QoQ YoY): 20.5%
+  Gross Margin: 75.3%
+  Operating Margin: 45.1%
+  ROE (TTM): 30.2%
+
+MARKET INDICES (ETF proxies, last close when market closed):
+  S&P 500: $520.10  +2.30 (+0.45%)
+  VIX: $18.25  -0.50 (-2.67%)
+
+BROAD MARKET NEWS:
+  Sep 24 (Reuters): Stocks rally
+   (AP): No date"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > no position, full research > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RECENT NEWS (last 7 days):
+  Sep 25 (Reuters): Broadcom extends its AI deal [sentiment: positive]
+  Sep 24 (Bloomberg): Chip stocks slip [sentiment: negative]
+   (AP): No-date item
+
+EARNINGS:
+  Date: 2026-09-27 (2 days away)
+  EPS Estimate: $1.5 | Actual: $1.6
+  Revenue Estimate: $12.30B | Actual: $12.10B
+  Surprise: +$0.10 beat
+
+ANALYST CONSENSUS:
+  Ratings: 5 Strong Buy, 10 Buy, 3 Hold, 1 Sell, 0 Strong Sell (19 total)
+  Price targets: Median $125.00, Mean $120.00 (+25.0% from spot) | High $150.00 | Low $90.00
+
+TECHNICAL LEVELS:
+  50-day MA: $95.00 (spot +5.3% from 50-MA)
+  200-day MA: $85.00 (spot +17.6% from 200-MA)
+  RSI-14: 72.3 (OVERBOUGHT)
+  52-Week Range: $70.00 — $110.00 (spot at 75% of range)
+
+FUNDAMENTALS:
+  Market Cap: $650.0B
+  P/E (TTM): 35.2
+  Forward P/E: 28.1
+  Dividend Yield: 1.20%
+  Beta: 1.10
+  Revenue Growth (QoQ YoY): 20.5%
+  Gross Margin: 75.3%
+  Operating Margin: 45.1%
+  ROE (TTM): 30.2%
+
+MARKET INDICES (ETF proxies, last close when market closed):
+  S&P 500: $520.10  +2.30 (+0.45%)
+  VIX: $18.25  -0.50 (-2.67%)
+
+BROAD MARKET NEWS:
+  Sep 25 (Reuters): Stocks rally
+   (AP): No date"
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > no position, no research > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > no position, no research > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > stale data under closed sessions > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T05:00:00.000Z (data is ~600 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+  Note: This recommendation is based on options data from Fri, Sep 25, 1:00 AM. It does not reflect overnight/weekend macro developments.
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > stale data under closed sessions > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T05:00:00.000Z (data is ~600 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Current Spot: $100.00
+  Unrealized P&L: +11.11% ($1.0K)
+  Notional Exposure: ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+  Recommendation: HOLD (HIGH confidence)
+  • Up 11.1% — moderate gain
+  • Spot near max pain ($98) — pinning expected
+  • Positive GEX above spot — resistance zone overhead
+  • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+  • P/C ratio 0.82 — neutral
+  Note: This recommendation is based on options data from Fri, Sep 25, 5:00 AM. It does not reflect overnight/weekend macro developments.
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > the dual recommendation > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Options Snapshot (delayed): $100.00
+  Live Price (Overnight): $101.50 (↑ +1.5% gap)
+  Unrealized P&L (at Snapshot): +11.11% ($1.0K)
+  Unrealized P&L (Live): +12.78% ($1.1K)
+  Notional Exposure (at Snapshot): ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+
+  Recommendation #1 (Options Snapshot): HOLD (HIGH confidence)
+    • Up 11.1% — moderate gain
+    • Spot near max pain ($98) — pinning expected
+    • Positive GEX above spot — resistance zone overhead
+    • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+    • P/C ratio 0.82 — neutral
+    ⚠ Note: This recommendation is based on a delayed options quote snapshot (snapshot as of Fri, Sep 25, 10:59 AM, may be delayed), not the official options close price.
+           Options market is currently closed; this signal will refresh after the next options snapshot when trading resumes.
+
+  Scenario #2 (If Live Price Holds): HOLD (MEDIUM confidence)
+    • Up 12.8% — moderate gain
+    • Spot is 3.6% above max pain ($98) — likely pull toward it
+    • Positive GEX below spot — dealer hedging provides support
+    • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+    • P/C ratio 0.82 — neutral
+    ⚠ Note: This is a hypothetical adjustment based on the current live price. The actual recommendation
+           will depend on how options traders react when the options market next opens.
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > the dual recommendation > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+CONTRACTS ANALYZED: 420
+EXPIRIES ANALYZED: 2026-09-25, 2026-10-02
+IV30: 31.4%
+SPOT PRICE: $100.00
+DAILY CHANGE: +$1.25 (+1.27%)
+
+USER POSITION:
+  Cost Basis: $90.00
+  Shares: 100
+  Options Snapshot (delayed): $100.00
+  Live Price (Overnight): $101.50 (↑ +1.5% gap)
+  Unrealized P&L (at Snapshot): +11.11% ($1.0K)
+  Unrealized P&L (Live): +12.78% ($1.1K)
+  Notional Exposure (at Snapshot): ~$10.0K
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): $1.25M (call-heavy)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): 38.5% — Normal range
+  Max Pain (2026-09-25): $98.00 — Spot is $2.00 above
+  Put/Call Ratio: 0.82 (Neutral)
+
+TOP 5 GEX STRIKES (by magnitude):
+  Strike $100: Net GEX +5.0M (Call: 6.0M, Put: -1.0M) — Positive gamma — dealer dampener near spot
+  Strike $105: Net GEX +3.5M (Call: 4.0M, Put: -0.5M) — Positive gamma — magnet/pin
+  Strike $95: Net GEX -2.0M (Call: 1.0M, Put: -3.0M) — Negative gamma — accelerates moves
+GEX STRUCTURE: Negative GEX dominates near/below spot ($95) — dealers amplify downside moves. Positive GEX above spot ($105) — dampens upside, acts as ceiling.
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  2026-09-24: Net $800.0K, Cum $800.0K, Calls 450, Puts 380
+  2026-09-25: Net $1.25M, Cum $2.05M, Calls 500, Puts 410
+5-SESSION TREND: 2 consecutive positive sessions. Cumulative delta over window: $2.05M.
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+DASHBOARD SIGNALS (algorithmic):
+
+  Recommendation #1 (Options Snapshot): HOLD (HIGH confidence)
+    • Up 11.1% — moderate gain
+    • Spot near max pain ($98) — pinning expected
+    • Positive GEX above spot — resistance zone overhead
+    • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+    • P/C ratio 0.82 — neutral
+    ⚠ Note: This recommendation is based on a delayed options quote snapshot (snapshot as of Fri, Sep 25, 2:59 PM, may be delayed), not the official options close price.
+           Options market is currently closed; this signal will refresh after the next options snapshot when trading resumes.
+
+  Scenario #2 (If Live Price Holds): HOLD (MEDIUM confidence)
+    • Up 12.8% — moderate gain
+    • Spot is 3.6% above max pain ($98) — likely pull toward it
+    • Positive GEX below spot — dealer hedging provides support
+    • Premium traded is call-heavy (calls − puts by volume × mid, not aggressor-signed)
+    • P/C ratio 0.82 — neutral
+    ⚠ Note: This is a hypothetical adjustment based on the current live price. The actual recommendation
+           will depend on how options traders react when the options market next opens.
+
+PAIN TOLERANCE (estimated):
+  Expected move (1d, IV30): ±2.0% | Through 3 days: ±3.4% (≈ ±$3.43/share)
+  Unrealized P&L at key levels: +10% ($110) = $2.0K, +5% ($105) = $1.5K, -5% ($95) = $500.00
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > thin data > America/New_York 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+SPOT PRICE: $100.00
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): — (n/a)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): — — No data
+  Max Pain (2026-09-25): —
+  Put/Call Ratio: — (n/a)
+
+TOP 5 GEX STRIKES (by magnitude):
+  No GEX data
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  No flow history
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;
+
+exports[`financialContext > snapshots: every variant under UTC and New York > thin data > UTC 1`] = `
+"TICKER: AVGO
+TIMESTAMP: 2026-09-25T15:00:00.000Z
+DATA LAST UPDATED: 2026-09-25T14:59:30.000Z (data is ~1 min old)
+DATA SOURCE: cboe (15-min delayed)
+SPOT PRICE: $100.00
+
+KPI SUMMARY:
+  Premium Traded (calls − puts, volume × mid, not aggressor-signed): — (n/a)
+    Call Premium: $3.50M
+    Put Premium: $2.25M
+  Dark Pool Volume (statistical estimate from IV, not reported data): — — No data
+  Max Pain (2026-09-25): —
+  Put/Call Ratio: — (n/a)
+
+TOP 5 GEX STRIKES (by magnitude):
+  No GEX data
+
+RECENT NET PREMIUM FLOW (last 5 sessions):
+  No flow history
+Note: Cumulative flow and trend depend on lookback window; consider broader session count when interpreting premium traded (not aggressor-signed).
+
+RESEARCH DATA: Not available — add a Finnhub API key in Settings for news, earnings, analyst ratings, technicals, and fundamentals."
+`;

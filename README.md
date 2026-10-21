@@ -226,7 +226,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
 │   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open
-│   ├── ChatBot.jsx         AI Co-Pilot
+│   ├── ChatBot.tsx         AI Co-Pilot: the always-mounted shell over chat/* and the two chat hooks
 │   ├── CollapsibleSection.jsx  Section with a remembered open state
 │   ├── ErrorBoundary.jsx   Recovery screen
 │   ├── FlowChart.jsx       30-day flow chart
@@ -240,7 +240,9 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
 │   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
-│   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab and PremiumGate
+│   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab, PremiumGate and the chat's lock screen
+│   ├── chat/               The chat's leaves (.tsx): ChatMarkdown, ChatMessage, TypingIndicator, ChatLockScreen,
+│   │                       ChatHeader, ContextInspector, ChatEmptyState, ChatComposer
 │   ├── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
 │   │                       MarketIndicesStrip, MarketHeadlines, LoadingSkeleton
 │   └── settings/           The Settings tabs (.tsx): SettingsDialog, AITab, DataTab, AccountTab, BackupTab,
@@ -251,6 +253,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 ├── hooks/
 │   ├── useAIModels.ts      Model list per provider and saved key (TanStack Query, 5-minute cache)
 │   ├── useAutoSave.js      Debounced, baseline-compared auto-save; flushes on unmount
+│   ├── useChatHistory.ts   The chat's history writer: persist points, ticker change, store-changed, pagehide/unmount
+│   ├── useChatStream.ts    The chat's streaming machine: start/stop/detach with per-call sinks, no effects
 │   ├── useCountdown.ts     Seconds to a deadline (Header's auto-refresh countdown)
 │   ├── useKeyTester.ts     The AI tab's Test: validates an API key, seeds the model list
 │   ├── useLiveQuote.ts     Live quote, 1-minute refresh
@@ -265,8 +269,10 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── aiSettings.ts       AI provider table and the AI preference readers
 │   ├── api.ts              Function fetchers, chat SSE reader
 │   ├── auth.ts             Access-token storage and check
+│   ├── chatMessages.ts     The chat's pure message helpers: markers, settle, window, storable, buffered text
 │   ├── debouncedSaver.js   Debounce with a baseline
 │   ├── deepEqual.js        Key-order-insensitive equality
+│   ├── financialContext.ts The chat's context builder, pure, clock injected (golden snapshots in __snapshots__/ beside its test)
 │   ├── format.ts           Number and date formatting, timeAgo and daysUntil
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
 │   ├── marketHours.ts      Refresh cadence and backoff, ET session state

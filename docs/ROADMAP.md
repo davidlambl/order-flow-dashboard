@@ -167,7 +167,10 @@ in `Header.jsx:17`.
   painBlock/researchBlock; 177-193 duplicated), `ChatMarkdown.jsx` (377-413), `ChatMessage.jsx` (415-493),
   shared `TokenActivationForm` replacing `ChatLockScreen` (502-598), `useChatHistory(ticker)` (608-647),
   `useLLMStream()` (669-773; `sendMessage`/`requestContextSuggestions` ~90% identical), `ChatHeader`
-  (815-875), `ContextInspector` (878-902), `ChatEmptyState` (910-933), `ChatComposer` (943-976).
+  (815-875), `ContextInspector` (878-902), `ChatEmptyState` (910-933), `ChatComposer` (943-976). Built in 5 (d), #78:
+  `lib/financialContext.ts` as one builder with the clock injected (not split into blocks), `lib/chatMessages.ts` for the
+  helpers, `components/chat/*.tsx` with `ChatLockScreen` kept as a leaf over `TokenActivationForm`, `useChatStream` (not
+  `useLLMStream`) and `useChatHistory(ticker, controls)`; the shell stays always mounted.
 - `AppSettings.jsx` → `lib/aiSettings.js` (28-36), `SecretInput` (×3: 430-448, 576-594, 612-630), `AITab`
   (401-526) + `useAIModels(provider,key)`, `DataTab` (531-638), `DataSourceBanner` (534-566 → one
   `PROVIDER_META` map shared with `App.jsx:291-310` and `Header.jsx:187-208`), `AccountTab` (643-792),
@@ -178,7 +181,7 @@ in `Header.jsx:17`.
 - `TickerResearch.jsx` → reuse `CollapsibleSection` (370-481 re-implements it), `NewsPanel`, `EarningsCard`,
   `RatingBar`, `AnalystPanel`, `MarketIndicesStrip`, `MarketHeadlines`; `timeAgo` → `format.ts` (built in 5 (d), #74).
 - Duplicates: token activation ×3 (`ChatBot.jsx:507-527`, `PremiumGate.jsx:15-37`, `AppSettings.jsx:262-282`)
-  → `useTokenActivation()`; "days until earnings" ×3 (→ `daysUntil` in #74; ChatBot's copy waits for its own PR); `isStale` ×2; `useTickerContext`/`useLiveQuote` cache
+  → `useTokenActivation()` (the chat's copy went in 5 (d), #78); "days until earnings" ×3 (→ `daysUntil` in #74; ChatBot's copy went in 5 (d), #78); `isStale` ×2; `useTickerContext`/`useLiveQuote` cache
   code → `createCachedResource(fetcher, ttl)`; `MarketContext` + `AuthContext` to kill 12-prop drilling.
 - Dead: `formatDollarFull`, `deletePosition` (unused → use it for a "clear position" button), unused hook
   returns (`error`/`refresh`), `handleTickerChange` wrapper, stale "UW API" comment in `mockData.js:3`.
@@ -553,7 +556,7 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `TickerResearch` (no PR overlap; already 7 internal components → `components/research/*.tsx`,
    `timeAgo` → lib) → `AppSettings` (no overlap; by tab → `components/settings/*`, `useAIModels` (planned as
    `useModelList`), `useKeyTester`, `getAISettings` → `lib/aiSettings.ts`; built in 5 (d), #75) → `ChatBot` (after
-   Phase 0; `lib/financialContext.ts` with tests, `components/chat/*`, `useChatStream`, `useChatHistory`) →
+   Phase 0; `lib/financialContext.ts` with tests, `components/chat/*`, `useChatStream`, `useChatHistory`; built in 5 (d), #78) →
    `PositionAnalysis`
    (`components/position/*`) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
    Extract pure logic first, presentational leaves second, stateful hooks last.
@@ -584,7 +587,8 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    "Could not validate token. Try again."; a second open within 5 min sends no request and a reply landing after a close
    is cached. Lint reached 0 / 0 here, and CI's lint step and `npm run check` became blocking.
 5. **Code-splitting** (after Vite 8): `React.lazy` + `Suspense` (existing skeletons as fallbacks) for
-   `ChatBot` (+ markdown graph; mount only while open, `requestIdleCallback` preload), `ChartsPanel`
+   `ChatBot` (+ markdown graph; the shell stays always mounted since 5 (d) — a reply streams and is stored while the chat is
+   closed — so lazy-load the leaves and the markdown graph, not the hooks; `requestIdleCallback` preload), `ChartsPanel`
    (GexChart+FlowChart+recharts), `AppSettings`/`LoginForm`/`StrategicContextEditor`/`RequestAccessForm`.
    `src/lib/supabase.ts` → `getSupabase()` lazy `import('@supabase/supabase-js')` gated on `VITE_SUPABASE_*`
    (statically replaced, so non-Supabase sites never fetch the chunk). Vite 8 is rolldown-based:

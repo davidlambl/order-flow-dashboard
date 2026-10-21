@@ -1,7 +1,7 @@
 // src/lib/storeEvents.ts
 // The UI's side of the `store-changed` bus (the event contract is at the top of store.ts): one window listener for
 // the page's life, attached by the first subscribeStore() and never detached, which counts every event and fans it
-// out to the subscribers (the useSyncExternalStore hooks in src/hooks/useStoreValue.ts).
+// out to the subscribers (the useSyncExternalStore hooks in src/hooks/useStoreValue.ts and useChatHistory's listener).
 //
 // The versions are scoped by the event's detail. A no-detail event (an import, a hydrate, a sign-out, another tab
 // rewriting several items) moves every version; a detail moves its kind's and its item's, so a reader following one
@@ -14,7 +14,7 @@
 // re-read once instead.
 //
 // setPreference() stays silent (the sync and import paths pin what they emit); a UI writer calls savePreference(),
-// which always carries the item's detail: ChatBot treats a no-detail event as "everything changed" and aborts a
+// which always carries the item's detail: useChatHistory treats a no-detail event as "everything changed" and drops a
 // streaming reply. Other tabs' writes arrive here too, through store.ts's subscribeCrossTab(). Node-loadable: the
 // window is first touched by a subscriber, and without one nothing is attached and the versions stay 0.
 
