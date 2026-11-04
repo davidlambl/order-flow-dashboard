@@ -53,7 +53,9 @@ should:
   Under the `dom` project Vite rewrites `new URL('./x.js', import.meta.url)` to the served `http://localhost:3000/…`
   URL, so a test that reads a source file uses `path.join(import.meta.dirname, 'x.js')`; the `node` project is not
   rewritten. Fixtures that must reach a stub, not MSW, install `installFetchRecorder()` (`test/helpers/fetch.js`)
-  per test and uninstall it after.
+  per test and uninstall it after. `src/lib/__snapshots__/financialContext.node.test.js.snap` is committed: regenerate it
+  with `npx vitest run -u src/lib/financialContext.node.test.js` only after an intended change (CI never writes a
+  snapshot: a missing one fails as mismatched, an obsolete one fails the file).
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
 - `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
 
@@ -68,7 +70,11 @@ should:
   permanent window listener, versions scoped by the event's detail, `savePreference` for UI writes), `queryClient.ts`
   the one TanStack Query client and the per-hook key families, `marketHours.ts` the refresh cadence with its backoff and
   the ET session state, pure; `aiSettings.ts` the AI provider table (`AI_PROVIDERS`, `providerMeta`, `KEY_PREF`) and the
-  string-guarded preference readers `getAISettings` / `readAiModelName` that ChatBot and the Settings AI tab share). Modules the
+  string-guarded preference readers `getAISettings` / `readAiModelName` that ChatBot and the Settings AI tab share; `financialContext.ts` the chat's context builder, pure with the clock injected
+  (`buildFinancialContext(input)` with `now` required; golden snapshots under 'UTC' and 'America/New_York', the committed
+  `.snap` in `__snapshots__/` beside its node test); `chatMessages.ts` the chat's pure message helpers — `stopMarker`, `settleReply`,
+  `conversationWindow`, `storableMessages`, `appendReplyText`, `withBufferedText`, the `isTurn` guard and
+  `CONTEXT_UPDATE_PROMPT`). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
   (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
@@ -83,7 +89,13 @@ should:
   `{ models, loading, error, refresh }` (the `['models', provider, key]` family on `keys.models`, 5 min `staleTime`; on
   `auth-changed` the unobserved entries are removed and a shown one reset and refetched; one request per saved key), `useKeyTester()` (the AI tab's Test: a fetch-id guard,
   and a success seeds the trimmed key's query), `useTokenActivation()` → `{ status, error, activate, reset }`
-  (`validateToken` then `setToken`; `TokenActivationForm` is its leaf for Settings and PremiumGate); the store readers on
+  (`validateToken` then `setToken`; `TokenActivationForm` is its leaf for Settings, PremiumGate and the chat's lock screen); `useChatStream()` →
+  `{ sending, start, stop, detach, live, bufferedText }` (the chat's streaming machine: `start` is synchronous and returns
+  false while a reply is in flight, the shell hands it per-call sinks, it registers no effect of its own; `live` and
+  `bufferedText` read refs — handlers and effects only) and `useChatHistory(ticker, controls)` → `{ messages, setMessages,
+  setMessagesAndPersist, deleteMessage, clearHistory }` (the chat's one writer: the persist points, the ticker-change effect
+  declared before the persist effect, the `subscribeStore` listener keyed on a live reply, the pagehide save (the reply runs on) and the unmount save, which comes
+  before the detach); the store readers on
   `useSyncExternalStore` in `useStoreValue.ts`
   (`useStoreValue(read)` for a primitive, `useStoreObject(read, key, kind, id)` for an object such as `getPosition`,
   `usePreference(name)` → `[value, save]`, `useStoreVersion`); and `usePremiumStatus()` → `{ isPremium, tokenTier,
@@ -101,9 +113,12 @@ should:
   (`settings/{AITab,DataTab,AccountTab,BackupTab}.tsx`, with `SecretInput` and `DataSourceBanner` as leaves): a tab's
   state is born fresh on every switch and its autosaves flush in its unmount cleanup, which is what keeps Sign out safe
   without a hand flush. `TokenActivationForm.tsx` is the activation leaf shared with `PremiumGate.tsx` (its lock screen
-  mounts only while locked); `StrategicContextEditor.tsx` mounts its editor only while open and saves through
-  `savePreference`. `ChatBot.jsx` and `PositionAnalysis.jsx` are large and scheduled for decomposition (Phase 5 (d))
-  along the seams listed in the roadmap.
+  mounts only while locked) and with the chat's `ChatLockScreen`; `StrategicContextEditor.tsx` mounts its editor only while open and saves through
+  `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
+  ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
+  ChatEmptyState and ChatComposer with the textarea `ref` prop) and the two chat hooks; `isOpen` and the lock only hide its
+  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). `PositionAnalysis.jsx` is
+  large and scheduled for decomposition (Phase 5 (d)) along the seams listed in the roadmap.
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
   `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
   with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
@@ -131,9 +146,9 @@ should:
   Cloud writes go through a per-user outbox persisted in localStorage (`src/lib/syncOutbox.js`, `sync_outbox_<uid>`)
   that retries network failures (a returned `{ error }` without a code) with backoff; deletes are tombstones
   (`deleted_at`, migration 005); where both sides changed an item, the newer `updated_at` wins (`sync_meta_<uid>`).
-  `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything" (ChatBot aborts a streaming
-  reply on one). Components do not add their own window listener for it (the one exception, ChatBot's detail-filtered
-  chat-history handler, is left to 5 (d)'s `useChatHistory`): they read through `src/hooks/useStoreValue.ts`, and a
+  `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything" (`useChatHistory` drops a streaming
+  reply on one). Components do not add their own window listener for it: they read through `src/hooks/useStoreValue.ts`
+  (`useChatHistory` subscribes through `subscribeStore`, keyed on a live reply), and a
   UI write that this tab must see goes through `savePreference(name, value)` in `src/lib/storeEvents.ts` (the write plus
   `store-changed` with a `pref` detail); `setPreference` itself stays silent, which the import, hydrate and sync paths
   rely on. `storeEvents.ts` keeps one permanent window listener and counts events per kind and per item, so a reader
