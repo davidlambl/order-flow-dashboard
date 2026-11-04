@@ -13,7 +13,7 @@ import {
 import type { GexRow, MarketKpis } from '../../types/market.js';
 
 // Minimum live-vs-snapshot gap (percent) that triggers dual recommendation mode. Re-exported
-// because PositionAnalysis and ChatBot import it from here.
+// because PositionAnalysis and lib/financialContext.ts import it from here.
 export { GAP_DUAL_REC_THRESHOLD_PCT };
 
 /** A number or a numeric string, which the engine coerces; null and undefined count as missing. */

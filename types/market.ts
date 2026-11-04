@@ -224,7 +224,7 @@ export interface Technicals {
 
 /** Finnhub /stock/metric subset (getTickerContext.js:453-467); null as a whole when that call failed. */
 export interface Fundamentals {
-  /** Finnhub reports it in millions (ChatBot divides by 1e3 for billions). */
+  /** Finnhub reports it in millions (the chat's context builder divides by 1e3 for billions). */
   marketCap: number | null;
   peRatio: number | null;
   forwardPE: number | null;
