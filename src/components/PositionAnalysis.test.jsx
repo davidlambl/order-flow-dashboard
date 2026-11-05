@@ -695,3 +695,42 @@ describe('PositionAnalysis pins', () => {
     });
   });
 });
+
+// Four things the shell decides when it hands the derivation to the leaves, which the pins above leave open (the
+// shell builder's mutants for them survived these pins; only its throwaway markup probe caught them): which
+// cost basis the input shows, single mode's P&L layout, the single badge's shape, and the clock dual mode's badges get.
+describe("PositionAnalysis pins: the shell's wiring", () => {
+  // Mutant: the cost field given the derivation's Number(costBasis), which turns an empty basis into 0.
+  it('Pin: an empty cost basis shows an empty average-cost field, beside the shares', () => {
+    renderPanel({ costBasis: null });
+    expect(screen.getByPlaceholderText('Avg cost')).toHaveValue(null);
+    expect(screen.getByPlaceholderText('Shares')).toHaveValue(10);
+  });
+
+  // Mutant: single mode's P&L drawn in the dual panels' row layout.
+  it("Pin: single mode's P&L is the centred block: its caption above a large percent", () => {
+    renderPanel();
+    const caption = screen.getByText('Unrealized P&L');
+    expect(caption.parentElement).toHaveClass('flex', 'flex-col', 'items-center', 'gap-0.5');
+    expect(caption.nextElementSibling).toHaveTextContent('+11.11%');
+    expect(caption.nextElementSibling).toHaveClass('text-xl', 'font-bold');
+  });
+
+  // Mutant: the single badge drawn as dual mode's secondary (dashed, smaller, left-aligned).
+  it('Pin: the single recommendation is the primary badge: large, solid-bordered, right-aligned', () => {
+    renderPanel();
+    const rec = computeRecommendation({ costBasis: 90, shares: 10, spotPrice: SPOT, kpis: KPIS, gexByStrike: GEX });
+    const word = screen.getByText(rec.signal);
+    expect(word).toHaveClass('text-lg');
+    expect(word.parentElement).not.toHaveClass('border-dashed');
+    expect(word.parentElement.parentElement.parentElement).toHaveClass('flex', 'flex-col', 'items-end');
+  });
+
+  // Mutant: dual mode's badges given a clock of 0, which reads a day-old snapshot as under a day old.
+  it("Pin: dual mode's snapshot badge names the weekday of a snapshot more than a day old", () => {
+    renderPanel({ liveQuote: quote(102, 'yahoo-post'), lastUpdated: '2026-09-24T20:00:00Z' }); // Thu 4:00 PM ET
+    expect(screen.getByText(/^Options market closed/)).toBeInTheDocument();
+    const snapshot = screen.getByText('Options Snapshot (delayed)').closest('.p-3');
+    expect(within(snapshot).getByText('Based on Thu 4:00 PM data')).toBeInTheDocument();
+  });
+});
