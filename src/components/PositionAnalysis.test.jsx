@@ -2,12 +2,10 @@
 // reasons, the price-level legend, dual mode (the live price has moved while the options market is closed), the
 // staleness and price-source badges, and the average-cost / shares inputs. Since Phase 5 (c) the panel reads its
 // market data from App's MarketContext and takes only the position draft as props, so renderPanel renders it inside
-// src/test/contexts.jsx's withContexts; the tests still assert only what it shows and sends, and should pass
-// unchanged across the components/position/* decomposition still to come in Phase 5.
-//
-// Not covered here; tracked separately: typing shares while the cost basis is empty. handleSharesChange sends
-// `costBasisNum ?? null` with costBasisNum = Number(costBasis), which is never null or undefined, so a null basis
-// goes out as 0 (an undefined one as NaN) instead of null.
+// src/test/contexts.jsx's withContexts; the tests assert only what it shows and sends. The first block and the pins
+// after it passed unchanged across the components/position/* decomposition (Phase 5 (d)); the shell-wiring pins were
+// appended after it and are green on the one-file component too. The last block is issue #57's regression: a shares
+// edit with no cost basis sends null.
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -732,5 +730,32 @@ describe("PositionAnalysis pins: the shell's wiring", () => {
     expect(screen.getByText(/^Options market closed/)).toBeInTheDocument();
     const snapshot = screen.getByText('Options Snapshot (delayed)').closest('.p-3');
     expect(within(snapshot).getByText('Based on Thu 4:00 PM data')).toBeInTheDocument();
+  });
+});
+
+// Issue #57: the shares handler sent Number(costBasis), which is 0 for an empty basis and NaN for a missing one,
+// so typing shares first saved a cost basis of 0. Red on the shell before the fix (and on the one-file component).
+describe('PositionAnalysis: a shares edit with no cost basis (issue #57)', () => {
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['an empty string', ''],
+    ['a blank string', '  '],
+    ['text that is not a number', 'abc'],
+  ])('sends a null cost basis when the basis is %s', (_, costBasis) => {
+    const { props } = renderPanel({ costBasis });
+    fireEvent.change(screen.getByPlaceholderText('Shares'), { target: { value: '5' } });
+    expect(props.onUpdate).toHaveBeenCalledExactlyOnceWith(null, 5);
+  });
+
+  it('Pin: still sends the number for a basis held as a numeric string, and zero for a zero basis', () => {
+    const first = renderPanel({ costBasis: '90' });
+    fireEvent.change(screen.getByPlaceholderText('Shares'), { target: { value: '5' } });
+    expect(first.props.onUpdate).toHaveBeenCalledExactlyOnceWith(90, 5);
+    first.unmount();
+
+    const second = renderPanel({ costBasis: 0 });
+    fireEvent.change(screen.getByPlaceholderText('Shares'), { target: { value: '5' } });
+    expect(second.props.onUpdate).toHaveBeenCalledExactlyOnceWith(0, 5);
   });
 });

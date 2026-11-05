@@ -30,6 +30,10 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate }: Positi
   const { signals, loading, spotPrice, liveQuote, optionsMarketOpen, dataProvider, lastUpdated, now } =
     usePositionSignals({ costBasis, shares });
   const { costBasisNum, hasBasis, hasSpotPrice, showDual, dualRec, rec, levels, isStale, pnl, livePnl } = signals;
+  // What a shares edit sends beside it: the basis as a number, or null while there is none. Number() alone reads an
+  // empty basis as 0 and a missing one as NaN, which saved a cost basis of 0 for shares typed first (issue #57).
+  const savedBasis =
+    costBasis == null || String(costBasis).trim() === '' || !Number.isFinite(costBasisNum) ? null : costBasisNum;
 
   if (loading) return (
     <div className="space-y-3">
@@ -57,7 +61,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate }: Positi
           costBasis={costBasis}
           shares={shares}
           onCostChange={(value) => onUpdate(value, shares)}
-          onSharesChange={(value) => onUpdate(costBasisNum ?? null, value)}
+          onSharesChange={(value) => onUpdate(savedBasis, value)}
         />
 
         {/* Center: P&L (single mode) */}
