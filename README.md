@@ -234,7 +234,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── Header.jsx          Search, price, refresh, badges, sign-out
 │   ├── KPICards.jsx        The four KPI cards
 │   ├── LoginForm.jsx       Magic-link sign-in, skip
-│   ├── PositionAnalysis.jsx  Position, P&L, recommendation
+│   ├── PositionAnalysis.tsx  Position, P&L, recommendation: the shell over position/* and usePositionSignals
 │   ├── PremiumGate.tsx     Token lock screen, mounted only while locked
 │   ├── RequestAccessForm.jsx  Netlify Forms access request
 │   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open
@@ -243,6 +243,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab, PremiumGate and the chat's lock screen
 │   ├── chat/               The chat's leaves (.tsx): ChatMarkdown, ChatMessage, TypingIndicator, ChatLockScreen,
 │   │                       ChatHeader, ContextInspector, ChatEmptyState, ChatComposer
+│   ├── position/           The position panel's leaves (.tsx): PriceDisplay, PositionInputs, PnLStat,
+│   │                       RecommendationBadge, DualRecommendationView, PriceLevelBar, ReasonList
 │   ├── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
 │   │                       MarketIndicesStrip, MarketHeadlines, LoadingSkeleton
 │   └── settings/           The Settings tabs (.tsx): SettingsDialog, AITab, DataTab, AccountTab, BackupTab,
@@ -261,6 +263,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
 │   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
 │   ├── useNow.js           Ticking clock for render code
+│   ├── usePositionSignals.ts  The position panel's signals from the market context and the draft
 │   ├── usePremiumStatus.ts Access-token status on auth-changed
 │   ├── useStoreValue.ts    useSyncExternalStore readers of the store: values, objects, preferences
 │   ├── useTickerContext.ts Research context, 15-minute cache
@@ -277,6 +280,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
 │   ├── marketHours.ts      Refresh cadence and backoff, ET session state
 │   ├── mockData.ts         Demo data, checked against types/market.ts
+│   ├── positionSignals.ts  The position panel's pure derivation: modes, recommendations, levels, P&L
 │   ├── queryClient.ts      TanStack Query client and query keys
 │   ├── recommend.ts        Recommendation engine
 │   ├── retry.js            Exponential backoff
