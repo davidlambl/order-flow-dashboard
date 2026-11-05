@@ -177,7 +177,9 @@ in `Header.jsx:17`.
   `BackupTab` (797-930).
 - `PositionAnalysis.jsx` → `PriceLevelBar` (53-109), `RecommendationBadge` (111-172), `PriceDisplay` (180-280),
   `usePositionSignals()` (284-347), `PositionInputs` (376-403), `PnLStat` (×3), `ReasonList` (×3),
-  `DualRecommendationView` (435-560).
+  `DualRecommendationView` (435-560). Built in 5 (d), #81: the derivation as the pure `lib/positionSignals.ts` under the
+  hook (one memo for the five), `PnLStat` and `ReasonList` with two layouts each, the display helpers kept with their
+  leaves; issue #57 fixed in the same PR.
 - `TickerResearch.jsx` → reuse `CollapsibleSection` (370-481 re-implements it), `NewsPanel`, `EarningsCard`,
   `RatingBar`, `AnalystPanel`, `MarketIndicesStrip`, `MarketHeadlines`; `timeAgo` → `format.ts` (built in 5 (d), #74).
 - Duplicates: token activation ×3 (`ChatBot.jsx:507-527`, `PremiumGate.jsx:15-37`, `AppSettings.jsx:262-282`)
@@ -558,7 +560,7 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `useModelList`), `useKeyTester`, `getAISettings` → `lib/aiSettings.ts`; built in 5 (d), #75) → `ChatBot` (after
    Phase 0; `lib/financialContext.ts` with tests, `components/chat/*`, `useChatStream`, `useChatHistory`; built in 5 (d), #78) →
    `PositionAnalysis`
-   (`components/position/*`) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
+   (`components/position/*`, `usePositionSignals` on `lib/positionSignals.ts`; built in 5 (d), #81) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
    Extract pure logic first, presentational leaves second, stateful hooks last.
    **Built in #74 (Phase 5 (d), TickerResearch, 2026-10-13).** `TickerResearch.tsx` is the shell over
    `components/research/*.tsx` (seven pure leaves, the data props typed from `types/market.ts`, default-exported one per

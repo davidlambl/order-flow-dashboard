@@ -74,7 +74,8 @@ should:
   (`buildFinancialContext(input)` with `now` required; golden snapshots under 'UTC' and 'America/New_York', the committed
   `.snap` in `__snapshots__/` beside its node test); `chatMessages.ts` the chat's pure message helpers — `stopMarker`, `settleReply`,
   `conversationWindow`, `storableMessages`, `appendReplyText`, `withBufferedText`, the `isTurn` guard and
-  `CONTEXT_UPDATE_PROMPT`). Modules the
+  `CONTEXT_UPDATE_PROMPT`; `positionSignals.ts` the position panel's pure derivation (`derivePositionSignals(input)`: dual
+  mode, the two recommendations, the price levels, staleness and both P&Ls, `now` injected)). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
   (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
@@ -95,7 +96,9 @@ should:
   `bufferedText` read refs — handlers and effects only) and `useChatHistory(ticker, controls)` → `{ messages, setMessages,
   setMessagesAndPersist, deleteMessage, clearHistory }` (the chat's one writer: the persist points, the ticker-change effect
   declared before the persist effect, the `subscribeStore` listener keyed on a live reply, the pagehide save (the reply runs on) and the unmount save, which comes
-  before the detach); the store readers on
+  before the detach); `usePositionSignals({ costBasis, shares })` → `{ signals, loading, spotPrice, liveQuote,
+  optionsMarketOpen, dataProvider, lastUpdated, now }` (one memo of `derivePositionSignals` over `useMarket()` and
+  `useNow(60_000)`); the store readers on
   `useSyncExternalStore` in `useStoreValue.ts`
   (`useStoreValue(read)` for a primitive, `useStoreObject(read, key, kind, id)` for an object such as `getPosition`,
   `usePreference(name)` → `[value, save]`, `useStoreVersion`); and `usePremiumStatus()` → `{ isPremium, tokenTier,
@@ -117,8 +120,10 @@ should:
   `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
   ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
   ChatEmptyState and ChatComposer with the textarea `ref` prop) and the two chat hooks; `isOpen` and the lock only hide its
-  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). `PositionAnalysis.jsx` is
-  large and scheduled for decomposition (Phase 5 (d)) along the seams listed in the roadmap.
+  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). `PositionAnalysis.tsx` is
+  the shell over `components/position/*.tsx` (PriceDisplay, PositionInputs, PnLStat, RecommendationBadge,
+  DualRecommendationView, PriceLevelBar, ReasonList: pure leaves) and `usePositionSignals`; it pairs each field's edit with
+  the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)).
 - `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
   `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
   with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
