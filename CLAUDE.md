@@ -26,9 +26,10 @@ should:
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass; it writes the entry chunk, five vendor chunks (`react`, `query`, `supabase`, `recharts`,
-  `markdown`: `output.codeSplitting.groups` in `vite.config.js`), one chunk per lazily loaded part and
-  `dist/.vite/manifest.json`. `ANALYZE=1 npm run build` also writes `dist/stats.html`.
+- `npm run build` — must pass; it writes the entry chunk, Rolldown's runtime chunk, five vendor chunks (`react`, `query`,
+  `supabase`, `recharts`, `markdown`: `output.codeSplitting.groups` in `vite.config.js`), one chunk per lazily loaded
+  part, a chunk for what two of those share (`useAutoSave`) and `dist/.vite/manifest.json` (Netlify does not publish
+  the dot-directory). `ANALYZE=1 npm run build` also writes `dist/stats.html`.
 - `npm run check:bundle` — `scripts/check-bundle.js` on the built `dist/`: the entry chunk at most 350 kB, initial JS
   (the entry and everything it imports statically, read from the manifest and compared with `index.html`'s preloads) at
   most 700 kB, and no `recharts` or `markdown` chunk on that startup path. Exit 1 over budget, 2 when the build cannot
@@ -143,7 +144,7 @@ should:
   `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
   with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
   App loads three parts on demand (Phase 5 (e)): `dashboard/ChartsPanel.tsx` (the grid with GexChart and FlowChart, and
-  recharts with it) inside the Charts section, so only while that section is expanded, with `dashboard/ChartsSkeleton.tsx`
+  recharts with it) inside the Charts section, so only while that section is expanded (it is by default), with `dashboard/ChartsSkeleton.tsx`
   in its place meanwhile; `LoginForm` (its fallback is the session check's spinner) and `SyncChoice` (its fallback and
   its failure UI sit in `dashboard/SyncChoiceLayer.tsx`, which blocks the page as the dialog does), both preloaded from
   an effect only when `configured`. The idle preload starts from an effect once `screen === 'app'`.
@@ -159,8 +160,9 @@ should:
   `StrategicContextDialog.tsx`, loaded on demand, and saves through `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
   ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
   ChatEmptyState and ChatComposer with the textarea `ref` prop) and the two chat hooks; `isOpen` and the lock only hide its
-  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). The shell, its two hooks
-  and the leaves load with the entry for that reason; only `ChatMarkdown` (react-markdown and remark-gfm) is loaded on
+  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). The shell and its two hooks
+  load with the entry for that reason, and the leaves because they are small and the composer is the shell's focus
+  target; only `ChatMarkdown` (react-markdown and remark-gfm) is loaded on
   demand, by `ChatMessage`, whose fallback while it loads AND if it fails is the reply's raw text. `PositionAnalysis.tsx` is
   the shell over `components/position/*.tsx` (PriceDisplay, PositionInputs, PnLStat, RecommendationBadge,
   DualRecommendationView, PriceLevelBar, ReasonList: pure leaves) and `usePositionSignals`; it pairs each field's edit with

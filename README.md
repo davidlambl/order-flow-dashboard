@@ -226,8 +226,10 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 ├── index.css               Tailwind theme
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
-│   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open
+│   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open, loaded on demand
 │   ├── ChatBot.tsx         AI Co-Pilot: the always-mounted shell over chat/* and the two chat hooks
+│   ├── ChunkBoundary.tsx   Suspense and error boundary of one part loaded on demand: fallback, failure card
+│   ├── ChunkFailureCard.tsx  "Could not load" with Try again and Reload, for a chunk that failed
 │   ├── CollapsibleSection.jsx  Section with a remembered open state
 │   ├── ErrorBoundary.jsx   Recovery screen
 │   ├── FlowChart.jsx       30-day flow chart
@@ -238,13 +240,18 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── PositionAnalysis.tsx  Position, P&L, recommendation: the shell over position/* and usePositionSignals
 │   ├── PremiumGate.tsx     Token lock screen, mounted only while locked
 │   ├── RequestAccessForm.jsx  Netlify Forms access request
-│   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open
+│   ├── SettingsPlaceholder.tsx  The Settings dialog's frame while its chunk loads or after it failed
+│   ├── StrategicContextDialog.tsx  The strategic context editor's dialog, loaded on demand
+│   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open: loads its dialog
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
 │   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
 │   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab, PremiumGate and the chat's lock screen
-│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row), DataSourceNote (the footer)
-│   ├── chat/               The chat's leaves (.tsx): ChatMarkdown, ChatMessage, TypingIndicator, ChatLockScreen,
-│   │                       ChatHeader, ContextInspector, ChatEmptyState, ChatComposer
+│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row), DataSourceNote (the footer),
+│   │                       ChartsPanel (both charts, loaded on demand with recharts), ChartsSkeleton (its
+│   │                       fallback), SyncChoiceLayer (the blocking layer while SyncChoice loads)
+│   ├── chat/               The chat's leaves (.tsx): ChatMessage, TypingIndicator, ChatLockScreen, ChatHeader,
+│   │                       ContextInspector, ChatEmptyState, ChatComposer, and ChatMarkdown (loaded on demand
+│   │                       with the markdown libraries)
 │   ├── position/           The position panel's leaves (.tsx): PriceDisplay, PositionInputs, PnLStat,
 │   │                       RecommendationBadge, DualRecommendationView, PriceLevelBar, ReasonList
 │   ├── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
@@ -283,6 +290,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── financialContext.ts The chat's context builder, pure, clock injected (golden snapshots in __snapshots__/ beside its test)
 │   ├── format.ts           Number and date formatting, timeAgo and daysUntil
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
+│   ├── lazyWithPreload.ts  Components loaded on demand: preload, retry after a failed import, the idle preload
 │   ├── marketHours.ts      Refresh cadence and backoff, ET session state
 │   ├── mockData.ts         Demo data, checked against types/market.ts
 │   ├── positionSignals.ts  The position panel's pure derivation: modes, recommendations, levels, P&L
@@ -298,7 +306,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
 └── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
-                            cache reset), contexts.jsx (the two contexts for component tests)
+                            cache reset, every lazily loaded component preloaded), contexts.jsx (the two contexts
+                            for component tests), lazy.js (the opt-out and the import gate for tests of a lazy part)
 test/helpers/               fakeSupabase.js (recording fake client, its auth timed like supabase-js), fetch.js
                             (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
