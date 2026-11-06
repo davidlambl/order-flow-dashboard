@@ -1,8 +1,19 @@
 // test/helpers/fakeSupabase.js — the recording fake supabase-js client the sync tests (src/lib/sync.node.test.js)
-// run SupabaseBackend, the outbox and session.js against.
+// run SupabaseBackend, the outbox and session.js against, and the App auth pins run App against (its `auth`).
 
 const KEY_COLUMN = { positions: 'ticker', preferences: 'key', chat_histories: 'ticker' };
 const clone = (v) => JSON.parse(JSON.stringify(v));
+// supabase-js 2.118 settles getSession() and delivers INITIAL_SESSION a few microtasks after the call, before any
+// macrotask (four, measured on the real client; src/lib/supabaseClient.node.test.js pins the order); the fake waits
+// as long.
+const ticks = async () => { for (let i = 0; i < 4; i += 1) await Promise.resolve(); };
+
+/** A signed-in session for `id`, in supabase-js's Session shape (the access token is not a real JWT). */
+export const sessionFor = (id) => ({
+  access_token: `at-${id}`, refresh_token: `rt-${id}`, expires_in: 3600,
+  expires_at: Math.floor(Date.now() / 1000) + 3600, token_type: 'bearer',
+  user: { id, email: `${id}@example.com`, aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} },
+});
 
 /**
  * Fake supabase-js client. `from(table)` returns a thenable query builder: select/eq/is chain,
@@ -18,12 +29,31 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
  *                 would with throwOnError. Every attempt is recorded either way.
  *   signOutError – returned by auth.signOut()
  *   gate        – a promise every select waits for before it runs (a read still in flight)
+ *   session     – the session the auth client holds (supabase-js's Session shape; null: signed out)
+ *   sessionError – auth.getSession() resolves { data: { session: null }, error: sessionError } and INITIAL_SESSION
+ *                 carries null (supabase-js: a refresh that failed at the network, an AuthRetryableFetchError)
+ *   sessionReject – auth.getSession() rejects with it
+ *   otpError    – returned by auth.signInWithOtp()
+ * The auth part, as supabase-js 2.118 behaves (measured): every getSession() and every event carries a fresh copy
+ * of the session; onAuthStateChange(cb) returns { data: { subscription: { id, callback, unsubscribe } } } and
+ * delivers INITIAL_SESSION a few microtasks later, unless the callback was unsubscribed by then; signOut() delivers
+ * SIGNED_OUT to every subscriber BEFORE it resolves, whatever it returns. emitAuth(event, session) delivers an
+ * event from elsewhere (SIGNED_IN on a tab focus or another tab's sign-in, TOKEN_REFRESHED, SIGNED_OUT) to every
+ * subscriber at once; `authCalls` lists the auth calls in order, `otps` the signInWithOtp arguments,
+ * `subscribers` how many callbacks are subscribed.
  */
-export function fakeSupabase({ tables = {}, readError = {}, respond = () => undefined, signOutError = null, gate = null } = {}) {
+export function fakeSupabase({
+  tables = {}, readError = {}, respond = () => undefined, signOutError = null, gate = null,
+  session = null, sessionError = null, sessionReject = null, otpError = null,
+} = {}) {
   const state = {
     tables: { positions: [], preferences: [], chat_histories: [], ...clone(tables) },
     reads: [], upserts: [], deletes: [], signOuts: 0,
+    session: session ? clone(session) : null, authCalls: [], otps: [],
   };
+  const subscribers = new Map();
+  let nextId = 0;
+  const current = () => (state.session ? clone(state.session) : null);
   const matches = (row, filters) => filters.every(([col, value]) => row[col] === value);
 
   function builder(table) {
@@ -68,15 +98,56 @@ export function fakeSupabase({ tables = {}, readError = {}, respond = () => unde
     return b;
   }
 
+  const deliver = (event, s) => Promise.all([...subscribers.values()].map(async (callback) => callback(event, s ? clone(s) : null)));
+
   return {
     get tables() { return state.tables; },
     get reads() { return state.reads; },
     get upserts() { return state.upserts; },
     get deletes() { return state.deletes; },
     get signOuts() { return state.signOuts; },
+    get session() { return state.session; },
+    get authCalls() { return state.authCalls; },
+    get otps() { return state.otps; },
+    get subscribers() { return subscribers.size; },
     from: (table) => builder(table),
     auth: {
-      async signOut() { state.signOuts++; return { error: signOutError }; },
+      async getSession() {
+        state.authCalls.push('getSession');
+        await ticks();
+        if (sessionReject) throw sessionReject;
+        if (sessionError) return { data: { session: null }, error: sessionError };
+        return { data: { session: current() }, error: null };
+      },
+      onAuthStateChange(callback) {
+        const id = `sub-${++nextId}`;
+        state.authCalls.push('onAuthStateChange');
+        subscribers.set(id, callback);
+        void ticks().then(() => {
+          if (subscribers.get(id) === callback) callback('INITIAL_SESSION', sessionError || sessionReject ? null : current());
+        });
+        const unsubscribe = () => { state.authCalls.push('unsubscribe'); subscribers.delete(id); };
+        return { data: { subscription: { id, callback, unsubscribe } } };
+      },
+      async signInWithOtp(credentials) {
+        state.authCalls.push('signInWithOtp');
+        state.otps.push(clone(credentials));
+        await ticks();
+        return { data: { user: null, session: null }, error: otpError };
+      },
+      async signOut() {
+        state.signOuts++;
+        state.authCalls.push('signOut');
+        await ticks();
+        state.session = null;
+        await deliver('SIGNED_OUT', null);
+        return { error: signOutError };
+      },
+    },
+    /** An auth event from elsewhere, delivered at once to every subscriber (wrap it in act()). */
+    emitAuth(event, s = null) {
+      state.session = s ? clone(s) : null;
+      for (const callback of [...subscribers.values()]) callback(event, s ? clone(s) : null);
     },
     _state: state,
   };
