@@ -65,7 +65,7 @@ export interface SupabaseAuth {
   skipSignIn: () => void;
   /** The Account tab's "Sign in": back to the sign-in screen, which can still be skipped. Stable. */
   showSignIn: () => void;
-  /** The one sign-out, for the Header's icon and the Account tab's button. Stable while flushPendingEdits is. */
+  /** The one sign-out, for the Header's icon and the Account tab's button. Stable while flushPendingEdits and client are. */
   signOut: () => Promise<void>;
   /** The signed-in account's sync conflict, for SyncChoice; null when there is none to settle. */
   conflict: ConflictReport | null;
@@ -85,7 +85,7 @@ export interface SupabaseAuth {
  * - `flushPendingEdits` and `client` must keep one identity. The backend effect depends on both, so a new one re-runs
  *   it on every render (a run for the same account builds nothing, but repeats the sessionStorage migration), and it
  *   gives `signOut`, and with it AuthContext's value, a new identity.
- * - Neither effect sets state in its own body: only the session check's promise, the auth subscription and the hydrate
+ * - No effect sets state in its own body: only the session check's promise, the auth subscription and the hydrate
  *   report do. The lint does not catch a set-state call placed after the backend effect's guarded return.
  */
 export function useSupabaseAuth({ flushPendingEdits, client = supabase }: SupabaseAuthOptions): SupabaseAuth {

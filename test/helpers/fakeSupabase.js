@@ -1,5 +1,6 @@
 // test/helpers/fakeSupabase.js — the recording fake supabase-js client the sync tests (src/lib/sync.node.test.js)
-// run SupabaseBackend, the outbox and session.js against, and the App auth pins run App against (its `auth`).
+// run SupabaseBackend, the outbox and session.js against, and whose `auth` the App tests (App.auth.test.jsx,
+// App.signout.test.jsx) and the hook's own (useSupabaseAuth.test.jsx) drive App and useSupabaseAuth with.
 
 const KEY_COLUMN = { positions: 'ticker', preferences: 'key', chat_histories: 'ticker' };
 const clone = (v) => JSON.parse(JSON.stringify(v));

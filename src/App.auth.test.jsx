@@ -10,9 +10,9 @@
 // fake recorded (reads, upserts).
 // Written against the one-file App.jsx as the contract its move into hooks must keep, so every test is a pin, and each
 // asserts end states only (what shows, what is stored, what was sent, after a commit, an event or an unmount), never
-// how App gets there. Not pinned, either way: anything typed or saved while a sign-out waits on the network, another
-// tab's sign-out (this browser's storage cleared elsewhere, then SIGNED_OUT), the conflict of an account that signs out
-// and back in, an edit made behind SyncChoice, a token still being validated at a sign-out, the order of the auth
+// how App gets there. Not pinned here, either way: anything typed or saved while a sign-out waits on the network and
+// another tab's sign-out (both in App.signout.test.jsx since their fix), the conflict of an account that signs out and
+// back in (useSupabaseAuth.test.jsx), an edit made behind SyncChoice, a token still being validated at a sign-out, the order of the auth
 // calls, and how often a warning is logged (warnings are asserted by their text; only the account switch's is
 // counted, once).
 // The store's backend is module state that an unmount leaves in place, so every test ends by setting a fresh

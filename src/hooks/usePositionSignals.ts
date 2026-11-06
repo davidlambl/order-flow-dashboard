@@ -34,8 +34,8 @@ export interface PositionSignalsState {
 }
 
 /**
- * The position draft comes in as props, since App holds the edit and its debounced save; the market data comes from
- * the context.
+ * The position draft comes in as props, since App's usePositionDraft holds the edit and its debounced save; the market
+ * data comes from the context.
  */
 export function usePositionSignals(
   { costBasis, shares }: Pick<PositionSignalsInput, 'costBasis' | 'shares'>,

@@ -16,17 +16,17 @@ import PriceLevelBar from './position/PriceLevelBar.js';
 import ReasonList from './position/ReasonList.js';
 
 interface PositionAnalysisProps {
-  /** The draft's average cost: App's edit while one is being typed, else the ticker's stored position. */
+  /** The draft's average cost (usePositionDraft): the edit while one is being typed, else the ticker's stored position. */
   costBasis: Position['costBasis'];
   /** The draft's share count, from the same place. */
   shares: Position['shares'];
-  /** App's updatePosition: the whole draft after an edit to either field (App debounces the save). */
+  /** usePositionDraft's update: the whole draft after an edit to either field (the hook debounces the save). */
   onUpdate: (costBasis: number | null, shares: number | null) => void;
 }
 
 export default function PositionAnalysis({ costBasis, shares, onUpdate }: PositionAnalysisProps) {
-  // Market data from App's context, through the hook; the position draft stays props (App holds the edit and its
-  // debounced save).
+  // Market data from App's context, through the hook; the position draft stays props (App's usePositionDraft holds the edit
+  // and its debounced save).
   const { signals, loading, spotPrice, liveQuote, optionsMarketOpen, dataProvider, lastUpdated, now } =
     usePositionSignals({ costBasis, shares });
   const { costBasisNum, hasBasis, hasSpotPrice, showDual, dualRec, rec, levels, isStale, pnl, livePnl } = signals;

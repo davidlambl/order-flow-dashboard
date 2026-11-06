@@ -3,7 +3,7 @@
 //  - A write whose request fails resolves (it does not throw) with { data: null, error: { code: '' },
 //    status: 0 }. src/lib/syncOutbox.js retries exactly that shape (isRetryable), which is what keeps an edit
 //    made offline instead of dropping it on its first attempt.
-//  - An auth request that fails resolves with an AuthRetryableFetchError of status 0. src/App.jsx recognises a
+//  - An auth request that fails resolves with an AuthRetryableFetchError of status 0. useSupabaseAuth recognises a
 //    failed session check by that error name and shows the sign-in notice instead of treating it as signed out.
 //  - The session is stored under sb-<project ref>-auth-token, a key the store does not own: clearAll, the
 //    sign-out's local clear and the cross-tab listener (describeStorageKey) leave it to supabase-js, and the
