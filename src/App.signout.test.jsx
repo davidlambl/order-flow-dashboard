@@ -9,11 +9,14 @@
 // Settings); and, when another tab of this browser signs out, what this tab writes through the account's backend into
 // the storage that tab has just emptied: its pending edit, whether the storage event or SIGNED_OUT reaches it first, a
 // reply it was still streaming, and the account's cloud copy, which a hydrate still reading pulls in. Those cross-tab
-// tests hold for a tab that already SEES the emptied storage when it handles the event. A real browser can deliver the
-// other tab's SIGNED_OUT first (two Chromium tabs did, every time), and that order is pinned as a known gap: the
-// pending edit stays, and the next account uploads it. What is someone's stays: after a session revoked on another
-// device the data is still marked as the account's, and a sign-out this tab hears of late (frozen in the background
-// meanwhile) can find the browser in use without an account, or marked as the next account's.
+// tests see the emptied storage as they handle the event. A real browser delivers the other tab's SIGNED_OUT first
+// (two Chromium tabs did, every time) while this tab's reads of the owner mark still show the account: the end looks
+// like a revoke, and what this tab writes goes once the mark's removal reaches it as a storage event. The tests of that
+// order hold the mark stale with a getItem spy across SIGNED_OUT only, release it (a tab's view shows a key's change
+// before that key's event), let the outbox's microtask save land (a storage event is a task), then dispatch the
+// events: the pending edit, a reply mid-stream, the strategic context. What is someone's stays: after a session
+// revoked on another device the data is still marked as the account's, and a sign-out this tab hears of late (frozen
+// in the background meanwhile) can find the browser in use without an account, or marked as the next account's.
 // The store's backend is module state that an unmount leaves in place, so every test ends by setting a fresh
 // LocalStorageBackend while App is still mounted (App.auth.test.jsx says why).
 import { StrictMode } from 'react';
@@ -191,6 +194,34 @@ async function storageClearedInAnotherTab() {
   localStorage.clear();
   act(() => { window.dispatchEvent(new StorageEvent('storage', { key: null, storageArea: localStorage })); });
   await after(20);
+}
+
+/**
+ * The same sign-out as a real browser delivers it: that tab's clear is done, but this tab's reads of the owner mark
+ * still show the account while its SIGNED_OUT is handled, so the end looks like a revoke. The view is current again
+ * right after: a tab's view shows a key's change before that key's storage event reaches it.
+ */
+function signedOutElsewhereSeenLate(client) {
+  localStorage.clear();
+  const getItem = Storage.prototype.getItem;
+  const staleMark = vi.spyOn(Storage.prototype, 'getItem')
+    .mockImplementation(function read(key) { return key === 'local_data_owner' ? U1 : getItem.call(this, key); });
+  act(() => { client.emitAuth('SIGNED_OUT', null); });
+  staleMark.mockRestore();
+}
+
+/** A storage event as another tab's write sends it here (jsdom sends none for this document's own writes). */
+const storageEvent = (key, oldValue, newValue, storageArea = localStorage) => act(() => {
+  window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea }));
+});
+
+/**
+ * What that sign-out's last writes send this tab, in its order: the access token's removal (when one was stored), then
+ * the mark's.
+ */
+function markRemovedElsewhere(token) {
+  if (token) storageEvent('access_token', token, null);
+  storageEvent('local_data_owner', U1, null);
 }
 
 /** The next account signs in from another tab, and its hydrate reads; the debounces and autosaves then run out. */
@@ -525,12 +556,13 @@ describe('App: nothing written after a sign-out outlives it', () => {
 
   // What a real browser does, measured with two Chromium tabs and the real supabase-js: the other tab's SIGNED_OUT
   // broadcast reaches this tab a few milliseconds BEFORE this tab's view of the storage shows that tab's clear. The
-  // owner mark still reads as the account's, so the session's end looks like a revoke: the pending edit is written
-  // (into storage the other tab has in fact emptied) and nothing clears it. Closing this takes more than the owner
-  // mark read at the event, such as watching for the mark's removal afterwards.
-  it("Pin (known gap): another tab's sign-out heard before its clear shows here leaves the pending edit, and the next account uploads it", async () => {
+  // owner mark still reads as the account's, so the session's end looks like a revoke and the pending edit is written
+  // into storage the other tab has in fact emptied; the mark's removal then reaches this tab as a storage event, and
+  // the edit goes with the account's queued write and its sync dates.
+  it("another tab's sign-out heard before its clear shows here leaves nothing once the mark's removal arrives: not the edit pending in this tab", async () => {
     const error = vi.spyOn(console, 'error');
-    localStorage.setItem('access_token', proToken());
+    const token = proToken();
+    localStorage.setItem('access_token', token);
     serveFunctions();
     const client = setClient({ session: sessionFor(U1) });
     renderApp();
@@ -544,14 +576,23 @@ describe('App: nothing written after a sign-out outlives it', () => {
     const staleMark = vi.spyOn(Storage.prototype, 'getItem') // ...but not yet visible to this tab's reads of the mark
       .mockImplementation(function read(key) { return key === 'local_data_owner' ? U1 : getItem.call(this, key); });
     act(() => { client.emitAuth('SIGNED_OUT', null); });
-    staleMark.mockRestore();
+    staleMark.mockRestore(); // a tab's view shows a key's change before that key's storage event is dispatched
     expect(signInShown()).toBe(true);
-    await after(400);
+    await after(0); // the outbox saves its queue in a microtask, and a storage event is a task
     expect(accountKeys()).toEqual(['position_AVGO', 'sync_meta_user-1', 'sync_outbox_user-1']);
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'access_token', oldValue: token, newValue: null, storageArea: localStorage }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'local_data_owner', oldValue: U1, newValue: null, storageArea: localStorage }));
+    });
+    await after(400);
+    expect(accountKeys()).toEqual([]);
     expect(localStorage.getItem('local_data_owner')).toBeNull();
 
     await nextAccountSignsIn(client);
-    expect(positionUpserts(client)).toEqual([[U2, 'AVGO', 95, null]]);
+    expect(client.upserts).toEqual([]);
+    act(() => { setToken(proToken()); }); // the next account's own token: its inputs show its position, not the edit
+    expect(await costInput()).toHaveValue(null);
+    await settled();
     expect(error).not.toHaveBeenCalled();
   });
 
@@ -646,6 +687,174 @@ describe('App: nothing written after a sign-out outlives it', () => {
     expect(localStorage.getItem('local_data_owner')).toBe(U2);
     expect(client.upserts).toEqual([]);
     expect(warn).not.toHaveBeenCalled(); // nothing of another account was found to clear
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  // As in the real browser's order above, with a reply still streaming: the chat saves it as it unmounts with the
+  // dashboard, through the account's backend, into the storage the other tab has emptied.
+  it("another tab's sign-out heard before its clear shows here leaves nothing of a reply this tab was still streaming, once the mark's removal arrives", async () => {
+    const error = vi.spyOn(console, 'error');
+    const token = proToken();
+    localStorage.setItem('access_token', token);
+    serveFunctions();
+    const reply = liveStream();
+    const network = globalThis.fetch;
+    const recorder = installFetchRecorder();
+    onTestFinished(() => recorder.uninstall());
+    recorder.setFetch(async (url, init) => (String(url).includes('/askLLM') ? reply.response() : network(url, init)));
+    const client = setClient({ session: sessionFor(U1) });
+    renderApp();
+    await costInput();
+    await hydrated(client);
+    await settled();
+
+    fireEvent.click(screen.getByLabelText('Open AI Co-Pilot'));
+    const box = await screen.findByPlaceholderText('Ask about the flow...');
+    fireEvent.change(box, { target: { value: 'A question from the first account' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => { expect(recorder.calls.some(({ url }) => url.includes('/askLLM'))).toBe(true); });
+    await act(async () => {
+      reply.chunk('A partial answer for the first account');
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(screen.getByText('A partial answer for the first account')).toBeInTheDocument();
+
+    signedOutElsewhereSeenLate(client);
+    expect(signInShown()).toBe(true);
+    await after(0);
+    expect(accountKeys()).toEqual(['chat_history_AVGO', 'sync_meta_user-1', 'sync_outbox_user-1']); // the unmount save
+    markRemovedElsewhere(token);
+    await after(400);
+    expect(accountKeys()).toEqual([]);
+
+    await nextAccountSignsIn(client);
+    expect(upsertsFor(client, U2)).toEqual([]);
+    expect(client.upserts).toEqual([]);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  // As in the real browser's order above, with the strategic-context editor's text still inside its autosave: the
+  // editor saves it as it unmounts with the dashboard.
+  it("another tab's sign-out heard before its clear shows here leaves nothing of the strategic context typed just before it, once the mark's removal arrives", async () => {
+    const error = vi.spyOn(console, 'error');
+    serveFunctions();
+    const client = setClient({ session: sessionFor(U1) });
+    renderApp();
+    await hydrated(client);
+    await settled();
+    fireEvent.click(screen.getByLabelText('Open settings'));
+    fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Backup' }));
+    fireEvent.click(within(settingsDialog()).getByRole('button', { name: /Add strategic context/ }));
+    fireEvent.change(await screen.findByPlaceholderText(/^Paste your strategic context here/), { target: { value: "A's private thesis" } });
+    expect(localStorage.getItem('strategic_context')).toBeNull(); // still inside the editor's autosave
+
+    signedOutElsewhereSeenLate(client);
+    expect(signInShown()).toBe(true);
+    await after(0);
+    expect(localStorage.getItem('strategic_context')).toBe(JSON.stringify("A's private thesis")); // the unmount save
+    markRemovedElsewhere(null);
+    await after(1_200);
+    expect(localStorage.getItem('strategic_context')).toBeNull();
+    expect(accountKeys()).toEqual([]);
+
+    await nextAccountSignsIn(client);
+    expect(upsertsFor(client, U2)).toEqual([]);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  // A session revoked elsewhere also leaves this tab watching the mark, which stays. Other tabs' writes that leave it
+  // in place change nothing: the account's data and the edit queued for it wait for its next sign-in here.
+  it("Pin: a session revoked elsewhere stays harmless while its mark is watched: an unrelated key's event and another area's clear() clear nothing", async () => {
+    const error = vi.spyOn(console, 'error');
+    localStorage.setItem('access_token', proToken());
+    serveFunctions();
+    const client = setClient({ session: sessionFor(U1), tables: { positions: [posRow(U1, 'NVDA', 80, 2)] } });
+    renderApp();
+    const cost = await costInput();
+    await hydrated(client);
+    await settled();
+
+    fireEvent.change(cost, { target: { value: '95' } });
+    act(() => { client.emitAuth('SIGNED_OUT', null); }); // revoked elsewhere: storage untouched
+    expect(signInShown()).toBe(true);
+    await after(400);
+    storageEvent('chat_sidebar_w', null, '480'); // another tab's unrelated write
+    storageEvent(null, null, null, sessionStorage); // a clear() of another storage area: the mark is still set
+    await after(400);
+    expect(localStorage.getItem('local_data_owner')).toBe(U1);
+    expect(accountKeys()).toEqual(['position_AVGO', 'position_NVDA', `sync_meta_${U1}`, `sync_outbox_${U1}`]);
+
+    act(() => { client.emitAuth('SIGNED_IN', sessionFor(U1)); });
+    await hydrated(client, 2);
+    await after(400);
+    await settled();
+    expect(positionUpserts(client)).toEqual([[U1, 'AVGO', 95, null]]);
+    expect(stored('NVDA')).toEqual({ costBasis: 80, shares: 2 });
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  // Revoked elsewhere, then another account signs in in another tab before this tab hears of it: its claim cleared the
+  // first account's data there (API keys kept), marked the browser as its own and pulled its copy. The watch ends at
+  // that mark, and nothing of that account's goes, then or at a later removal of its mark.
+  it("Pin: a session revoked elsewhere, then another account's mark: the watch ends there and leaves that account's data", async () => {
+    const error = vi.spyOn(console, 'error');
+    serveFunctions();
+    const client = setClient({ session: sessionFor(U1) });
+    renderApp();
+    await hydrated(client);
+    await settled();
+
+    act(() => { client.emitAuth('SIGNED_OUT', null); }); // revoked elsewhere: the mark stays
+    expect(signInShown()).toBe(true);
+    await after(400);
+    localStorage.setItem('local_data_owner', U2);
+    storageEvent('local_data_owner', U1, U2);
+    localStorage.setItem('position_NVDA', JSON.stringify({ costBasis: 50, shares: 2 }));
+    storageEvent('position_NVDA', null, JSON.stringify({ costBasis: 50, shares: 2 }));
+    localStorage.setItem('ai_key_openai', JSON.stringify('sk-second'));
+    storageEvent('ai_key_openai', null, JSON.stringify('sk-second'));
+    await after(400);
+    expect(stored('NVDA')).toEqual({ costBasis: 50, shares: 2 });
+    expect(localStorage.getItem('ai_key_openai')).toBe(JSON.stringify('sk-second'));
+
+    // A later removal of that mark (the next account's own sign-out there, which clears its own data) finds no watch.
+    localStorage.removeItem('local_data_owner');
+    storageEvent('local_data_owner', U2, null);
+    await after(400);
+    expect(stored('NVDA')).toEqual({ costBasis: 50, shares: 2 });
+    expect(localStorage.getItem('ai_key_openai')).toBe(JSON.stringify('sk-second'));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  // The account signs in again in the other tab before this tab, busy meanwhile, handles the removal of the mark that
+  // its sign-out sent: by then the mark reads the account again, and what the browser holds is the account's once more.
+  it("Pin: the mark's removal handled once the account has signed in again elsewhere clears nothing of the account's", async () => {
+    const error = vi.spyOn(console, 'error');
+    const token = proToken();
+    localStorage.setItem('access_token', token);
+    serveFunctions();
+    const client = setClient({ session: sessionFor(U1), tables: { positions: [posRow(U1, 'NVDA', 80, 2)] } });
+    renderApp();
+    const cost = await costInput();
+    await hydrated(client);
+    await settled();
+
+    fireEvent.change(cost, { target: { value: '95' } });
+    signedOutElsewhereSeenLate(client);
+    expect(signInShown()).toBe(true);
+    await after(0);
+    localStorage.setItem('local_data_owner', U1); // the sign-in there: the mark, and the account's copy pulled
+    localStorage.setItem('position_NVDA', JSON.stringify({ costBasis: 80, shares: 2 }));
+    markRemovedElsewhere(token);
+    await after(400);
+    expect(localStorage.getItem('local_data_owner')).toBe(U1);
+    expect(accountKeys()).toEqual(['position_AVGO', 'position_NVDA', `sync_meta_${U1}`, `sync_outbox_${U1}`]);
+
+    act(() => { client.emitAuth('SIGNED_IN', sessionFor(U1)); }); // that sign-in reaches this tab too
+    await hydrated(client, 2);
+    await after(400);
+    await settled();
+    expect(positionUpserts(client)).toEqual([[U1, 'AVGO', 95, null]]);
     expect(error).not.toHaveBeenCalled();
   });
 });

@@ -1363,4 +1363,39 @@ describe('sync', () => {
       backend.dispose();
     });
   });
+
+  it("clearAccountSyncState(userId): that account's queued writes and sync dates leave this browser, nothing else does (another account's kept); a bad id, or storage that is null, blocked or absent, changes nothing and never throws", async () => {
+    await inBrowser(async ({ storage, local }) => {
+      const { clearAccountSyncState } = await import('./SupabaseBackend.js');
+      storage.setItem('sync_outbox_user-a', JSON.stringify([posOp('AVGO')]));
+      storage.setItem('sync_meta_user-a', JSON.stringify({ 'positions:AVGO': T1 }));
+      storage.setItem('sync_outbox_user-b', JSON.stringify([posOp('NVDA')]));
+      storage.setItem('sync_meta_user-b', JSON.stringify({ 'positions:NVDA': T1 }));
+      local.setPosition('AVGO', { costBasis: 95, shares: null });
+      local.setPreference('ai_key_openai', 'sk');
+      storage.setItem('local_data_owner', 'user-b');
+      const before = contents(storage);
+      const data = userData(storage);
+
+      for (const id of ['', null, undefined, 42]) clearAccountSyncState(id);
+      clearAccountSyncState(U, null);
+      assert.doesNotThrow(() => clearAccountSyncState(U, { removeItem() { throw new Error('SecurityError'); } }), 'blocked');
+      assert.deepEqual(contents(storage), before, 'nothing removed');
+
+      const other = memoryStorage();
+      other.setItem('sync_outbox_user-b', '[]');
+      other.setItem('sync_meta_user-b', '{}');
+      clearAccountSyncState('user-b', other);
+      assert.equal(other.map.size, 0, 'the storage given');
+      assert.deepEqual(contents(storage), before, 'not localStorage');
+
+      clearAccountSyncState(U);
+      assert.deepEqual(syncKeys(storage), ['sync_meta_user-b', 'sync_outbox_user-b'], "that account's only");
+      assert.deepEqual(userData(storage), data, 'the data, the mark and the API key stay');
+    });
+    await withGlobals({ localStorage: undefined, window: undefined }, async () => {
+      const { clearAccountSyncState } = await import('./SupabaseBackend.js');
+      assert.doesNotThrow(() => clearAccountSyncState(U), 'no localStorage');
+    });
+  });
 });

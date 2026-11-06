@@ -699,3 +699,284 @@ describe('useSupabaseAuth: a conflict once the session has left its account', ()
     expect(result.current.conflict).toBeNull();
   });
 });
+
+// Another tab's sign-out as a real browser delivers it: its SIGNED_OUT reaches this tab while this tab's reads of the
+// owner mark still show the account, so the end looks like a revoke and the edit pending here is written for the
+// account, queued and dated, into the storage that tab has emptied. The mark's removal arrives a moment later as a
+// storage event (jsdom sends none for this document's own writes, so the tests do), and until then a session or a
+// skip may come first. A revoke's watch must stay harmless, and an armed watch must never outlive the hook.
+describe("useSupabaseAuth: another tab's sign-out heard before its clear shows here", () => {
+  let warn;
+  let error;
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    error = vi.spyOn(console, 'error');
+  });
+
+  afterEach(() => {
+    setBackend(new LocalStorageBackend());
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  /** The account's queued writes and its sync dates as stored, null where there are none. */
+  const syncKeys = (id) => [localStorage.getItem(`sync_outbox_${id}`), localStorage.getItem(`sync_meta_${id}`)];
+
+  /** A storage event as another tab's write sends it here. */
+  const storageEvent = (key, oldValue, newValue, storageArea = localStorage) => act(() => {
+    window.dispatchEvent(new StorageEvent('storage', { key, oldValue, newValue, storageArea }));
+  });
+
+  /** Every store-changed detail from now on (null: no detail), until stop(). */
+  function storeChanges() {
+    const details = [];
+    const record = (e) => { details.push(e.detail ?? null); };
+    window.addEventListener('store-changed', record);
+    return { details, stop: () => window.removeEventListener('store-changed', record) };
+  }
+
+  /** A signed in, with AVGO 95 inside its debounce: flushPendingEdits writes it through the backend in use. */
+  async function signedInWithPendingEdit() {
+    let pending = null;
+    const flushPendingEdits = vi.fn(() => {
+      if (pending) setPosition('AVGO', pending);
+      pending = null;
+    });
+    const client = fakeSupabase({ session: sessionFor(A) });
+    const view = hook(client, flushPendingEdits);
+    await settle();
+    pending = { costBasis: 95, shares: null };
+    return { client, ...view };
+  }
+
+  /**
+   * Another tab signs A out: its clear is done, but this tab's reads of the mark show A while SIGNED_OUT is handled,
+   * and are current again right after (a tab's view shows a key's change before that key's storage event). The settle
+   * lets the outbox's microtask save land, as it does in a browser before any storage event (a task).
+   */
+  async function signedOutElsewhere(client) {
+    localStorage.clear();
+    const getItem = Storage.prototype.getItem;
+    const staleMark = vi.spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(function read(key) { return key === 'local_data_owner' ? A : getItem.call(this, key); });
+    act(() => { client.emitAuth('SIGNED_OUT', null); });
+    staleMark.mockRestore();
+    await settle();
+    expect(getPosition('AVGO')).toEqual({ costBasis: 95, shares: null }); // written for A into the emptied storage
+    expect(syncKeys(A).every((value) => value !== null)).toBe(true);
+  }
+
+  it("the mark's removal clears what this tab wrote, with the account's queue and dates; the next account gets none of it", async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+
+    const changes = storeChanges();
+    storageEvent('local_data_owner', A, null);
+    changes.stop();
+    expect(getPosition('AVGO')).toEqual(EMPTY);
+    expect(syncKeys(A)).toEqual([null, null]);
+    expect(changes.details).toEqual([null]); // once: the readers re-read the whole store
+
+    await emit(client, 'SIGNED_IN', sessionFor(B));
+    expect(positionUpserts(client)).toEqual([]);
+    expect(warn).not.toHaveBeenCalled(); // nothing of another account was left for B's claim to find
+  });
+
+  it('arms one storage listener under StrictMode, and removes it at unmount', async () => {
+    const added = vi.spyOn(window, 'addEventListener');
+    const removed = vi.spyOn(window, 'removeEventListener');
+    const client = fakeSupabase({ session: sessionFor(A) });
+    const { unmount } = hook(client);
+    await settle();
+
+    await emit(client, 'SIGNED_OUT'); // revoked elsewhere: the mark stays A, so the watch waits
+    const watches = added.mock.calls.filter(([type]) => type === 'storage');
+    expect(watches).toHaveLength(1);
+    unmount();
+    for (const [type, listener] of watches) expect(removed).toHaveBeenCalledWith(type, listener);
+  });
+
+  it("a session arriving before the mark's event checks the mark first: the next account gets nothing of the ended one", async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+
+    await emit(client, 'SIGNED_IN', sessionFor(B)); // the mark already reads null; its event has not been handled
+    expect(positionUpserts(client)).toEqual([]);
+    expect(getPosition('AVGO')).toEqual(EMPTY);
+    expect(syncKeys(A)).toEqual([null, null]);
+  });
+
+  // Revoked, then signed in again here: the mark still reads the account, so the check clears nothing, and the watch
+  // is gone before the account's session goes on: a later removal of the mark finds none.
+  it('a session of the same account arriving stops the watch, clearing nothing then or at a later removal of the mark', async () => {
+    const removed = vi.spyOn(window, 'removeEventListener');
+    const client = fakeSupabase({ session: sessionFor(A), tables: { positions: [posRow(A, 'AVGO', 120, 3)] } });
+    hook(client);
+    await settle();
+    await emit(client, 'SIGNED_OUT'); // revoked elsewhere: the watch waits
+
+    await emit(client, 'SIGNED_IN', sessionFor(A));
+    expect(removed.mock.calls.filter(([type]) => type === 'storage')).toHaveLength(1);
+    const changes = storeChanges();
+    localStorage.removeItem('local_data_owner');
+    storageEvent('local_data_owner', A, null);
+    changes.stop();
+    expect(getPosition('AVGO')).toEqual({ costBasis: 120, shares: 3 });
+    expect(changes.details).toEqual([]);
+  });
+
+  it("a skip here before the mark's event checks the mark first: the ended account's writes go, the skip stays", async () => {
+    const { client, result } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+
+    const changes = storeChanges();
+    act(() => { result.current.skipSignIn(); });
+    changes.stop();
+    expect(result.current.screen).toBe('app');
+    expect(localStorage.getItem('auth_skipped')).toBe('1');
+    expect(getPosition('AVGO')).toEqual(EMPTY);
+    expect(syncKeys(A)).toEqual([null, null]);
+    expect(changes.details).toEqual([null]);
+  });
+
+  it('a clear() elsewhere (key null) once the mark reads null clears too', async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+
+    storageEvent(null, null, null);
+    expect(getPosition('AVGO')).toEqual(EMPTY);
+    expect(syncKeys(A)).toEqual([null, null]);
+  });
+
+  it("a revoke waits through an unrelated key and another area's clear, and clears once the mark is removed", async () => {
+    const { client } = await signedInWithPendingEdit();
+    await emit(client, 'SIGNED_OUT'); // revoked elsewhere: the edit is written for A, the mark stays
+
+    const changes = storeChanges();
+    storageEvent('chat_sidebar_w', null, '480');
+    storageEvent(null, null, null, sessionStorage);
+    expect(changes.details).toEqual([]);
+    expect(getPosition('AVGO')).toEqual({ costBasis: 95, shares: null });
+    localStorage.removeItem('local_data_owner');
+    storageEvent('local_data_owner', A, null);
+    changes.stop();
+    expect(changes.details).toEqual([null]);
+    expect(getPosition('AVGO')).toEqual(EMPTY);
+    expect(syncKeys(A)).toEqual([null, null]);
+  });
+
+  // A key typed in Settings is saved as the dashboard unmounts, after the other tab's clear.
+  it('the clear takes API keys too, like the sign-out it completes', async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+    localStorage.setItem('ai_key_openai', JSON.stringify('sk-a'));
+
+    storageEvent('local_data_owner', A, null);
+    expect(localStorage.getItem('ai_key_openai')).toBeNull();
+  });
+
+  // Another account signed in elsewhere: its claim cleared what it found of A's, and the browser is its own now.
+  it("Pin: the mark moving to another account stops the watch and clears nothing of that account's", async () => {
+    const client = fakeSupabase({ session: sessionFor(A) });
+    hook(client);
+    await settle();
+    await emit(client, 'SIGNED_OUT'); // revoked elsewhere: the watch waits
+    localStorage.setItem('local_data_owner', B);
+    localStorage.setItem('position_NVDA', JSON.stringify({ costBasis: 50, shares: 2 }));
+    localStorage.setItem('ai_key_openai', JSON.stringify('sk-b'));
+
+    const changes = storeChanges();
+    storageEvent('local_data_owner', A, B);
+    localStorage.removeItem('local_data_owner'); // B's own sign-out there: no watch is left here to act on it
+    storageEvent('local_data_owner', B, null);
+    changes.stop();
+    expect(changes.details).toEqual([]);
+    expect(getPosition('NVDA')).toEqual({ costBasis: 50, shares: 2 });
+    expect(localStorage.getItem('ai_key_openai')).toBe(JSON.stringify('sk-b'));
+  });
+
+  // The removal's event handled late: by then B has signed in there, and the event's own values say nothing of that.
+  it("Pin: the removal handled once the mark already reads another account's clears nothing of that account's", async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+    localStorage.setItem('local_data_owner', B);
+    localStorage.setItem('position_NVDA', JSON.stringify({ costBasis: 50, shares: 2 }));
+    localStorage.setItem('ai_key_openai', JSON.stringify('sk-b'));
+
+    const changes = storeChanges();
+    storageEvent('local_data_owner', A, null);
+    changes.stop();
+    expect(changes.details).toEqual([]);
+    expect(getPosition('NVDA')).toEqual({ costBasis: 50, shares: 2 });
+    expect(localStorage.getItem('ai_key_openai')).toBe(JSON.stringify('sk-b'));
+  });
+
+  // "Continue without signing in" clicked in another tab before this tab hears the mark's removal: this tab cannot
+  // tell the ended account's writes from that use's, and keeps them all.
+  it('Pin: a skip made elsewhere by then keeps the data, and the watch is gone', async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+    localStorage.setItem('auth_skipped', '1');
+
+    const changes = storeChanges();
+    storageEvent('local_data_owner', A, null);
+    localStorage.removeItem('auth_skipped');
+    storageEvent('local_data_owner', A, null);
+    changes.stop();
+    expect(changes.details).toEqual([]);
+    expect(getPosition('AVGO')).toEqual({ costBasis: 95, shares: null });
+  });
+
+  it('Pin: it acts once', async () => {
+    const { client } = await signedInWithPendingEdit();
+    await signedOutElsewhere(client);
+    storageEvent('local_data_owner', A, null);
+    localStorage.setItem('position_NVDA', JSON.stringify({ costBasis: 1, shares: 1 })); // used without an account since
+
+    const changes = storeChanges();
+    storageEvent(null, null, null);
+    storageEvent('local_data_owner', A, null);
+    changes.stop();
+    expect(changes.details).toEqual([]);
+    expect(getPosition('NVDA')).toEqual({ costBasis: 1, shares: 1 });
+  });
+
+  // Another tab signed A out and went on without an account before this tab handled the end: the mark is gone and the
+  // skip makes the browser's data that use's, so nothing is watched. What is entered there is still the browser's once
+  // that tab's "Sign in" withdraws the skip, and the next account to sign in takes it.
+  it('Pin: an end that finds the mark gone and a skip set watches nothing: what is entered without an account reaches the next account', async () => {
+    const client = fakeSupabase({ session: sessionFor(A) });
+    hook(client);
+    await settle();
+    const added = vi.spyOn(window, 'addEventListener');
+
+    localStorage.clear(); // the other tab's sign-out and its "Continue without signing in", both shown here already
+    localStorage.setItem('auth_skipped', '1');
+    await emit(client, 'SIGNED_OUT');
+    setPosition('NVDA', { costBasis: 50, shares: 2 }); // entered there without an account
+    localStorage.removeItem('auth_skipped'); // its Account tab's "Sign in"
+    await emit(client, 'SIGNED_IN', sessionFor(B));
+    expect(positionUpserts(client)).toEqual([[B, 'NVDA', 50, 2]]);
+    expect(getPosition('NVDA')).toEqual({ costBasis: 50, shares: 2 });
+    expect(added.mock.calls.filter(([type]) => type === 'storage')).toEqual([]);
+  });
+
+  // A revoke's watch stops when the account signs in again here, and stays stopped: the sign-out here that follows,
+  // a skip, what is entered without an account and the next account's session find no watch left to act.
+  it('Pin: a watch that has stopped never acts again: what is entered without an account after a later sign-out here reaches the next account', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const client = fakeSupabase({ session: sessionFor(A) });
+    const { result } = hook(client);
+    await settle();
+    await emit(client, 'SIGNED_OUT'); // revoked elsewhere: the watch waits
+    await emit(client, 'SIGNED_IN', sessionFor(A)); // signed in again here: the watch stops
+    await act(async () => { await result.current.signOut(); });
+
+    act(() => { result.current.skipSignIn(); });
+    setPosition('NVDA', { costBasis: 50, shares: 2 }); // entered without an account
+    act(() => { result.current.showSignIn(); });
+    await emit(client, 'SIGNED_IN', sessionFor(B));
+    expect(positionUpserts(client)).toEqual([[B, 'NVDA', 50, 2]]);
+    expect(getPosition('NVDA')).toEqual({ costBasis: 50, shares: 2 });
+  });
+});
