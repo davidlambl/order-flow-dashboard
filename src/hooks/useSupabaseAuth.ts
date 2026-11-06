@@ -8,9 +8,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase.js';
 import { SupabaseBackend } from '../lib/SupabaseBackend.js';
-import { emitStoreChanged, LocalStorageBackend, migrateSessionToLocal, setBackend } from '../lib/store.js';
+import { clearAll, emitStoreChanged, LocalStorageBackend, migrateSessionToLocal, setBackend } from '../lib/store.js';
 import {
-  claimLocalData, isAuthSkipped, setAuthSkipped as persistAuthSkipped, signOut as endSession,
+  claimLocalData, isAuthSkipped, LOCAL_OWNER_KEY, setAuthSkipped as persistAuthSkipped, signOut as endSession,
 } from '../lib/session.js';
 
 /** hydrate()'s report, as SupabaseBackend types it. */
@@ -29,6 +29,15 @@ export type ConflictReport = HydrateReport & {
 const isConflict = (report: HydrateReport): report is ConflictReport => report?.status === 'conflict';
 
 const AUTH_CHECK_FAILED = 'Could not check your sign-in status. You can retry or continue without signing in.';
+
+/** The account this browser's data belongs to, as session.js marks it; null when it is nobody's (or unreadable). */
+function readLocalOwner(): string | null {
+  try {
+    return localStorage.getItem(LOCAL_OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
 
 /** What App shows: the spinner while the session is checked, the sign-in screen (LoginForm), or the dashboard. */
 export type AuthScreen = 'checking' | 'sign-in' | 'app';
@@ -145,7 +154,8 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
     // An edit still inside its debounce was typed against the backend in use: it is written through that backend,
     // never the next account's. At an account switch claimLocalData below then clears it, with that account's queued
     // writes, before it is sent: the client already holds the new session, so the old account's write would be refused
-    // (RLS). When the session ends elsewhere, it waits in that account's queue until the account next signs in here.
+    // (RLS). When the session is revoked elsewhere, it waits in that account's queue until the account next signs in
+    // here; after a sign-out, here or in another tab, the branch below clears it again.
     flushPendingEdits();
     stopHydrateRetryRef.current?.(); // a retry still waiting for the previous account
     stopHydrateRetryRef.current = null;
@@ -153,7 +163,21 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
     activeUserIdRef.current = userId;
     if (!client || !userId) {
       backendRef.current = null;
+      // A sign-out removes this browser's copy and the mark of whose it is. When this tab finds the mark gone as the
+      // session ends, whatever it wrote since that clear (the edit flushed above or at the sign-out's store-changed, the
+      // unmount saves of the dashboard the session's end removed, the account's cloud copy pulled by a hydrate that was
+      // still reading) belongs to nobody, and the next account to sign in here would take it as this browser's: it is
+      // cleared again, through the backend still in use, so the account's queued writes and sync dates that backend
+      // re-created go with it, and the store's readers re-read (the draft drops an edit it still shows).
+      // A session revoked elsewhere leaves the mark in place; a skip means the browser has been in use without an
+      // account since a sign-out this tab hears of late. Either way the data is someone's, and stays.
+      // KNOWN GAP: this covers a sign-out in THIS tab. Another tab's sign-out reaches a real browser's other tabs as
+      // SIGNED_OUT before their view of the storage shows that tab's clear, so the mark still reads as set here, the
+      // end looks like a revoke and nothing is cleared (App.signout.test.jsx pins it).
+      const unowned = Boolean(previous) && readLocalOwner() === null && !isAuthSkipped();
+      if (unowned) clearAll();
       setBackend(new LocalStorageBackend());
+      if (unowned) emitStoreChanged();
       return;
     }
     persistAuthSkipped(false); // signed in: after a sign-out the sign-in screen shows again
