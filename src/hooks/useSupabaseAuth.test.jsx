@@ -589,3 +589,113 @@ describe('useSupabaseAuth', () => {
     });
   });
 });
+
+// A conflict is what one hydrate found between this browser and its account. Once the session has left that account,
+// the report describes a browser and a backend that are gone: when the account signs in here again, its next hydrate
+// decides afresh, and the old report must not come back with the session (choosing on it could only fail).
+describe('useSupabaseAuth: a conflict once the session has left its account', () => {
+  let warn;
+  let error;
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    error = vi.spyOn(console, 'error');
+  });
+
+  afterEach(() => {
+    setBackend(new LocalStorageBackend());
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    // That tab's sign-out emptied the storage both tabs share, so the account's next hydrate here pulls.
+    ['another tab signs the account out', async (client) => {
+      localStorage.clear();
+      await emit(client, 'SIGNED_OUT');
+    }],
+    ['another account signs in', (client) => emit(client, 'SIGNED_IN', sessionFor(B))],
+  ])('is dropped when %s: the account signing in again gets no old report, before or after its hydrate', async (_label, leave) => {
+    const client = conflictFor();
+    const { result } = hook(client);
+    await settle();
+    expect(result.current.conflict).toMatchObject({ status: 'conflict' });
+
+    await leave(client);
+    act(() => { client.emitAuth('SIGNED_IN', sessionFor(A)); }); // a magic link for the account, opened in another tab
+    expect(result.current).toMatchObject({ accountKey: A, conflict: null }); // its hydrate has read nothing yet
+
+    await settle();
+    expect(getPosition('AVGO')).toEqual({ costBasis: 120, shares: 10 }); // pulled into the emptied browser
+    expect(result.current.conflict).toBeNull();
+  });
+
+  it.each([
+    ['a token refresh', 'TOKEN_REFRESHED'],
+    ['a tab focus', 'SIGNED_IN'],
+  ])('Pin: %s for the same account keeps a live conflict', async (_label, event) => {
+    const client = conflictFor();
+    const { result } = hook(client);
+    await settle();
+    const report = result.current.conflict;
+    expect(report).toMatchObject({ status: 'conflict' });
+
+    await emit(client, event, sessionFor(A)); // a new session object for the same account
+    expect(result.current.conflict).toBe(report);
+  });
+
+  // The account's reads answer after the event that signs another account in, before that event has rendered: the
+  // report is stored for the account that was signed in when it landed, and shown for that account only.
+  it("Pin: a report that lands as the session leaves its account never shows over the next account's", async () => {
+    let release;
+    const hydrate = vi.spyOn(SupabaseBackend.prototype, 'hydrate');
+    const client = conflictFor([], { gate: new Promise((resolve) => { release = resolve; }) });
+    const { result } = hook(client);
+    await settle();
+    expect(hydrate).toHaveBeenCalledTimes(1); // its reads held
+
+    await act(async () => {
+      client.emitAuth('SIGNED_IN', sessionFor(B));
+      release();
+      await hydrate.mock.results[0].value;
+    });
+    await settle();
+    expect(result.current).toMatchObject({ accountKey: B, conflict: null });
+  });
+
+  // Revoked on another device: this browser's storage is untouched and still marked as the account's, so the account's
+  // next hydrate here compares the same two copies.
+  it("Pin: the account's own conflict, found again when it signs back in, shows until a choice settles it", async () => {
+    const client = conflictFor();
+    const { result } = hook(client);
+    await settle();
+    const first = result.current.conflict;
+    expect(first).toMatchObject({ status: 'conflict' });
+
+    await emit(client, 'SIGNED_OUT');
+    expect(result.current.conflict).toBeNull();
+    await emit(client, 'SIGNED_IN', sessionFor(A));
+    expect(result.current.conflict).toEqual(first);
+    await emit(client, 'TOKEN_REFRESHED', sessionFor(A));
+    expect(result.current.conflict).toEqual(first);
+
+    await act(async () => { await result.current.resolveConflict('cloud'); });
+    expect(result.current.conflict).toBeNull();
+    expect(getPosition('AVGO')).toEqual({ costBasis: 120, shares: 10 });
+    expect(warn).not.toHaveBeenCalledWith('Sync: could not apply the choice:', expect.anything());
+  });
+
+  it('Pin: a sign-out whose request fails drops the conflict too, though no SIGNED_OUT arrives', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const client = conflictFor();
+    client.auth.signOut = async () => { throw new Error('fetch failed'); };
+    const { result } = hook(client);
+    await settle();
+    expect(result.current.conflict).toMatchObject({ status: 'conflict' });
+
+    await act(async () => { await result.current.signOut(); });
+    act(() => { client.emitAuth('SIGNED_IN', sessionFor(A)); });
+    expect(result.current).toMatchObject({ accountKey: A, conflict: null });
+    await settle();
+    expect(result.current.conflict).toBeNull();
+  });
+});

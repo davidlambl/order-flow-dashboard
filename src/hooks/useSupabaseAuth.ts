@@ -86,6 +86,9 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
   // sign-in, the Account tab's "Sign in" button and a sign-out clear it (D11).
   const [skipped, setSkipped] = useState(() => isAuthSkipped());
   const [notice, setNotice] = useState<string | null>(null); // on the sign-in screen: the session check failed
+  // The conflict SyncChoice settles, with the account whose hydrate found it. Declared before the session effect, whose
+  // auth subscription drops it.
+  const [syncConflict, setSyncConflict] = useState<{ userId: string; report: ConflictReport } | null>(null);
 
   // Check for an existing session and follow the auth events (a magic link's callback, a refresh, a sign-out). A failed
   // check must not leave the spinner up: the sign-in screen shows with a notice and the skip button (F10).
@@ -112,6 +115,10 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
     // failed check, and INITIAL_SESSION what clears a skip at load.
     const { data: { subscription } } = client.auth.onAuthStateChange((_event, next) => {
       setSession(next);
+      // A conflict is what one hydrate found for its account. Once the session has left that account (another tab's
+      // sign-out, another account's sign-in), the report is stale and the backend that compared it is gone: should the
+      // account sign back in here, its next hydrate decides afresh, and the old report must not come back with it.
+      setSyncConflict((conflict) => (conflict && conflict.userId !== next?.user?.id ? null : conflict));
       if (next) {
         setNotice(null);
         // In step with the stored flag (the backend effect clears it): should this session end elsewhere, the sign-in
@@ -130,7 +137,6 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
   const activeUserIdRef = useRef<string | undefined>(undefined);
   const backendRef = useRef<SupabaseBackend | null>(null);
   const stopHydrateRetryRef = useRef<(() => void) | null>(null); // removes the 'online' listener of a hydrate retry
-  const [syncConflict, setSyncConflict] = useState<{ userId: string; report: ConflictReport } | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
   useEffect(() => {
     migrateSessionToLocal();
