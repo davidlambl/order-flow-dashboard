@@ -307,7 +307,7 @@ describe('a chunk that failed to load', () => {
     expect(dialog.imports).toBe(1);
   });
 
-  // The stand-in writes the card out again (its header says why): this keeps the two copies alike.
+  // The stand-in frames the boundary's card (its header says why the boundary cannot draw it there itself).
   it('the card is ChunkBoundary\'s own failure card, word for word and class for class', async () => {
     silenceCaughtErrors();
     function Offline() {

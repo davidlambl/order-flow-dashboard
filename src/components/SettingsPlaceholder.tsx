@@ -8,11 +8,12 @@
 // dialog, Escape heard on window in the bubble phase, so the strategic context editor's capture-phase listener still
 // takes an Escape first. It lives outside settings/, the chunk it stands in for, and loads with the entry.
 //
-// The card is ChunkBoundary's default one, written out again: a boundary's `failed` UI replaces that card rather than
-// holding it, and the frame has to be the failed UI, not the boundary's parent, since the dialog brings a frame of its
-// own once it loads. AppSettings.lazy.test.jsx keeps both copies alike, and this frame alike with the dialog's.
+// The card sits here and not in the boundary's place: a boundary's `failed` UI replaces its default card, and the frame
+// has to be the failed UI, not the boundary's parent, since the dialog brings a frame of its own once it loads.
+// AppSettings.lazy.test.jsx keeps this frame alike with the dialog's.
 import { useEffect } from 'react';
-import { CircleAlert, LoaderCircle, Settings, X } from 'lucide-react';
+import { LoaderCircle, Settings, X } from 'lucide-react';
+import ChunkFailureCard from './ChunkFailureCard.js';
 
 interface SettingsPlaceholderProps {
   onClose: () => void;
@@ -63,31 +64,7 @@ export default function SettingsPlaceholder({ onClose, failure }: SettingsPlaceh
 
         {failure && (
           <div className="p-6">
-            <div
-              role="alert"
-              className="h-full flex flex-col items-center justify-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-center"
-            >
-              <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
-                <CircleAlert size={12} className="shrink-0 text-[var(--color-warn)]" />
-                This part of the dashboard could not load.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={failure.retry}
-                  className="rounded-lg px-3 py-1.5 border border-[var(--color-accent)] bg-[var(--color-accent)] text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
-                >
-                  Try again
-                </button>
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  className="rounded-lg px-3 py-1.5 border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] text-xs font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
-                >
-                  Reload
-                </button>
-              </div>
-            </div>
+            <ChunkFailureCard retry={failure.retry} />
           </div>
         )}
       </div>

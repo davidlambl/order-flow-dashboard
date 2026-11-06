@@ -27,9 +27,10 @@ import { fileURLToPath } from 'node:url';
 // The entry chunk, index.html's module script: the app's own code and every library outside a vendor group.
 const ENTRY_KB = 350;
 
-// Initial JS: everything the page downloads before its first render, the entry included. It measured 654.82 kB once
-// the charts and the markdown renderer loaded on demand, React and the Supabase SDK most of it (218.75 and 214.38):
-// recharts (385.92) or the markdown graph (153.22) back on the startup path breaks the budget, ordinary growth does not.
+// Initial JS: everything the page downloads before its first render, the entry included. It measured 626.92 kB with
+// the charts, the markdown renderer, the Settings dialog and the sign-in parts loading on demand, React and the Supabase
+// SDK most of it (218.75 and 214.38): recharts (385.92) or the markdown graph (153.22) back on the startup path breaks
+// the budget, ordinary growth does not.
 const INITIAL_JS_KB = 700;
 
 // Vendor groups (codeSplitting.groups in vite.config.js; a group's chunk carries its name) that only lazily loaded

@@ -3,14 +3,15 @@
 // renders only while open, and the dialog itself (StrategicContextDialog.tsx: the text, its autosave, the closes that
 // save first) is loaded on demand, on the first opening or before it in the idle preload. Until the dialog is in, and
 // if it cannot load, the editor is still a modal over whatever opened it: a backdrop at the dialog's z-index with a
-// spinner, or the failure card in a dialog-shaped box, whose Try again imports the dialog again. ChunkBoundary's own
-// card would render where the boundary sits, in the opener's layout, so the modal brings its own.
+// spinner, or the failure card, whose Try again imports the dialog again. The boundary's default card would render
+// where the boundary sits, in the opener's layout, so the card is put in the modal through `failed`.
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { CircleAlert, LoaderCircle } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import { lazyWithPreload } from '../lib/lazyWithPreload.js';
 import ChunkBoundary from './ChunkBoundary.js';
+import ChunkFailureCard from './ChunkFailureCard.js';
 
 const StrategicContextDialog = lazyWithPreload(() => import('./StrategicContextDialog.js'), { idle: true });
 
@@ -54,30 +55,8 @@ export default function StrategicContextEditor({ isOpen, onClose }: StrategicCon
       )}
       failed={({ retry }) => (
         <EditorModal onClose={onClose}>
-          <div
-            role="alert"
-            className="relative w-full max-w-sm mx-4 flex flex-col items-center gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-6 text-center shadow-2xl"
-          >
-            <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
-              <CircleAlert size={12} className="shrink-0 text-[var(--color-warn)]" />
-              This part of the dashboard could not load.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={retry}
-                className="rounded-lg px-3 py-1.5 border border-[var(--color-accent)] bg-[var(--color-accent)] text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
-              >
-                Try again
-              </button>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="rounded-lg px-3 py-1.5 border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] text-xs font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
-              >
-                Reload
-              </button>
-            </div>
+          <div className="relative w-full max-w-sm mx-4 rounded-xl shadow-2xl">
+            <ChunkFailureCard retry={retry} />
           </div>
         </EditorModal>
       )}

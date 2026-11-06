@@ -10,8 +10,7 @@
 // and the sync choice, which exist only on a build with cloud sign-in and load while the session is checked. Once the
 // dashboard shows, the idle preload loads what it may open next, never the charts.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { CircleAlert, Sparkles, Target, ChartNoAxesColumn } from 'lucide-react';
+import { Sparkles, Target, ChartNoAxesColumn } from 'lucide-react';
 import Header from './components/Header.jsx';
 import KPICards from './components/KPICards.jsx';
 import CollapsibleSection from './components/CollapsibleSection.jsx';
@@ -21,9 +20,11 @@ import ChatBot from './components/ChatBot.js';
 import PremiumGate from './components/PremiumGate.js';
 import AppSettings from './components/AppSettings.js';
 import ChunkBoundary from './components/ChunkBoundary.js';
+import ChunkFailureCard from './components/ChunkFailureCard.js';
 import TickerSummary from './components/dashboard/TickerSummary.js';
 import DataSourceNote from './components/dashboard/DataSourceNote.js';
 import ChartsSkeleton from './components/dashboard/ChartsSkeleton.js';
+import SyncChoiceLayer from './components/dashboard/SyncChoiceLayer.js';
 import { AuthContext } from './contexts/AuthContext.js';
 import type { AuthValue } from './contexts/AuthContext.js';
 import { MarketContext } from './contexts/MarketContext.js';
@@ -60,73 +61,16 @@ const SPINNER_SCREEN = (
 );
 
 /**
- * A copy of ChunkBoundary's failure card, for the two parts that fill the screen themselves. The boundary draws its
- * own card where it sits, so a frame around the boundary would also frame the sign-in form or the sync dialog once
- * loaded; these two frame this copy through the boundary's `failed` instead. App.lazy.test.jsx keeps the two the same.
+ * The sign-in screen when its form's module failed to load: the failure card where the form would be, on the screen's
+ * own background. The form lays out the whole screen itself, so a frame around its boundary would frame the loaded
+ * form too; the card is framed here, through the boundary's `failed`.
  */
-function ChunkFailureCard({ retry }: { retry: () => void }) {
-  return (
-    <div
-      role="alert"
-      className="h-full flex flex-col items-center justify-center gap-3 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 text-center"
-    >
-      <p className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
-        <CircleAlert size={12} className="shrink-0 text-[var(--color-warn)]" />
-        This part of the dashboard could not load.
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={retry}
-          className="rounded-lg px-3 py-1.5 border border-[var(--color-accent)] bg-[var(--color-accent)] text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
-        >
-          Try again
-        </button>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="rounded-lg px-3 py-1.5 border border-[var(--color-border-subtle)] bg-[var(--color-surface-2)] text-xs font-semibold text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)] transition-colors"
-        >
-          Reload
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** The sign-in screen when its form's module failed to load: the card where the form would be, on its background. */
 function signInFailed({ retry }: { retry: () => void }) {
   return (
     <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <ChunkFailureCard retry={retry} />
       </div>
-    </div>
-  );
-}
-
-/** Moves the focus into the element as it mounts. Module level, so that a re-render does not call it again. */
-const focusOnMount = (element: HTMLElement | null) => { element?.focus(); };
-
-/**
- * Where the sync choice shows while its module loads or after it failed to. SyncChoice is blocking on purpose, and so
- * is this: a layer over the whole page, dimmed like the dialog's own, so nothing underneath can be clicked while the
- * conflict waits for a choice. Like the dialog it is modal, named "Sync your data" and takes the focus as it opens,
- * so nothing underneath is typed into either.
- */
-function SyncChoiceLayer({ loading = false, children }: { loading?: boolean; children: ReactNode }) {
-  return (
-    <div
-      ref={focusOnMount}
-      tabIndex={-1}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Sync your data"
-      aria-busy={loading || undefined}
-      className="fixed inset-0 z-[120] flex items-center justify-center outline-none"
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm mx-4">{children}</div>
     </div>
   );
 }

@@ -159,7 +159,7 @@ describe.each([
 });
 
 describe('a failed import', () => {
-  it('shows the failure card in a dialog-shaped box over the backdrop; Try again loads the dialog', async () => {
+  it('shows the failure card in a box over the backdrop; Try again loads the dialog', async () => {
     silenceCaughtErrors();
     setPreference('strategic_context', 'Stored notes');
     const { container } = render(<Host />);
@@ -168,11 +168,12 @@ describe('a failed import', () => {
     const card = screen.getByRole('alert');
     expect(card).toHaveTextContent('This part of the dashboard could not load.');
     expect(within(card).getAllByRole('button').map((button) => button.textContent)).toEqual(['Try again', 'Reload']);
-    expect(card).toHaveClass('relative', 'rounded-2xl', 'bg-[var(--color-surface)]', 'shadow-2xl');
+    const box = card.parentElement;
+    expect(box).toHaveClass('relative', 'max-w-sm', 'shadow-2xl');
     const layer = layerOf(card);
     expect(layer).toHaveClass('inset-0', 'z-[110]');
     expect(layer.parentElement).toBe(document.body);
-    expect(card.previousElementSibling).toHaveClass('absolute', 'inset-0', 'backdrop-blur-sm');
+    expect(box.previousElementSibling).toHaveClass('absolute', 'inset-0', 'backdrop-blur-sm');
     expect(container).toBeEmptyDOMElement();
     expect(spinner()).toBeNull();
 
