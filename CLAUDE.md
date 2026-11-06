@@ -166,12 +166,15 @@ should:
   local user data + secrets + JWT, reset the backend); a `local_data_owner` mark records whose data the browser holds, and `claimLocalData()` clears another
   account's data (secrets kept) before a new account's backend exists. Replacing a backend disposes it.
   When a session ends and this tab finds the owner mark gone, `useSupabaseAuth` clears once more whatever was written
-  after the sign-out's clear (a late edit, the dashboard's unmount saves, a hydrate still reading), so a sign-out in
-  THIS tab leaves nothing for the next account; a browser in use without an account (`auth_skipped`) and a session
-  revoked elsewhere (the mark still set) are left alone. KNOWN GAP: another tab's sign-out is not covered in a real
-  browser — its SIGNED_OUT reaches this tab before this tab's view of the storage shows the cleared mark, so a pending
-  edit written at that event survives and the next account uploads it (`App.signout.test.jsx` pins it; measured with two
-  Chromium tabs). Other limits are in that fix's commit body (a sign-out heard late, a token activation in flight).
+  after the sign-out's clear (a late edit, the dashboard's unmount saves, a hydrate still reading). When the mark still
+  reads as the ended account's, which is how another tab's sign-out first looks here (its SIGNED_OUT arrives a few
+  milliseconds before this tab's view of the storage shows its clear; measured with two Chromium tabs), the hook
+  watches the mark through `storage` events: once it is gone the same clear follows, with that account's
+  `sync_outbox_`/`sync_meta_` keys (`clearAccountSyncState` in `SupabaseBackend.js`); a session arriving or a skip here
+  check the mark once more first; another account's mark stops the watch. A browser in use without an account
+  (`auth_skipped`) and a session revoked elsewhere (the mark kept) are left alone. Other limits are in the fix commits'
+  bodies (a sign-out heard late, a token activation in flight, a skip made before this tab hears the mark's removal, in
+  another tab or here while this tab's view still shows the mark).
   An edit still inside its debounce at an account switch reaches neither account (known: it is written through the old
   account's backend, then cleared with that account's queue, since the client already holds the new session).
   Cloud writes go through a per-user outbox persisted in localStorage (`src/lib/syncOutbox.js`, `sync_outbox_<uid>`)
