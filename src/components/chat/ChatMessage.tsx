@@ -5,11 +5,29 @@
 // gives a new object only to the reply it extends, and ReactMarkdown runs once per frame instead of once per message.
 // That holds while onDelete keeps one identity, which is why the bubble takes its index and hands it back rather than
 // a callback made for each message.
+//
+// The markdown renderer (ChatMarkdown, with react-markdown and remark-gfm) is loaded on demand: by the first reply on
+// screen, or before it in the idle preload. Once it is in, a bubble renders it directly, with nothing suspending in
+// between, so ReactMarkdown still runs once per frame, for the reply the frame extends. Until then a reply shows its
+// raw text in the block a question renders in, rebuilt from each frame's content, so a reply that streams while the
+// renderer loads stays readable and keeps growing; if the renderer cannot load, the raw text stays, with no failure
+// card inside a bubble. A bubble that fell back asks for nothing more, and switches to markdown in place once a later
+// import (the next reply's, say) brings the renderer in.
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { Bot, Check, CircleAlert, Copy, Trash, User } from 'lucide-react';
 import type { ChatMessage } from '../../lib/store.js';
-import ChatMarkdown from './ChatMarkdown.js';
+import { lazyWithPreload } from '../../lib/lazyWithPreload.js';
+import ChunkBoundary from '../ChunkBoundary.js';
+
+/** The bubbles showing raw text after the renderer failed to load, each told when an import brings it in. */
+const awaitingRenderer = new Set<() => void>();
+
+const ChatMarkdown = lazyWithPreload(async () => {
+  const module = await import('./ChatMarkdown.js');
+  for (const arrived of awaitingRenderer) arrived();
+  return module;
+}, { idle: true });
 
 interface ChatMessageProps {
   msg: ChatMessage;
@@ -17,6 +35,32 @@ interface ChatMessageProps {
   index: number;
   /** Deletes the message at `index`: the history's deleteMessage itself, never a function made per render. */
   onDelete: (index: number) => void;
+}
+
+/** A message's text as written: a question, an error line, or a reply without its renderer. */
+function RawText({ content }: { content: string }) {
+  return <div className="whitespace-pre-wrap">{content}</div>;
+}
+
+/**
+ * A reply's raw text where the renderer failed to load. When an import brings the renderer in, retry() mounts the
+ * markdown in its place, inside the same bubble; preload() first, so that mount finds the renderer loaded.
+ */
+function RawTextUntilRenderer({ content, retry }: { content: string; retry: () => void }) {
+  useEffect(() => {
+    let mounted = true;
+    const arrived = () => {
+      void ChatMarkdown.preload().then(() => {
+        if (mounted) retry();
+      });
+    };
+    awaitingRenderer.add(arrived);
+    return () => {
+      mounted = false;
+      awaitingRenderer.delete(arrived);
+    };
+  }, [retry]);
+  return <RawText content={content} />;
 }
 
 function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
@@ -57,9 +101,14 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
           }`}
         >
           {isUser || isError ? (
-            <div className="whitespace-pre-wrap">{msg.content}</div>
+            <RawText content={msg.content} />
           ) : (
-            <ChatMarkdown content={msg.content} />
+            <ChunkBoundary
+              fallback={<RawText content={msg.content} />}
+              failed={({ retry }) => <RawTextUntilRenderer content={msg.content} retry={retry} />}
+            >
+              <ChatMarkdown content={msg.content} />
+            </ChunkBoundary>
           )}
         </div>
         <div className={`flex gap-0.5 mt-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
