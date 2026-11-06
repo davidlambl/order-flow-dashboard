@@ -31,6 +31,15 @@
 // render suspends and its real module loads on its own (await screen.findBy…, or gate it too). React reports what a
 // boundary catches with console.error, so a test that fails an import silences it in that test:
 // vi.spyOn(console, 'error').mockImplementation(() => {}).
+//
+// Three things the files that gate imports ran into (App.lazy.test.jsx's gateFor shows all three handled):
+// - vi.doMock registers its mocks at the next import, and of two imports racing at that moment the second can read the
+//   registry first and get the previous test's gate. Code that starts two imports at once (App's preloads) needs the
+//   beforeEach to end with one awaited import, `await import('./test/lazy.js')`, so the mocks are registered before it.
+// - An import still held when its test ends is joined by the next test's import of that module, which then never
+//   reaches its own gate. Answer every import a test started before it ends (onTestFinished, or an afterEach).
+// - `await act(() => gate.resolve())` for an import that never arrives leaves the act open, and every later test in
+//   the file fails with it. Wait for the import outside act (waitFor on gate.imports), then settle it inside act.
 
 let preloadSkipped = false;
 

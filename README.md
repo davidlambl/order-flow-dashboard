@@ -303,12 +303,12 @@ test/helpers/               fakeSupabase.js (recording fake client, its auth tim
                             (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
 supabase/                   migrations/001…005, README.md
-scripts/generate-token.js   Mints access tokens
+scripts/                    generate-token.js (mints access tokens), check-bundle.js (the bundle budget, after a build)
 docs/ROADMAP.md             Findings and the phased plan
 .github/                    workflows/ci.yml, dependabot.yml, pull_request_template.md
 index.html                  App shell, hidden access-request form for Netlify Forms
 netlify.toml                Build, NODE_VERSION 22, /api/* redirect, dev port, shared/** bundling
-vite.config.js              React and Tailwind plugins, dev proxy to :8888, ANALYZE=1 bundle report
+vite.config.js              React and Tailwind plugins, vendor chunk groups, dev proxy to :8888, ANALYZE=1 bundle report
 vitest.config.js            node and dom test projects, coverage
 eslint.config.js            Flat config: browser, node and test globals; react-hooks, react-refresh, typescript-eslint
 tsconfig.json               Browser type-check program (src/, shared/, types/); tsconfig.functions.json the Node one
@@ -320,22 +320,23 @@ tsconfig.json               Browser type-check program (src/, shared/, types/); 
 | Script | What it does |
 |---|---|
 | `npm run dev` | Vite dev server on :5173 |
-| `npm run build` | Build into `dist/`; `ANALYZE=1 npm run build` also writes `dist/stats.html` |
+| `npm run build` | Build into `dist/` (an entry chunk, vendor chunks, one chunk per part loaded on demand); `ANALYZE=1 npm run build` also writes `dist/stats.html` |
+| `npm run check:bundle` | The bundle budget on the built `dist/`: entry chunk ≤ 350 kB, JavaScript before the first render ≤ 700 kB, recharts and the markdown renderer never on the startup path |
 | `npm run preview` | Serve `dist/` |
 | `npm run lint` | ESLint 10 (typescript-eslint 8 for `.ts`/`.tsx`) |
 | `npm run typecheck` | `tsc` over `tsconfig.json` (browser: `src/`, `shared/`, `types/`) and `tsconfig.functions.json` (Node: `netlify/`, `shared/`, `types/`, `scripts/`); blocking in CI |
 | `npm test` | Vitest 5, both projects |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Tests with coverage into `coverage/` (CI) |
-| `npm run check` | Lint, typecheck, test, build (each blocking) |
+| `npm run check` | Lint, typecheck, test, build, bundle budget (each blocking) |
 
 - Lint must be clean: the last `react-hooks` and `react-refresh` findings closed with the AppSettings decomposition
   (roadmap Phase 5 (d), #75), and `check` and CI fail on any finding since.
-- Vitest's `node` project runs the function tests, `shared/*.test.js` and `src/**/*.node.test.js` (pure
+- Vitest's `node` project runs the function tests, `shared/*.test.js`, `scripts/**/*.test.js` and `src/**/*.node.test.js` (pure
   `src/lib` modules under Node with the stand-ins in `test/helpers/`). The `dom` project runs the other
   `src/**/*.test.{js,jsx}` files under jsdom with Testing Library and an MSW server (`src/test/setup.js`).
 - CI (`.github/workflows/ci.yml`, pushes to `main` and pull requests) runs `npm ci`, `npm run lint`,
-  `npm run typecheck`, `npm run test:coverage` and the build on Node 22 and 24 (`fail-fast: false`), plus a separate
+  `npm run typecheck`, `npm run test:coverage`, the build and the bundle budget on Node 22 and 24 (`fail-fast: false`), plus a separate
   `npm audit --omit=dev --audit-level=high` job. Dependabot opens weekly npm and GitHub Actions updates.
 - [CLAUDE.md](CLAUDE.md) has the working notes; [docs/ROADMAP.md](docs/ROADMAP.md) the modernization plan.
 - License: MIT ([LICENSE](LICENSE)).
