@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase.js';
-import { SupabaseBackend } from '../lib/SupabaseBackend.js';
+import { clearAccountSyncState, SupabaseBackend } from '../lib/SupabaseBackend.js';
 import { clearAll, emitStoreChanged, LocalStorageBackend, migrateSessionToLocal, setBackend } from '../lib/store.js';
 import {
   claimLocalData, isAuthSkipped, LOCAL_OWNER_KEY, setAuthSkipped as persistAuthSkipped, signOut as endSession,
@@ -37,6 +37,45 @@ function readLocalOwner(): string | null {
   } catch {
     return null;
   }
+}
+
+/** The owner mark's watch: `settle` checks the mark once more without an event, then stops; `stop` only stops. */
+interface OwnerWatch {
+  settle: () => void;
+  stop: () => void;
+}
+
+/**
+ * A session ended with the owner mark still `ended`'s. That is a session revoked elsewhere, or another tab's sign-out
+ * whose clear this tab's view of the storage does not show yet: Chromium delivers that tab's SIGNED_OUT a few
+ * milliseconds before its storage events. Waits for the mark to change, re-reading it at each event rather than taking
+ * the event's values, since by the time this tab handles an event the mark may have moved on (the account signed in
+ * again elsewhere). Still `ended`'s: a revoke so far, keep waiting. Removed, with no skip since: it was that sign-out,
+ * and what this tab wrote for the account in between (the edit flushed as the session ended, the dashboard's unmount
+ * saves) belongs to nobody; it is cleared with the account's queued writes and sync dates, whose backend is disposed by
+ * now. Another account's: what the browser holds is that account's. Either way the watch stops. `settle`, for a
+ * session arriving or a skip, takes the mark as it reads then, and waits no longer.
+ */
+function watchOwnerMark(ended: string, done: () => void): OwnerWatch {
+  const stop = (): void => {
+    window.removeEventListener('storage', onStorage);
+    done();
+  };
+  const check = (final: boolean): void => {
+    const owner = readLocalOwner();
+    if (owner === ended && !final) return;
+    stop();
+    if (owner !== null || isAuthSkipped()) return;
+    clearAll(); // through the store's backend: the LocalStorageBackend the session's end set
+    clearAccountSyncState(ended);
+    emitStoreChanged(); // the readers re-read: the draft drops the edit it still shows
+  };
+  // A cost guard, not a check: only the mark's own event or a clear() can remove it, and the re-read decides anyway.
+  const onStorage = (e: StorageEvent): void => {
+    if (e.key === null || e.key === LOCAL_OWNER_KEY) check(false);
+  };
+  window.addEventListener('storage', onStorage);
+  return { settle: () => check(true), stop };
 }
 
 /** What App shows: the spinner while the session is checked, the sign-in screen (LoginForm), or the dashboard. */
@@ -87,6 +126,9 @@ export interface SupabaseAuth {
  *   gives `signOut`, and with it AuthContext's value, a new identity.
  * - No effect sets state in its own body: only the session check's promise, the auth subscription and the hydrate
  *   report do. The lint does not catch a set-state call placed after the backend effect's guarded return.
+ * - Two listeners can stay on window between renders: a hydrate retry's 'online' one, and the owner mark's watch,
+ *   armed when a session ends with the mark still set; the watch stops when it acts, when a session arrives or the
+ *   user skips (both check the mark once more first), and at unmount.
  */
 export function useSupabaseAuth({ flushPendingEdits, client = supabase }: SupabaseAuthOptions): SupabaseAuth {
   const [session, setSession] = useState<Session | null>(null);
@@ -146,6 +188,7 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
   const activeUserIdRef = useRef<string | undefined>(undefined);
   const backendRef = useRef<SupabaseBackend | null>(null);
   const stopHydrateRetryRef = useRef<(() => void) | null>(null); // removes the 'online' listener of a hydrate retry
+  const ownerWatchRef = useRef<OwnerWatch | null>(null); // a session that ended with the owner mark still set
   const [syncBusy, setSyncBusy] = useState(false);
   useEffect(() => {
     migrateSessionToLocal();
@@ -159,6 +202,7 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
     flushPendingEdits();
     stopHydrateRetryRef.current?.(); // a retry still waiting for the previous account
     stopHydrateRetryRef.current = null;
+    ownerWatchRef.current?.settle(); // a session arriving before the mark's storage event: the same check, once
     const previous = activeUserIdRef.current;
     activeUserIdRef.current = userId;
     if (!client || !userId) {
@@ -169,15 +213,18 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
       // still reading) belongs to nobody, and the next account to sign in here would take it as this browser's: it is
       // cleared again, through the backend still in use, so the account's queued writes and sync dates that backend
       // re-created go with it, and the store's readers re-read (the draft drops an edit it still shows).
-      // A session revoked elsewhere leaves the mark in place; a skip means the browser has been in use without an
-      // account since a sign-out this tab hears of late. Either way the data is someone's, and stays.
-      // KNOWN GAP: this covers a sign-out in THIS tab. Another tab's sign-out reaches a real browser's other tabs as
-      // SIGNED_OUT before their view of the storage shows that tab's clear, so the mark still reads as set here, the
-      // end looks like a revoke and nothing is cleared (App.signout.test.jsx pins it).
+      // A skip means the browser has been in use without an account since a sign-out this tab hears of late: that data
+      // is someone's, and stays. A mark still set looks like a session revoked elsewhere, whose data waits for the
+      // account; but another tab's sign-out reaches a real browser's other tabs as SIGNED_OUT a few milliseconds before
+      // their view of the storage shows that tab's clear (two Chromium tabs, every time), so the mark is watched
+      // (watchOwnerMark): once it is gone, the same clear follows.
       const unowned = Boolean(previous) && readLocalOwner() === null && !isAuthSkipped();
       if (unowned) clearAll();
       setBackend(new LocalStorageBackend());
       if (unowned) emitStoreChanged();
+      else if (previous && readLocalOwner() === previous) {
+        ownerWatchRef.current = watchOwnerMark(previous, () => { ownerWatchRef.current = null; });
+      }
       return;
     }
     persistAuthSkipped(false); // signed in: after a sign-out the sign-in screen shows again
@@ -208,8 +255,11 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
     backend.hydrate().then((report) => handleReport(report, true));
   }, [session, flushPendingEdits, client]);
 
-  // Unmounting drops a hydrate retry still waiting for the network.
-  useEffect(() => () => stopHydrateRetryRef.current?.(), []);
+  // Unmounting drops a hydrate retry still waiting for the network, and the owner mark's watch.
+  useEffect(() => () => {
+    stopHydrateRetryRef.current?.();
+    ownerWatchRef.current?.stop();
+  }, []);
 
   const resolveConflict = useCallback(async (choice: SyncChoiceId) => {
     setSyncBusy(true);
@@ -237,6 +287,7 @@ export function useSupabaseAuth({ flushPendingEdits, client = supabase }: Supaba
 
   // "Continue without signing in", remembered on this browser.
   const skipSignIn = useCallback(() => {
+    ownerWatchRef.current?.settle(); // first: once the skip is stored, whatever the browser holds is that use's
     persistAuthSkipped(true);
     setSkipped(true);
   }, []);

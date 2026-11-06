@@ -70,6 +70,22 @@ function defaultStorage() {
   }
 }
 
+/**
+ * Remove one account's queued writes and sync dates from this browser: what its backend's clearAll() drops with the
+ * data, for an account whose backend is already gone (disposed when its session ended, before another tab's sign-out
+ * of it showed here). Left behind, they would replay a stale edit over the account's newer cloud copy at its next
+ * sign-in here, or turn a newer local edit into a deletion.
+ * @param {string} userId
+ * @param {Storage|null} [storage] localStorage by default
+ */
+export function clearAccountSyncState(userId, storage = defaultStorage()) {
+  if (!storage || !isKey(userId)) return;
+  try {
+    storage.removeItem(OUTBOX_PREFIX + userId);
+    storage.removeItem(META_PREFIX + userId);
+  } catch { /* storage unavailable: nothing was saved either */ }
+}
+
 /** A stored position, or null when neither field is set (nothing worth keeping). */
 function positionOf(costBasis, shares) {
   const pos = { costBasis: costBasis ?? null, shares: shares ?? null };
