@@ -149,7 +149,8 @@ imperative (`schedule(value)`/`flush()`); position state via `useSyncExternalSto
 only while open with lazy `useState` initializers (also kills AppSettings' 20-setState effect at `:146-176`);
 `key={ticker}` on the Header search form.
 
-**UX gaps**: the ERROR badge (`App.jsx:240`) can never show (error ⇒ usingMock); `useTickerContext`/`useLiveQuote`
+**UX gaps**: the ERROR badge (`App.jsx:240`) can never show (error ⇒ usingMock; wrong, as `App.shell.test.jsx` pins since
+#82: a refresh that fails after a success keeps the data and shows it); `useTickerContext`/`useLiveQuote`
 errors ignored; `TickerResearch.jsx:423` says "Add a Finnhub key" even when one exists; `PositionAnalysis`
 returns null while loading (inputs vanish on refresh — PR #26 adds a skeleton); no chat Stop button, textarea
 disabled while streaming, no Retry on error bubbles. **A11y**: modals lack `role="dialog"`/focus trap/focus
@@ -182,6 +183,10 @@ in `Header.jsx:17`.
   leaves; issue #57 fixed in the same PR.
 - `TickerResearch.jsx` → reuse `CollapsibleSection` (370-481 re-implements it), `NewsPanel`, `EarningsCard`,
   `RatingBar`, `AnalystPanel`, `MarketIndicesStrip`, `MarketHeadlines`; `timeAgo` → `format.ts` (built in 5 (d), #74).
+- `App.jsx` → `useSupabaseAuth`, `useResizableSidebar`. Built in 5 (d), #82: `App.tsx` is a shell over those two and
+  `usePositionDraft` (added: the saver, the edit, the store listener and the flushes are one writer, and the auth hook
+  needs its flush), with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` for the ticker row and the footer; the
+  `PROVIDER_META` map was not built.
 - Duplicates: token activation ×3 (`ChatBot.jsx:507-527`, `PremiumGate.jsx:15-37`, `AppSettings.jsx:262-282`)
   → `useTokenActivation()` (the chat's copy went in 5 (d), #78); "days until earnings" ×3 (→ `daysUntil` in #74; ChatBot's copy went in 5 (d), #78); `isStale` ×2; `useTickerContext`/`useLiveQuote` cache
   code → `createCachedResource(fetcher, ttl)`; `MarketContext` + `AuthContext` to kill 12-prop drilling.
@@ -560,7 +565,8 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `useModelList`), `useKeyTester`, `getAISettings` → `lib/aiSettings.ts`; built in 5 (d), #75) → `ChatBot` (after
    Phase 0; `lib/financialContext.ts` with tests, `components/chat/*`, `useChatStream`, `useChatHistory`; built in 5 (d), #78) →
    `PositionAnalysis`
-   (`components/position/*`, `usePositionSignals` on `lib/positionSignals.ts`; built in 5 (d), #81) → `App` (`useSupabaseAuth`, `useResizableSidebar`; `usePremiumStatus` landed in 5 (c)).
+   (`components/position/*`, `usePositionSignals` on `lib/positionSignals.ts`; built in 5 (d), #81) → `App` (`useSupabaseAuth`, `useResizableSidebar`, plus `usePositionDraft` and two `components/dashboard/` leaves;
+   `usePremiumStatus` landed in 5 (c); built in 5 (d), #82).
    Extract pure logic first, presentational leaves second, stateful hooks last.
    **Built in #74 (Phase 5 (d), TickerResearch, 2026-10-13).** `TickerResearch.tsx` is the shell over
    `components/research/*.tsx` (seven pure leaves, the data props typed from `types/market.ts`, default-exported one per

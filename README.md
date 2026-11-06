@@ -221,7 +221,8 @@ types/                      Contracts shared by src/ and netlify/ (declarations 
 └── market.ts               getMarketData, getLiveQuote, getTickerContext, getModels bodies; error bodies and codes
 src/                        Tests sit beside the code: *.node.test.js (node), other *.test.{js,jsx} (dom)
 ├── main.jsx                Entry: StrictMode, ErrorBoundary, App
-├── App.jsx                 Layout, auth, per-account backend, SyncChoice, sign-out; provides MarketContext and AuthContext
+├── App.tsx                 The dashboard shell: the screens, the layout, MarketContext and AuthContext, over the
+│                           auth, position-draft and sidebar hooks
 ├── index.css               Tailwind theme
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
@@ -241,6 +242,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
 │   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
 │   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab, PremiumGate and the chat's lock screen
+│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row), DataSourceNote (the footer)
 │   ├── chat/               The chat's leaves (.tsx): ChatMarkdown, ChatMessage, TypingIndicator, ChatLockScreen,
 │   │                       ChatHeader, ContextInspector, ChatEmptyState, ChatComposer
 │   ├── position/           The position panel's leaves (.tsx): PriceDisplay, PositionInputs, PnLStat,
@@ -263,9 +265,12 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
 │   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
 │   ├── useNow.js           Ticking clock for render code
+│   ├── usePositionDraft.ts The position inputs' draft and its debounced writer: flush, settle, store-changed
 │   ├── usePositionSignals.ts  The position panel's signals from the market context and the draft
 │   ├── usePremiumStatus.ts Access-token status on auth-changed
+│   ├── useResizableSidebar.ts  The chat sidebar's stored width and its drag
 │   ├── useStoreValue.ts    useSyncExternalStore readers of the store: values, objects, preferences
+│   ├── useSupabaseAuth.ts  Sign-in session, the per-account storage backend, the sync conflict, sign-out
 │   ├── useTickerContext.ts Research context, 15-minute cache
 │   └── useTokenActivation.ts  Access-token validation and activation
 ├── lib/
@@ -294,7 +299,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   └── syncOutbox.js       Persistent write queue
 └── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
                             cache reset), contexts.jsx (the two contexts for component tests)
-test/helpers/               fakeSupabase.js, fetch.js (recording fakes), functions.js (function-test
+test/helpers/               fakeSupabase.js (recording fake client, its auth timed like supabase-js), fetch.js
+                            (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
 supabase/                   migrations/001…005, README.md
 scripts/generate-token.js   Mints access tokens

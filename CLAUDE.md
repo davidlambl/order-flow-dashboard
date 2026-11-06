@@ -38,7 +38,9 @@ should:
   function driven in-process with the recording `fetch` stub and helpers in `test/helpers/functions.js`),
   `shared/*.test.js`, and `src/**/*.node.test.js` (pure `src/lib` modules loaded under Node with the browser-global
   stand-ins in `test/helpers/globals.js` — `memoryStorage`, `withGlobals`, `fakeWindow`, `settle`, `fakeClock` — and
-  the recording fake supabase-js client in `test/helpers/fakeSupabase.js`). `dom`: `src/**/*.test.{js,jsx}` under
+  the recording fake supabase-js client in `test/helpers/fakeSupabase.js`, whose `auth` is timed like supabase-js: the
+  App and `useSupabaseAuth` tests under `dom` drive it too, and `supabaseClient.node.test.js` pins those timings on the
+  real client). `dom`: `src/**/*.test.{js,jsx}` under
   jsdom with Testing Library and an MSW server (`src/test/setup.js`; handlers target
   `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there). The same setup makes TanStack
   Query's notifications synchronous (`notifyManager.setScheduler`, so a hook's new result lands inside `act`) and
@@ -102,14 +104,29 @@ should:
   `useSyncExternalStore` in `useStoreValue.ts`
   (`useStoreValue(read)` for a primitive, `useStoreObject(read, key, kind, id)` for an object such as `getPosition`,
   `usePreference(name)` → `[value, save]`, `useStoreVersion`); and `usePremiumStatus()` → `{ isPremium, tokenTier,
-  daysLeft }` from the stored access token on `auth-changed` (F11).
+  daysLeft }` from the stored access token on `auth-changed` (F11). App's three (Phase 5 (d)):
+  `useSupabaseAuth({ flushPendingEdits, client? })` → `{ screen, notice, accountKey, signedIn, userEmail, configured,
+  skipSignIn, showSignIn, signOut, conflict, syncBusy, resolveConflict }` (the session and its check, the store's backend
+  keyed on the signed-in account in a PASSIVE effect — the removed subtree's unmount saves run before it, so never a
+  layout effect or `flushSync` — hydrate's conflict for `SyncChoice`, the one sign-out; `flushPendingEdits` and `client`
+  must keep one identity; its hook tests inject a fake client, the App tests mock the client module, and both reset the
+  store's backend after each test);
+  `usePositionDraft(ticker)` → `{ costBasis, shares, update, flush, settle }` (the position's one writer: the 300 ms
+  saver, the edit, the `subscribeStore` listener keyed on this ticker's position, the pagehide and unmount flushes;
+  `flush` and `settle` are stable, and `settle` goes in the same handler as the ticker change);
+  `useResizableSidebar()` → `{ width, isResizing, onResizeStart }` (the chat sidebar's stored width and its drag).
 - `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
   provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
   ChatBot, TickerResearch, the Settings tabs (AccountTab, BackupTab, DataTab) and PremiumGate read them instead of App's
   props; `KPICards`, `GexChart` and
   `FlowChart` keep their data props (pure leaves, and `App.test.jsx` counts App's renders through KPICards'), and the
   position draft, `isOpen`/`onClose` and `onOpenSettings` stay props.
-- `src/components/` UI. `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
+- `src/components/` UI. `src/App.tsx` itself is a shell (Phase 5 (d)): it owns the ticker, the chat and Settings toggles, the
+  data hooks and the two contexts, calls `usePositionDraft` before `useSupabaseAuth` (which takes its `flush`), destructures
+  every hook result (a hook's return object in a dependency list would give the contexts a new value per render; the
+  `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
+  with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
+  `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
   the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `AppSettings.tsx` renders
   `settings/SettingsDialog.tsx` only while open, and the dialog mounts ONE tab at a time
@@ -142,18 +159,28 @@ should:
 - Secrets: BYOK keys live only in localStorage (`SECRET_KEYS` in `store.ts`) and are never synced or exported;
   `DEVICE_KEYS` (secrets + per-browser flags) never sync, export or import; `LAYOUT_KEYS` sync but never raise the
   sync-conflict prompt.
-- Persistence: the Supabase backend is keyed on the signed-in user (`App.jsx` `activeUserIdRef`); `hydrate()` never
+- Persistence: the Supabase backend is keyed on the signed-in user (`useSupabaseAuth`'s `activeUserIdRef`); `hydrate()` never
   pushes into a non-empty cloud — it pulls into an empty browser, pushes into an empty account, and otherwise reports
   `conflict` so App shows `SyncChoice` (merge / cloud / local) and nothing is written until the user picks. Sign-out
   is `signOut()` in `src/lib/session.js` (confirm, send queued cloud writes for up to 5 s, Supabase sign-out, clear
   local user data + secrets + JWT, reset the backend); a `local_data_owner` mark records whose data the browser holds, and `claimLocalData()` clears another
   account's data (secrets kept) before a new account's backend exists. Replacing a backend disposes it.
+  When a session ends and this tab finds the owner mark gone, `useSupabaseAuth` clears once more whatever was written
+  after the sign-out's clear (a late edit, the dashboard's unmount saves, a hydrate still reading), so a sign-out in
+  THIS tab leaves nothing for the next account; a browser in use without an account (`auth_skipped`) and a session
+  revoked elsewhere (the mark still set) are left alone. KNOWN GAP: another tab's sign-out is not covered in a real
+  browser — its SIGNED_OUT reaches this tab before this tab's view of the storage shows the cleared mark, so a pending
+  edit written at that event survives and the next account uploads it (`App.signout.test.jsx` pins it; measured with two
+  Chromium tabs). Other limits are in that fix's commit body (a sign-out heard late, a token activation in flight).
+  An edit still inside its debounce at an account switch reaches neither account (known: it is written through the old
+  account's backend, then cleared with that account's queue, since the client already holds the new session).
   Cloud writes go through a per-user outbox persisted in localStorage (`src/lib/syncOutbox.js`, `sync_outbox_<uid>`)
   that retries network failures (a returned `{ error }` without a code) with backoff; deletes are tombstones
   (`deleted_at`, migration 005); where both sides changed an item, the newer `updated_at` wins (`sync_meta_<uid>`).
   `store-changed` carries an optional `detail: { kind, id }`; no detail means "everything" (`useChatHistory` drops a streaming
   reply on one). Components do not add their own window listener for it: they read through `src/hooks/useStoreValue.ts`
-  (`useChatHistory` subscribes through `subscribeStore`, keyed on a live reply), and a
+  (`useChatHistory` subscribes through `subscribeStore`, keyed on a live reply, and `usePositionDraft` keyed on its
+  ticker's position), and a
   UI write that this tab must see goes through `savePreference(name, value)` in `src/lib/storeEvents.ts` (the write plus
   `store-changed` with a `pref` detail); `setPreference` itself stays silent, which the import, hydrate and sync paths
   rely on. `storeEvents.ts` keeps one permanent window listener and counts events per kind and per item, so a reader

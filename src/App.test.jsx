@@ -265,12 +265,12 @@ describe('App', () => {
     expect(KPICards.mock.calls.length).toBe(appRenders);
     expect(JSON.parse(localStorage.getItem('position_AVGO'))).toEqual({ costBasis: 50, shares: 1 }); // the debounce has not run
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(300); }); // App's position debounce
+    await act(async () => { await vi.advanceTimersByTimeAsync(300); }); // the position draft's debounce
     expect(JSON.parse(localStorage.getItem('position_AVGO'))).toEqual({ costBasis: 95, shares: 1 });
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 
-  // Shown red with handleTickerChange's setEdit(null) removed: the edit typed for AVGO then outlives the switch to
+  // Shown red with settle()'s setEdit(null) removed (usePositionDraft): the edit typed for AVGO then outlives the switch to
   // NVDA (hidden by the edit.ticker === ticker guard) and shows again over the position AVGO got in the meantime.
   it('Pin: an edit for one ticker does not reappear over a change made to it while another ticker was shown', async () => {
     const error = vi.spyOn(console, 'error');
