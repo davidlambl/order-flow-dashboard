@@ -606,13 +606,13 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    `ANALYZE=1 vite build` and record before/after in the PR.
    **Built in #84 (Phase 5 (e), 2026-11-06), without the lazy Supabase client.** Sizes are of a build with
    `VITE_SUPABASE_*` set (one without is about 0.3 kB smaller). The one 1,205.48 kB file became an
-   entry chunk of 160.30 kB, five vendor chunks (`output.codeSplitting.groups`: Rolldown 1.2 deprecates `advancedChunks`;
+   entry chunk of 160.57 kB, five vendor chunks (`output.codeSplitting.groups`: Rolldown 1.2 deprecates `advancedChunks`;
    react 218.75, supabase 214.38, recharts 385.92, markdown 153.22, query 32.75) and one chunk per part loaded on demand:
    `ChartsPanel` (only while the Charts section is expanded, never preloaded; the section is open by default, so a
    first visit still fetches recharts, after the first render instead of before it), the chat's `ChatMarkdown` (raw text as its
    fallback, pending or failed), `SettingsDialog`, the context editor's `StrategicContextDialog`, `LoginForm` and
    `SyncChoice` (requested only on a build with `VITE_SUPABASE_*`). JavaScript before the first render fell from
-   1,205.48 kB to 626.92 kB (346.19 → 182.57 kB gzip). Every lazy goes through `lazyWithPreload` inside its own
+   1,205.48 kB to 627.19 kB (346.19 → 182.66 kB gzip). Every lazy goes through `lazyWithPreload` inside its own
    `ChunkBoundary`, so a failed chunk costs that part alone, and `scripts/check-bundle.js` keeps the split after every
    build. The idle preload fetches the markdown renderer, the Settings dialog and the context editor (about 187 kB,
    56 kB gzip) once the dashboard shows, so those bytes are deferred, not saved; only the charts are never fetched
