@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import AppSettings from '../AppSettings.jsx';
 import { getPreference, setPreference } from '../../lib/store.js';
 import { server } from '../../test/setup.js';

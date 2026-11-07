@@ -6,7 +6,7 @@
 // src/test/setup.js clears the TanStack cache, the handlers and localStorage after each test.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import { queryClient } from '../lib/queryClient.js';
 import { useAIModels } from './useAIModels.js';

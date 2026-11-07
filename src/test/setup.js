@@ -27,9 +27,11 @@ beforeAll(() => {
 
 // api.js / auth.js fetch relative URLs. Node's fetch rejects them and MSW builds a Request from the input
 // before matching, so resolve them here — OUTSIDE the fetch that server.listen() patches.
+// A request no handler answers is refused, never sent (setup.test.js). msw 3 calls the option onUnhandledFrame and
+// ignores msw 2's onUnhandledRequest, falling back to 'warn', which sends the request on.
 let mswFetch;
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'error' });
+  server.listen({ onUnhandledFrame: 'error' });
   mswFetch = globalThis.fetch;
   globalThis.fetch = (input, init) => mswFetch(
     typeof input === 'string' && input.startsWith('/') ? new URL(input, window.location.origin).href : input,

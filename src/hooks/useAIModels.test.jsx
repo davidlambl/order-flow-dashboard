@@ -8,7 +8,7 @@
 import { StrictMode, useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import { clearToken, setToken } from '../lib/auth.js';
 import { queryClient } from '../lib/queryClient.js';
@@ -210,7 +210,8 @@ describe('useAIModels', () => {
     const failed = await renderLoaded('gemini', 'AIza-1');
     expect(failed.result.current).toMatchObject({ models: [], error: UPSTREAM_ERROR.error });
 
-    serveModels(() => HttpResponse.error());
+    // A network failure: fetch rejects with its own TypeError, in a browser's words (not the test transport's).
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const offline = await renderLoaded('gemini', 'AIza-2');
     expect(offline.result.current).toMatchObject({ models: [], error: 'Failed to fetch' });
 

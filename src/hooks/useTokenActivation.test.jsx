@@ -6,7 +6,7 @@
 // token of every request; a gated reply holds its request until release(). src/test/setup.js clears localStorage.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import { AUTH_EVENT } from '../lib/auth.js';
 import { useTokenActivation } from './useTokenActivation.js';

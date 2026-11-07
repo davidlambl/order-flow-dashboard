@@ -11,7 +11,7 @@
 // 2026-09-25 at 11:00 ET, in the regular session.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import { backoffSeconds } from '../lib/retry.js';
 import { setPreference } from '../lib/store.js';

@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import AppSettings from './AppSettings.js';
 import ChunkBoundary from './ChunkBoundary.js';
 import { ChunkLoadError, scheduleIdlePreload } from '../lib/lazyWithPreload.js';

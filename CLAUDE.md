@@ -53,7 +53,8 @@ should:
   App and `useSupabaseAuth` tests under `dom` drive it too, and `supabaseClient.node.test.js` pins those timings on the
   real client). `dom`: `src/**/*.test.{js,jsx}` under
   jsdom with Testing Library and an MSW server (`src/test/setup.js`; handlers target
-  `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there). The same setup makes TanStack
+  `http://localhost:3000/.netlify/functions/…`, relative URLs are resolved there; a request no handler answers is
+  refused, never sent, which `src/test/setup.test.js` checks against a local server). The same setup makes TanStack
   Query's notifications synchronous (`notifyManager.setScheduler`, so a hook's new result lands inside `act`) and
   clears the shared `queryClient` after every test; hooks take the client as `useQuery`'s second argument, so hook
   tests render them bare, with no provider. A component that reads the contexts renders inside them with

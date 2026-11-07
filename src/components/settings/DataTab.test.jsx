@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import AppSettings from '../AppSettings.jsx';
 import { useStoreValue } from '../../hooks/useStoreValue.js';
 import { getPreference, setPreference } from '../../lib/store.js';
