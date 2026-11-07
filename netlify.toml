@@ -15,26 +15,12 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
-# Every file Vite writes under dist/assets/ carries a content hash in its name ([name]-[hash].js/.css), so a URL
-# there never changes its bytes: a new build gets new names, and index.html (unhashed, outside this rule) keeps
-# Netlify's default revalidation and points at them. Deploys are atomic, so a stale hashed URL answers 404, which
-# the app's ChunkBoundary turns into a Reload; custom headers apply only to files served from Netlify's store,
-# never to that 404. That is what makes a year-long immutable policy safe here.
-# TEST ONLY (reverted before the PR is ready): does a header rule match the request path or the served file?
-[[redirects]]
-  from = "/assets/t1.js"
-  to = "/index.html"
-  status = 404
-
-[[redirects]]
-  from = "/assets/t2.js"
-  to = "/no-such-page"
-  status = 404
-
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+# The cache policy for the hashed build assets is not a path rule here: scripts/write-headers.js, run by `npm run
+# build` after `vite build`, writes dist/_headers with one `Cache-Control: public, max-age=31536000, immutable` rule per
+# file under dist/assets/ (every one carries a content hash, so its bytes never change; index.html is unhashed and keeps
+# Netlify's default revalidation). A `/assets/*` rule would be matched on the request path alone and put the same
+# header on the 404 a stale hashed path answers after a redeploy (measured on PR #85's preview); a rule per existing
+# file leaves that 404 on the default, so a browser never stores it.
 
 [functions]
   # shared/ holds pure modules imported by both src/ and netlify/functions/ (e.g. the
