@@ -15,6 +15,16 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+# Every file Vite writes under dist/assets/ carries a content hash in its name ([name]-[hash].js/.css), so a URL
+# there never changes its bytes: a new build gets new names, and index.html (unhashed, outside this rule) keeps
+# Netlify's default revalidation and points at them. Deploys are atomic, so a stale hashed URL answers 404, which
+# the app's ChunkBoundary turns into a Reload; custom headers apply only to files served from Netlify's store,
+# never to that 404. That is what makes a year-long immutable policy safe here.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 [functions]
   # shared/ holds pure modules imported by both src/ and netlify/functions/ (e.g. the
   # market calendar). Static imports are traced automatically; this keeps it explicit.
