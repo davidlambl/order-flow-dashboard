@@ -15,6 +15,13 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+# The cache policy for the hashed build assets is not a path rule here: scripts/write-headers.js, run by `npm run
+# build` after `vite build`, writes dist/_headers with one `Cache-Control: public, max-age=31536000, immutable` rule per
+# file under dist/assets/ (every one carries a content hash, so its bytes never change; index.html is unhashed and keeps
+# Netlify's default revalidation). A `/assets/*` rule would be matched on the request path alone and put the same
+# header on the 404 a stale hashed path answers after a redeploy (measured on PR #85's preview); a rule per existing
+# file leaves that 404 on the default, so a browser never stores it.
+
 [functions]
   # shared/ holds pure modules imported by both src/ and netlify/functions/ (e.g. the
   # market calendar). Static imports are traced automatically; this keeps it explicit.
