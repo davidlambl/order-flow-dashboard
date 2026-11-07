@@ -7,9 +7,15 @@
 // app, a chat reply streaming next to the part included; with one around every lazy part, a failure costs only that
 // part. Only a ChunkLoadError is handled here: any other error is rethrown, to reach the root boundary as it did
 // before the part was lazy.
+// A boundary that unmounts while its part loads (Settings closed, or the chat) may have been the only one waiting for
+// that import, and once it has gone nothing would show the import's failure: it releases what it may have been waiting
+// for (releaseAbandonedChunkFailures), so the part imports again where it mounts next instead of meeting a failure
+// nobody saw. A microtask later, and only if it has not mounted again by then: StrictMode, in development, unmounts
+// every new boundary and mounts it again at once, and a release there would cost the import that boundary waits for
+// one more attempt before its card.
 import { Component, Suspense } from 'react';
 import type { ReactNode } from 'react';
-import { forgetChunkFailure, isChunkLoadError } from '../lib/lazyWithPreload.js';
+import { forgetChunkFailure, isChunkLoadError, releaseAbandonedChunkFailures } from '../lib/lazyWithPreload.js';
 import ChunkFailureCard from './ChunkFailureCard.js';
 
 interface ChunkBoundaryProps {
@@ -28,13 +34,25 @@ interface ChunkBoundaryState {
 export default class ChunkBoundary extends Component<ChunkBoundaryProps, ChunkBoundaryState> {
   state: ChunkBoundaryState = { hasError: false, error: null };
 
+  /** Between componentDidMount and componentWillUnmount, StrictMode's second mount included. */
+  private mounted = false;
+
   static getDerivedStateFromError(error: unknown): ChunkBoundaryState {
     return { hasError: true, error };
+  }
+
+  componentDidMount() {
+    this.mounted = true;
   }
 
   componentDidCatch(error: unknown) {
     // The failure is on screen now, so the part may import again: on retry, or wherever it mounts next.
     forgetChunkFailure(error);
+  }
+
+  componentWillUnmount() {
+    this.mounted = false;
+    releaseAbandonedChunkFailures(() => !this.mounted);
   }
 
   // The failure UI took the children's place, so they mount afresh, and the part's lazy imports again.

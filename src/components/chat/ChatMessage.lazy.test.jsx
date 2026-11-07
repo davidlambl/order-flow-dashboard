@@ -3,7 +3,9 @@
 // text in the block a question renders in, rebuilt from every frame's content; once the renderer is in, the same bubble
 // renders the markdown, its Copy state kept, and a bubble mounted after renders it at once; a renderer that cannot load
 // leaves the raw text with no failure card, asks for nothing more, and gives way to the markdown when a later reply's
-// import brings it in; a question and an error line never go through the renderer; the idle preload loads it. This
+// import brings it in; a question and an error line never go through the renderer; the idle preload loads it; a bubble
+// unmounted while the renderer loads (the chat closed) leaves its next mount to import again, one that fell back is no
+// longer told once it has gone, and a reply streaming while the renderer loads falls back after its one import. This
 // file opts out of the setup's preload and holds each test's import with an importGate (src/test/lazy.js), so every
 // test starts with the renderer not loaded; every import a test starts is settled before it ends, since one still held
 // would keep the next test's import of the module from reaching its gate. Bubbles render bare and outside StrictMode,
@@ -12,6 +14,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import ChatMessage from './ChatMessage.js';
+import ChunkBoundary from '../ChunkBoundary.js';
 import { scheduleIdlePreload } from '../../lib/lazyWithPreload.js';
 import { importGate, skipLazyPreload } from '../../test/lazy.js';
 
@@ -181,5 +184,63 @@ describe('the idle preload', () => {
     expect(screen.getByText('Ready').tagName).toBe('STRONG');
     expect(rawTexts()).toEqual([]);
     expect(renderer.imports).toBe(1);
+  });
+});
+
+// ChatBot renders nothing while closed: closing the chat unmounts every bubble, as deleting a reply unmounts a bubble's boundary.
+describe('a bubble that unmounts while the renderer loads', () => {
+  it('leaves nothing behind: mounted again after the import failed, it imports again, then shows markdown', async () => {
+    silenceCaughtErrors();
+    const { rerender } = render(<Thread messages={[reply('**Levels** at 95')]} />);
+    await vi.waitFor(() => expect(renderer.imports).toBe(1));
+    rerender(<Thread messages={[]} />);
+    await act(() => renderer.reject(new TypeError(OFFLINE)));
+
+    rerender(<Thread messages={[reply('**Levels** at 95')]} />);
+    expect(rawTexts()).toEqual(['**Levels** at 95']);
+    await vi.waitFor(() => expect(renderer.imports).toBe(2));
+    await act(() => renderer.resolve());
+    expect(screen.getByText('Levels').tagName).toBe('STRONG');
+    expect(rawTexts()).toEqual([]);
+  });
+});
+
+describe('a bubble that fell back, once it is gone', () => {
+  it('Pin: is no longer told when a later import brings the renderer in, while one still on screen is', async () => {
+    silenceCaughtErrors();
+    const boundaryRenders = vi.spyOn(ChunkBoundary.prototype, 'render');
+    const { rerender } = render(<Thread messages={[reply('**Kept**'), reply('**Gone**')]} />);
+    // The renderer's lazy, as a bubble hands it to its boundary: a bubble that fell back is told through its preload().
+    const told = vi.spyOn(boundaryRenders.mock.contexts[0].props.children.type, 'preload');
+    await act(() => renderer.reject(new TypeError(OFFLINE)));
+    expect(rawTexts()).toEqual(['**Kept**', '**Gone**']);
+
+    rerender(<Thread messages={[reply('**Kept**')]} />);
+    rerender(<Thread messages={[reply('**Kept**'), question('Q2'), reply('**Next**')]} />);
+    await vi.waitFor(() => expect(renderer.imports).toBe(2));
+    await act(() => renderer.resolve());
+
+    expect(screen.getByText('Kept').tagName).toBe('STRONG');
+    expect(screen.getByText('Next').tagName).toBe('STRONG');
+    expect(rawTexts()).toEqual(['Q2']);
+    expect(told).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Every frame of a streaming reply renders its bubble's boundary again: a release reached that way would retry the
+// import for as long as the reply streams.
+describe('a reply that streams while the renderer loads', () => {
+  it('Pin: falls back after its one import when that fails, however many frames rendered its bubble', async () => {
+    silenceCaughtErrors();
+    const { rerender } = render(<Thread messages={[reply('**Part**')]} />);
+    rerender(<Thread messages={[reply('**Part** one')]} />);
+    rerender(<Thread messages={[reply('**Part** one, two')]} />);
+    await vi.waitFor(() => expect(renderer.imports).toBe(1));
+
+    await act(() => renderer.reject(new TypeError(OFFLINE)));
+    rerender(<Thread messages={[reply('**Part** one, two, three')]} />);
+    await timeForAnImport();
+    expect(renderer.imports).toBe(1);
+    expect(rawTexts()).toEqual(['**Part** one, two, three']);
   });
 });

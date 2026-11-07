@@ -5,7 +5,8 @@
 // The dialog then takes its place in the same frame, on the AI tab; a reopen shows it at once, and a close still
 // unmounts it and saves a pending key edit. The idle preload brings it in before the first open. A failed chunk shows
 // ChunkBoundary's failure card (the same markup) in the stand-in's body: the stand-in still closes, and asks for
-// nothing once closed; Try again and the next open import again; Reload reloads.
+// nothing once closed; Try again and the next open import again; Reload reloads. A close while the chunk loads leaves
+// nothing behind: when that load fails, the next open stands in and imports again.
 // The file opts out of the setup's preload and holds each test's import of the dialog with an importGate
 // (src/test/lazy.js), so every test starts with nothing loaded; AppSettings.test.jsx and the pin files of settings/ see
 // the dialog loaded, as the setup leaves it. Every import a test asks for is answered before it ends: one left held
@@ -336,6 +337,28 @@ describe('a chunk that failed to load', () => {
     await act(() => dialog.resolve());
     expect(tabBar()).toEqual(TABS);
     expect(dialog.imports).toBe(2);
+    await screen.findByRole('combobox');
+  });
+});
+
+describe('a close while the chunk loads', () => {
+  // On a bad connection: Settings opened, closed again before the dialog came, and that load failed behind it.
+  it('leaves nothing behind: the next open stands in again, imports again, and shows the dialog', async () => {
+    silenceCaughtErrors();
+    serveModels();
+    const view = render(settings(true));
+    await waitFor(() => expect(dialog.imports).toBe(1));
+    view.rerender(settings(false));
+    expect(view.container).toBeEmptyDOMElement();
+    await act(() => dialog.reject(new TypeError(OFFLINE)));
+
+    view.rerender(settings(true));
+    expect(loading()).toHaveTextContent('Loading…');
+    expect(screen.queryByRole('alert')).toBeNull();
+    await waitFor(() => expect(dialog.imports).toBe(2));
+    await act(() => dialog.resolve());
+    expect(loading()).toBeNull();
+    expect(tabBar()).toEqual(TABS);
     await screen.findByRole('combobox');
   });
 });

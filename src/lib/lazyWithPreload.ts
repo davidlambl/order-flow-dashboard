@@ -19,8 +19,18 @@
 // React.lazy. A failure that a render is waiting for stands until a ChunkBoundary has shown it (forgetChunkFailure):
 // React retries that render once the import settles, and the retry must find the failure and throw it to the
 // boundary, since a fresh import would suspend again and, while the network is down, fail and be retried without end.
-// A failure nothing rendered (a preload's) is dropped at once. preload() never rejects and imports at most once at a
-// time, however many instances and calls there are. Nothing runs at import: a lazy is only registered.
+// A failure nothing waits for does not stand: a preload's is dropped at once, and so is one whose boundary has gone,
+// which would otherwise meet the part's next mount with the failure UI and no new request, whatever the network has
+// become since (Settings closed while its chunk loads, the chat closed while the markdown renderer does). A
+// ChunkBoundary that unmounts releases what it may have been waiting for (releaseAbandonedChunkFailures): a failure
+// that stands is dropped, and an import under way counts as unrendered from then on, so that its failure is dropped as
+// it lands. It cannot tell which lazies its children rendered, so the release covers the import every lazy has under
+// way or failed as it unmounts: a boundary still waiting on a part elsewhere (another reply's bubble; the charts while
+// Settings closes) then imports it once more, and once only, since the retry that starts that import renders it, and
+// only another unmount releases it again. The release waits a microtask and is skipped for a boundary that StrictMode, in development,
+// mounts again at once; an import started meanwhile is left alone, as the boundary cannot have been waiting for it.
+// preload() never rejects and imports at most once at a time, however many instances and calls there are. Nothing
+// runs at import: a lazy is only registered.
 
 import { createElement, lazy, useState } from 'react';
 import type { LazyExoticComponent, ReactNode } from 'react';
@@ -58,7 +68,7 @@ interface Attempt<P> {
   readonly type: LazyExoticComponent<LazyTarget<P>>;
   /** Starts the import, once; settles with the component or the failure, never rejecting. */
   readonly start: () => Promise<LazyTarget<P> | ChunkLoadError>;
-  /** React rendered `type`: a render may be waiting to show this attempt's failure. */
+  /** React rendered `type`, and no boundary has released it since: a render may be waiting to show its failure. */
   rendered: boolean;
   /** Set once the import has failed. */
   error: ChunkLoadError | null;
@@ -70,6 +80,8 @@ interface Registered {
   /** preload() with its outcome: the failure, or null once the module is in. */
   load(): Promise<ChunkLoadError | null>;
   forget(error: unknown): void;
+  /** The release of the import under way or failed now, to run once the boundary that may wait for it has gone. */
+  abandon(): () => void;
   reset(): void;
 }
 
@@ -138,6 +150,14 @@ export function lazyWithPreload<P extends object>(
     forget(error) {
       if (current?.error === error) current = null;
     },
+    abandon() {
+      const waited = current;
+      return () => {
+        if (!waited || current !== waited) return;
+        if (waited.error) current = null;
+        else waited.rendered = false;
+      };
+    },
     reset() {
       loaded = null;
       current = null;
@@ -174,6 +194,21 @@ export function preloadAll(): Promise<ChunkLoadError[]> {
  */
 export function forgetChunkFailure(error: unknown): void {
   for (const entry of registry) entry.forget(error);
+}
+
+/**
+ * ChunkBoundary, as it unmounts: the import that each lazy has under way or failed now may be one its children were
+ * waiting for. A microtask later, if `gone()` still holds (StrictMode mounts a new boundary again at once), each of
+ * those failures that still stands is dropped, so the next render or preload imports again, and each of those imports
+ * still under way counts as unrendered, so that its failure is dropped as it lands. The import runs on, a module that
+ * arrives is kept, and an import started after the call is left alone.
+ */
+export function releaseAbandonedChunkFailures(gone: () => boolean): void {
+  const releases = registry.map((entry) => entry.abandon());
+  queueMicrotask(() => {
+    if (!gone()) return;
+    for (const release of releases) release();
+  });
 }
 
 /**
