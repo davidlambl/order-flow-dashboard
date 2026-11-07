@@ -226,8 +226,10 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 ├── index.css               Tailwind theme
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
-│   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open
+│   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open, loaded on demand
 │   ├── ChatBot.tsx         AI Co-Pilot: the always-mounted shell over chat/* and the two chat hooks
+│   ├── ChunkBoundary.tsx   Suspense and error boundary of one part loaded on demand: fallback, failure card
+│   ├── ChunkFailureCard.tsx  "Could not load" with Try again and Reload, for a chunk that failed
 │   ├── CollapsibleSection.jsx  Section with a remembered open state
 │   ├── ErrorBoundary.jsx   Recovery screen
 │   ├── FlowChart.jsx       30-day flow chart
@@ -238,13 +240,18 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── PositionAnalysis.tsx  Position, P&L, recommendation: the shell over position/* and usePositionSignals
 │   ├── PremiumGate.tsx     Token lock screen, mounted only while locked
 │   ├── RequestAccessForm.jsx  Netlify Forms access request
-│   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open
+│   ├── SettingsPlaceholder.tsx  The Settings dialog's frame while its chunk loads or after it failed
+│   ├── StrategicContextDialog.tsx  The strategic context editor's dialog, loaded on demand
+│   ├── StrategicContextEditor.tsx  Strategic context editor, mounted only while open: loads its dialog
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
 │   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
 │   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab, PremiumGate and the chat's lock screen
-│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row), DataSourceNote (the footer)
-│   ├── chat/               The chat's leaves (.tsx): ChatMarkdown, ChatMessage, TypingIndicator, ChatLockScreen,
-│   │                       ChatHeader, ContextInspector, ChatEmptyState, ChatComposer
+│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row), DataSourceNote (the footer),
+│   │                       ChartsPanel (both charts, loaded on demand with recharts), ChartsSkeleton (its
+│   │                       fallback), SyncChoiceLayer (the blocking layer while SyncChoice loads)
+│   ├── chat/               The chat's leaves (.tsx): ChatMessage, TypingIndicator, ChatLockScreen, ChatHeader,
+│   │                       ContextInspector, ChatEmptyState, ChatComposer, and ChatMarkdown (loaded on demand
+│   │                       with the markdown libraries)
 │   ├── position/           The position panel's leaves (.tsx): PriceDisplay, PositionInputs, PnLStat,
 │   │                       RecommendationBadge, DualRecommendationView, PriceLevelBar, ReasonList
 │   ├── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
@@ -283,6 +290,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── financialContext.ts The chat's context builder, pure, clock injected (golden snapshots in __snapshots__/ beside its test)
 │   ├── format.ts           Number and date formatting, timeAgo and daysUntil
 │   ├── gexChartHelpers.js  GEX axis ticks, reference lines
+│   ├── lazyWithPreload.ts  Components loaded on demand: preload, retry after a failed import, the idle preload
 │   ├── marketHours.ts      Refresh cadence and backoff, ET session state
 │   ├── mockData.ts         Demo data, checked against types/market.ts
 │   ├── positionSignals.ts  The position panel's pure derivation: modes, recommendations, levels, P&L
@@ -298,17 +306,18 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
 └── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
-                            cache reset), contexts.jsx (the two contexts for component tests)
+                            cache reset, every lazily loaded component preloaded), contexts.jsx (the two contexts
+                            for component tests), lazy.js (the opt-out and the import gate for tests of a lazy part)
 test/helpers/               fakeSupabase.js (recording fake client, its auth timed like supabase-js), fetch.js
                             (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
 supabase/                   migrations/001…005, README.md
-scripts/generate-token.js   Mints access tokens
+scripts/                    generate-token.js (mints access tokens), check-bundle.js (the bundle budget, after a build)
 docs/ROADMAP.md             Findings and the phased plan
 .github/                    workflows/ci.yml, dependabot.yml, pull_request_template.md
 index.html                  App shell, hidden access-request form for Netlify Forms
 netlify.toml                Build, NODE_VERSION 22, /api/* redirect, dev port, shared/** bundling
-vite.config.js              React and Tailwind plugins, dev proxy to :8888, ANALYZE=1 bundle report
+vite.config.js              React and Tailwind plugins, vendor chunk groups, dev proxy to :8888, ANALYZE=1 bundle report
 vitest.config.js            node and dom test projects, coverage
 eslint.config.js            Flat config: browser, node and test globals; react-hooks, react-refresh, typescript-eslint
 tsconfig.json               Browser type-check program (src/, shared/, types/); tsconfig.functions.json the Node one
@@ -320,22 +329,23 @@ tsconfig.json               Browser type-check program (src/, shared/, types/); 
 | Script | What it does |
 |---|---|
 | `npm run dev` | Vite dev server on :5173 |
-| `npm run build` | Build into `dist/`; `ANALYZE=1 npm run build` also writes `dist/stats.html` |
+| `npm run build` | Build into `dist/` (an entry chunk, vendor chunks, one chunk per part loaded on demand); `ANALYZE=1 npm run build` also writes `dist/stats.html` |
+| `npm run check:bundle` | The bundle budget on the built `dist/`: entry chunk ≤ 350 kB, JavaScript before the first render ≤ 700 kB, recharts and the markdown renderer never on the startup path |
 | `npm run preview` | Serve `dist/` |
 | `npm run lint` | ESLint 10 (typescript-eslint 8 for `.ts`/`.tsx`) |
 | `npm run typecheck` | `tsc` over `tsconfig.json` (browser: `src/`, `shared/`, `types/`) and `tsconfig.functions.json` (Node: `netlify/`, `shared/`, `types/`, `scripts/`); blocking in CI |
 | `npm test` | Vitest 5, both projects |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Tests with coverage into `coverage/` (CI) |
-| `npm run check` | Lint, typecheck, test, build (each blocking) |
+| `npm run check` | Lint, typecheck, test, build, bundle budget (each blocking) |
 
 - Lint must be clean: the last `react-hooks` and `react-refresh` findings closed with the AppSettings decomposition
   (roadmap Phase 5 (d), #75), and `check` and CI fail on any finding since.
-- Vitest's `node` project runs the function tests, `shared/*.test.js` and `src/**/*.node.test.js` (pure
+- Vitest's `node` project runs the function tests, `shared/*.test.js`, `scripts/**/*.test.js` and `src/**/*.node.test.js` (pure
   `src/lib` modules under Node with the stand-ins in `test/helpers/`). The `dom` project runs the other
   `src/**/*.test.{js,jsx}` files under jsdom with Testing Library and an MSW server (`src/test/setup.js`).
 - CI (`.github/workflows/ci.yml`, pushes to `main` and pull requests) runs `npm ci`, `npm run lint`,
-  `npm run typecheck`, `npm run test:coverage` and the build on Node 22 and 24 (`fail-fast: false`), plus a separate
+  `npm run typecheck`, `npm run test:coverage`, the build and the bundle budget on Node 22 and 24 (`fail-fast: false`), plus a separate
   `npm audit --omit=dev --audit-level=high` job. Dependabot opens weekly npm and GitHub Actions updates.
 - [CLAUDE.md](CLAUDE.md) has the working notes; [docs/ROADMAP.md](docs/ROADMAP.md) the modernization plan.
 - License: MIT ([LICENSE](LICENSE)).

@@ -24,7 +24,7 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['netlify/**/*.test.{js,ts}', 'shared/**/*.test.{js,ts}', 'src/**/*.node.test.{js,ts}'],
+          include: ['netlify/**/*.test.{js,ts}', 'shared/**/*.test.{js,ts}', 'scripts/**/*.test.{js,ts}', 'src/**/*.node.test.{js,ts}'],
         },
       },
       {

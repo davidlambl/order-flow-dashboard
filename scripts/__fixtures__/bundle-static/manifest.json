@@ -1,0 +1,58 @@
+{
+  "_markdown-CiBvUsbF.js": {
+    "file": "assets/markdown-CiBvUsbF.js",
+    "name": "markdown",
+    "imports": [
+      "_rolldown-runtime-XKyaHtl9.js",
+      "_react-C1iE8mnY.js"
+    ]
+  },
+  "_query-C9fSqsos.js": {
+    "file": "assets/query-C9fSqsos.js",
+    "name": "query",
+    "imports": [
+      "_rolldown-runtime-XKyaHtl9.js",
+      "_react-C1iE8mnY.js"
+    ]
+  },
+  "_react-C1iE8mnY.js": {
+    "file": "assets/react-C1iE8mnY.js",
+    "name": "react",
+    "imports": [
+      "_rolldown-runtime-XKyaHtl9.js"
+    ]
+  },
+  "_recharts-CU_N9K2c.js": {
+    "file": "assets/recharts-CU_N9K2c.js",
+    "name": "recharts",
+    "imports": [
+      "_rolldown-runtime-XKyaHtl9.js",
+      "_react-C1iE8mnY.js"
+    ]
+  },
+  "_rolldown-runtime-XKyaHtl9.js": {
+    "file": "assets/rolldown-runtime-XKyaHtl9.js",
+    "name": "rolldown-runtime"
+  },
+  "_supabase-Bwm3Z89P.js": {
+    "file": "assets/supabase-Bwm3Z89P.js",
+    "name": "supabase"
+  },
+  "index.html": {
+    "file": "assets/index-xVlV-wpr.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "imports": [
+      "_rolldown-runtime-XKyaHtl9.js",
+      "_react-C1iE8mnY.js",
+      "_query-C9fSqsos.js",
+      "_recharts-CU_N9K2c.js",
+      "_markdown-CiBvUsbF.js",
+      "_supabase-Bwm3Z89P.js"
+    ],
+    "css": [
+      "assets/index-CuUgmZiF.css"
+    ]
+  }
+}

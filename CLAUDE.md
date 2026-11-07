@@ -19,14 +19,25 @@ should:
    (`git worktree add <path> <branch tip>`; the Agent tool's worktree isolation starts from `main`, so reset it to
    the branch tip first), have each commit in its worktree, then cherry-pick in the planned order and re-run the
    gate after each. Only units that share `package.json`/the lockfile or the same source files run sequentially.
-5. Before pushing: `npm run check` (lint, typecheck, test and build, each blocking) and
+5. Before pushing: `npm run check` (lint, typecheck, test, build and the bundle budget, each blocking) and
    `npm audit --omit=dev --audit-level=high`.
 6. Line numbers in the roadmap were taken at commit `9cf9ccd` + the Phase 0 merge; re-grep before editing.
 
 ## Commands
 - `npm install` then `npm run dev` — Vite on :5173 with **mock data** (no functions).
 - `npx netlify dev` — functions on :8888 + Vite proxy (`vite.config.js`); needs a `.env` from `.env.example`.
-- `npm run build` — must pass. `npm run lint` — must be clean (0 errors, 0 warnings): the Phase 5 (c) baseline of four
+- `npm run build` — must pass; it writes the entry chunk, Rolldown's runtime chunk, five vendor chunks (`react`, `query`,
+  `supabase`, `recharts`, `markdown`: `output.codeSplitting.groups` in `vite.config.js`), one chunk per lazily loaded
+  part, a chunk for what two of those share (`useAutoSave`) and `dist/.vite/manifest.json` (Netlify does not publish
+  the dot-directory). `ANALYZE=1 npm run build` also writes `dist/stats.html`.
+- `npm run check:bundle` — `scripts/check-bundle.js` on the built `dist/`: the entry chunk at most 350 kB, initial JS
+  (the entry and everything it imports statically, read from the manifest and compared with `index.html`'s preloads) at
+  most 700 kB, and no `recharts` or `markdown` chunk on that startup path. Exit 1 over budget, 2 when the build cannot
+  be measured; the limits are the constants at its top. Part of `npm run check` and a CI step after the build. One
+  static import of a chart, of `ChatMarkdown` or of a package only recharts or the markdown graph uses (`clsx`, `react-is`,
+  `d3-*`, `unist-util-*`…) from an eagerly loaded module puts that whole vendor chunk back at startup: this is what
+  notices.
+- `npm run lint` — must be clean (0 errors, 0 warnings): the Phase 5 (c) baseline of four
   `react-hooks` and `react-refresh` findings closed with the AppSettings decomposition (Phase 5 (d), #75), and lint
   has been blocking in CI's required build job and in `npm run check` since. `.remember` (the remember plugin's scratch
   folder in this checkout) is in the config's global ignores.
@@ -36,7 +47,7 @@ should:
   remaining JS is parsed, never checked. Blocking in CI (inside the required build job) and part of `npm run check`.
 - `npm test` — Vitest (`vitest.config.js`, two projects). `node`: `netlify/functions/__tests__/*.test.js` (every
   function driven in-process with the recording `fetch` stub and helpers in `test/helpers/functions.js`),
-  `shared/*.test.js`, and `src/**/*.node.test.js` (pure `src/lib` modules loaded under Node with the browser-global
+  `shared/*.test.js`, `scripts/**/*.test.js`, and `src/**/*.node.test.js` (pure `src/lib` modules loaded under Node with the browser-global
   stand-ins in `test/helpers/globals.js` — `memoryStorage`, `withGlobals`, `fakeWindow`, `settle`, `fakeClock` — and
   the recording fake supabase-js client in `test/helpers/fakeSupabase.js`, whose `auth` is timed like supabase-js: the
   App and `useSupabaseAuth` tests under `dom` drive it too, and `supabaseClient.node.test.js` pins those timings on the
@@ -47,8 +58,14 @@ should:
   clears the shared `queryClient` after every test; hooks take the client as `useQuery`'s second argument, so hook
   tests render them bare, with no provider. A component that reads the contexts renders inside them with
   `src/test/contexts.jsx` (`marketValue(overrides)`, `authValue(overrides)`, `withContexts(ui, { market, auth })`),
-  which replaced the props those tests used to pass. `npm run test:watch`,
-  `npm run test:coverage` (CI), `npm run check` = lint + typecheck + test + build, each blocking.
+  which replaced the props those tests used to pass. The setup also loads every lazily loaded component
+  (`lazyWithPreload`) before a file's first test, so a lazy part renders inside `render()`'s act like an eager one and
+  the test files need not know which parts are lazy. A file that tests a lazy part's pending, failed and retried paths
+  opts out with a top-level `skipLazyPreload()` and holds the import with `importGate()` (`src/test/lazy.js`, whose
+  header has the recipe and its three traps: await one import at the end of `beforeEach` when the code starts two at
+  once; answer every import a test leaves held; wait for an import to arrive before settling it inside `act`).
+  `npm run test:watch`, `npm run test:coverage` (CI), `npm run check` = lint + typecheck + test + build + check:bundle,
+  each blocking.
   Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
   only at file top level; never enable fake timers globally; time-dependent code takes an injectable `now` (and the
   saver injectable timers), so tests never depend on the wall clock.
@@ -66,7 +83,7 @@ should:
   `PrefName`/`PreferenceValues` preferences, `SupabaseBackend.js` cloud sync with an injectable client, `syncOutbox.js`
   its persistent write queue, `supabase.js` Node-safe client factory, `session.js` the one sign-out plus the
   `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js` baseline-compared debounce behind
-  `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`,
+  `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`, `lazyWithPreload.ts` (code-split components: see Conventions),
   `format.ts` (numbers and dates, incl. `timeAgo` / `daysUntil` on a caller's `now`), `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
   client side with `describeToken` and `subscribeAuth`, `storeEvents.ts` the subscription side of `store-changed` (one
   permanent window listener, versions scoped by the event's detail, `savePreference` for UI writes), `queryClient.ts`
@@ -126,18 +143,27 @@ should:
   every hook result (a hook's return object in a dependency list would give the contexts a new value per render; the
   `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
   with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
+  App loads three parts on demand (Phase 5 (e)): `dashboard/ChartsPanel.tsx` (the grid with GexChart and FlowChart, and
+  recharts with it) inside the Charts section, so only while that section is expanded (it is by default), with `dashboard/ChartsSkeleton.tsx`
+  in its place meanwhile; `LoginForm` (its fallback is the session check's spinner) and `SyncChoice` (its fallback and
+  its failure UI sit in `dashboard/SyncChoiceLayer.tsx`, which blocks the page as the dialog does), both preloaded from
+  an effect only when `configured`. The idle preload starts from an effect once `screen === 'app'`.
   `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
   the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `AppSettings.tsx` renders
-  `settings/SettingsDialog.tsx` only while open, and the dialog mounts ONE tab at a time
+  `settings/SettingsDialog.tsx` only while open (loaded on demand, `SettingsPlaceholder.tsx` standing in for the
+  dialog's frame while its chunk loads or after it failed), and the dialog mounts ONE tab at a time
   (`settings/{AITab,DataTab,AccountTab,BackupTab}.tsx`, with `SecretInput` and `DataSourceBanner` as leaves): a tab's
   state is born fresh on every switch and its autosaves flush in its unmount cleanup, which is what keeps Sign out safe
   without a hand flush. `TokenActivationForm.tsx` is the activation leaf shared with `PremiumGate.tsx` (its lock screen
-  mounts only while locked) and with the chat's `ChatLockScreen`; `StrategicContextEditor.tsx` mounts its editor only while open and saves through
-  `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
+  mounts only while locked) and with the chat's `ChatLockScreen`; `StrategicContextEditor.tsx` mounts its editor only while open: the dialog itself is
+  `StrategicContextDialog.tsx`, loaded on demand, and saves through `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
   ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
   ChatEmptyState and ChatComposer with the textarea `ref` prop) and the two chat hooks; `isOpen` and the lock only hide its
-  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). `PositionAnalysis.tsx` is
+  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). The shell and its two hooks
+  load with the entry for that reason, and the leaves because they are small and the composer is the shell's focus
+  target; only `ChatMarkdown` (react-markdown and remark-gfm) is loaded on
+  demand, by `ChatMessage`, whose fallback while it loads AND if it fails is the reply's raw text. `PositionAnalysis.tsx` is
   the shell over `components/position/*.tsx` (PriceDisplay, PositionInputs, PnLStat, RecommendationBadge,
   DualRecommendationView, PriceLevelBar, ReasonList: pure leaves) and `usePositionSignals`; it pairs each field's edit with
   the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)).
@@ -206,6 +232,19 @@ should:
   A value already stale on its key's first render stays hidden until its own refetch lands (quote, research); demo
   data stands in only for a key that failed with nothing of its own. The hook tests are the contract; see the
   roadmap's Phase 5 step 2 for where they overruled the original sketch.
+- Code-splitting (Phase 5 (e)): a part loaded on demand is declared at module level with
+  `lazyWithPreload(() => import('./X.js'), { idle? })` (`src/lib/lazyWithPreload.ts`) and rendered inside its own
+  `ChunkBoundary` (`src/components/ChunkBoundary.tsx`), placed tightly around the lazy alone, never bare `React.lazy`:
+  the helper renders a module that is already in directly (no suspended frame after a preload, which is also what keeps
+  the tests synchronous) and retries a failed import through a fresh `React.lazy`; the boundary handles ONLY a
+  `ChunkLoadError` (its `fallback` while pending; `ChunkFailureCard` with Try again and Reload, or the caller's `failed`
+  UI) and rethrows anything else to the root `ErrorBoundary`. A part that lays out the whole screen or a modal itself
+  passes `failed` with its own frame around `ChunkFailureCard` (a frame around the boundary would frame the loaded part
+  too). `{ idle: true }` parts (the markdown renderer, the Settings dialog, the context editor's dialog) load in
+  `scheduleIdlePreload()`, which App starts once the dashboard shows (`requestIdleCallback`, a 2 s timeout where it is
+  missing, nothing under `saveData`); the charts are never preloaded. The chat shell and its hooks, `useSupabaseAuth` and
+  the Supabase client stay eager: a lazy `getSupabase()` is planned as its own change, since it alters the start-up
+  path of sign-in and sync.
 - `generateMockData` is random — memoize/stub in tests.
 - TypeScript (Phase 5, incremental): new and converted modules are `.ts`/`.tsx`; relative specifiers keep the `.js`
   extension, except that a not-yet-converted `.jsx` module is imported by its real `.jsx` extension (Vite maps `.js`
