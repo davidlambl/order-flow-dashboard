@@ -210,7 +210,8 @@ describe('useAIModels', () => {
     const failed = await renderLoaded('gemini', 'AIza-1');
     expect(failed.result.current).toMatchObject({ models: [], error: UPSTREAM_ERROR.error });
 
-    serveModels(() => HttpResponse.error());
+    // A network failure: fetch rejects with its own TypeError, in a browser's words (not the test transport's).
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new TypeError('Failed to fetch'));
     const offline = await renderLoaded('gemini', 'AIza-2');
     expect(offline.result.current).toMatchObject({ models: [], error: 'Failed to fetch' });
 
