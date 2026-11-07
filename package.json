@@ -13,6 +13,7 @@
     "check:bundle": "node scripts/check-bundle.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.functions.json",
+    "types:supabase": "npx supabase@3 gen types typescript --project-id ebovyltvpufvopmjryxg --schema public > types/supabase.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,7 +21,6 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run check:bundle"
   },
   "dependencies": {
-    "@netlify/functions": "^6.0.3",
     "@supabase/supabase-js": "^2.118.0",
     "@tanstack/react-query": "^5.104.5",
     "jsonwebtoken": "^9.0.3",
@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@netlify/functions": "^6.0.3",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",

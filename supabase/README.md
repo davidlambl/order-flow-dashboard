@@ -17,6 +17,11 @@ New query → paste → Run). All five are idempotent, so re-running one is safe
 | `004_security_hardening.sql` | `revoked_tokens`, `usage_log`, DB-owned `updated_at`, `ON DELETE CASCADE`, tighter policies |
 | `005_sync_tombstones.sql` | `deleted_at` on the three user tables and nullable content, so a delete is a tombstone that syncs to other devices (until it runs, deletes are hard deletes and the app warns) |
 
+`types/supabase.ts` holds the TypeScript types of the tables these migrations create, generated
+from the project's schema with `npm run types:supabase`. Regenerate it after a new migration runs
+and commit the result. The command needs a Supabase login (`npx supabase@3 login`, or
+`SUPABASE_ACCESS_TOKEN` in the environment); a fork sets its own project id in the script.
+
 ## Environment variables
 
 | Variable | Where | Purpose |
