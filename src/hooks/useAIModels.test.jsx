@@ -8,7 +8,7 @@
 import { StrictMode, useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import { clearToken, setToken } from '../lib/auth.js';
 import { queryClient } from '../lib/queryClient.js';

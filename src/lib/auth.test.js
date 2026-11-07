@@ -3,7 +3,7 @@
 // and the startup check against validateToken (answered by MSW). Signature, issuer and revocation checks are the
 // server's: netlify/functions/__tests__/validateToken.test.js.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import {
   AUTH_EVENT, clearToken, clearTokenIfDead, daysRemaining, decodeTokenPayload, describeToken, getAuthHeaders, getToken,

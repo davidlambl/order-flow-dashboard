@@ -6,7 +6,8 @@
 // setup's option ever stops applying (a rename in a new MSW major, a typo).
 import { createServer } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { http, HttpResponse, passthrough } from 'msw';
+import { http, HttpResponse } from 'msw/http';
+import { passthrough } from 'msw/utils/passthrough';
 import { server } from './setup.js';
 
 describe("the dom setup's MSW server", () => {

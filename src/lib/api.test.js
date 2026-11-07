@@ -13,7 +13,7 @@
 // clears after each test. The abort tests run on real timers: never fake timers in this file.
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import * as api from './api.js';
 import { AUTH_EVENT } from './auth.js';
 import { STOP_REASON } from './sse.js';

@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { server } from '../test/setup.js';
 import { AUTH_EVENT, clearToken } from '../lib/auth.js';
 import { usePremiumStatus } from '../hooks/usePremiumStatus.js';
