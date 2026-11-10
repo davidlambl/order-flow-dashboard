@@ -1,4 +1,4 @@
-// netlify/functions/lib/ticker.js
+// netlify/functions/lib/ticker.ts
 // One ticker validator shared by every function that interpolates a symbol
 // into an upstream URL or uses it as a database key.
 
@@ -7,10 +7,10 @@
 export const TICKER_RE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
 
 /**
- * Normalize and validate a raw ticker string.
- * @returns {string|null} the uppercased ticker, or null if invalid/missing
+ * Normalize and validate a raw ticker string. Any value is accepted: a non-string is invalid.
+ * @returns the uppercased ticker, or null if invalid/missing
  */
-export function parseTicker(raw) {
+export function parseTicker(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const t = raw.trim().toUpperCase();
   return TICKER_RE.test(t) ? t : null;

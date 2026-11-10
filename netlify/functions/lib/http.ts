@@ -1,9 +1,10 @@
-// netlify/functions/lib/http.js
+// netlify/functions/lib/http.ts
 // Shared HTTP helpers for Netlify Functions (v2 Request/Response style):
 // CORS restricted to known origins, JSON responses, request ids, upstream fetch
 // with timeouts, and a small per-instance rate limiter.
 
 import { randomUUID } from 'node:crypto';
+import type { ApiErrorBody, ApiErrorCode } from '../../../types/market.js';
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 // The dashboard calls its functions same-origin, so no Access-Control-Allow-Origin
@@ -11,8 +12,8 @@ import { randomUUID } from 'node:crypto';
 // origins listed in SITE_ORIGIN (comma-separated) plus the Netlify-provided
 // URL / DEPLOY_PRIME_URL of the current deploy.
 
-function allowedOrigins() {
-  const list = new Set();
+function allowedOrigins(): Set<string> {
+  const list = new Set<string>();
   for (const v of [process.env.SITE_ORIGIN, process.env.URL, process.env.DEPLOY_PRIME_URL]) {
     if (!v) continue;
     for (const o of v.split(',')) {
@@ -23,9 +24,9 @@ function allowedOrigins() {
   return list;
 }
 
-export function corsHeaders(req, extraAllowedHeaders = '') {
+export function corsHeaders(req: Request, extraAllowedHeaders = ''): Record<string, string> {
   const origin = req.headers.get('origin');
-  const headers = {
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Headers': ['Content-Type', 'Authorization', extraAllowedHeaders].filter(Boolean).join(', '),
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Vary': 'Origin',
@@ -36,13 +37,14 @@ export function corsHeaders(req, extraAllowedHeaders = '') {
   return headers;
 }
 
-export function preflight(req, extraAllowedHeaders = '') {
+export function preflight(req: Request, extraAllowedHeaders = ''): Response {
   return new Response(null, { status: 204, headers: corsHeaders(req, extraAllowedHeaders) });
 }
 
 // ─── Responses ───────────────────────────────────────────────────────────────
 
-export function jsonResponse(req, body, status = 200, headers = {}) {
+/** `body` is serialised as it is: each function types its own, from types/market.ts. */
+export function jsonResponse(req: Request, body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -54,20 +56,29 @@ export function jsonResponse(req, body, status = 200, headers = {}) {
   });
 }
 
-export function newRequestId() {
+export function newRequestId(): string {
   return randomUUID().slice(0, 8);
+}
+
+/** What errorResponse takes. `cause` is logged, never sent: any thrown value, or nothing. */
+interface ErrorResponseOptions {
+  status: number;
+  code: ApiErrorCode;
+  message: string;
+  requestId: string;
+  cause?: unknown;
 }
 
 /**
  * Log the real error server-side and return a generic client-facing body.
  * The requestId lets the operator match a user report to the function log.
  */
-export function errorResponse(req, { status, code, message, requestId, cause }) {
+export function errorResponse(req: Request, { status, code, message, requestId, cause }: ErrorResponseOptions): Response {
   const rid = requestId || newRequestId();
   if (cause) {
     console.error(`[${rid}] ${code}: ${message}`, cause instanceof Error ? cause.message : cause);
   }
-  return jsonResponse(req, { error: message, code, requestId: rid }, status);
+  return jsonResponse(req, { error: message, code, requestId: rid } satisfies ApiErrorBody, status);
 }
 
 // ─── Upstream fetch with timeout ─────────────────────────────────────────────
@@ -83,14 +94,15 @@ export function errorResponse(req, { status, code, message, requestId, cause }) 
  * platform's function timeout still bounds the stream). Either way an expiry rejects with
  * a `TimeoutError` (see isTimeoutError).
  *
- * @param {string|URL} url
- * @param {RequestInit} [init] - `init.signal`, when present, is honoured as well
- * @param {number} [timeoutMs]
- * @param {AbortSignal|null} [parentSignal]
- * @param {{ bodyTimeout?: boolean }} [options]
- * @returns {Promise<Response>}
+ * @param init - `init.signal`, when present, is honoured as well
  */
-export function fetchWithTimeout(url, init = {}, timeoutMs = 8000, parentSignal = null, { bodyTimeout = true } = {}) {
+export function fetchWithTimeout(
+  url: string | URL,
+  init: RequestInit = {},
+  timeoutMs = 8000,
+  parentSignal: AbortSignal | null = null,
+  { bodyTimeout = true }: { bodyTimeout?: boolean } = {},
+): Promise<Response> {
   if (bodyTimeout) {
     const signals = [AbortSignal.timeout(timeoutMs)];
     if (parentSignal) signals.push(parentSignal);
@@ -108,8 +120,11 @@ export function fetchWithTimeout(url, init = {}, timeoutMs = 8000, parentSignal 
   return fetch(url, { ...init, signal: AbortSignal.any(signals) }).finally(() => clearTimeout(timer));
 }
 
-export function isTimeoutError(err) {
-  return err?.name === 'TimeoutError' || err?.name === 'AbortError';
+export function isTimeoutError(err: unknown): boolean {
+  // A caught value is unknown. What reaches here is in practice an Error (fetch rejects with a TypeError, or with the
+  // aborting signal's reason: a TimeoutError or AbortError DOMException by default), so this asserts that instead of
+  // narrowing, which would change what any other value does: `name` stays the optional-chained read it was.
+  return (err as Error | undefined)?.name === 'TimeoutError' || (err as Error | undefined)?.name === 'AbortError';
 }
 
 // ─── Rate limiting (per warm function instance) ──────────────────────────────
@@ -117,20 +132,33 @@ export function isTimeoutError(err) {
 // brake, not a guarantee. Netlify's platform rate limiting (Site configuration →
 // Access & security) should be enabled for /.netlify/functions/* as the real limit.
 
-const buckets = new Map();
+/** Each key's request times (epoch ms), oldest first. */
+const buckets = new Map<string, number[]>();
 const BUCKET_SWEEP_EVERY = 500;
 let calls = 0;
 
-export function clientIp(req) {
+export function clientIp(req: Request): string {
   return req.headers.get('x-nf-client-connection-ip')
     || (req.headers.get('x-forwarded-for') || '').split(',')[0].trim()
     || 'unknown';
 }
 
+/** At most `limit` requests per key in any `windowMs` window. */
+interface RateLimitOptions {
+  limit: number;
+  windowMs: number;
+}
+
+/** `retryAfterSec`: 0 when ok, else the whole seconds (at least 1) until the oldest request leaves the window. */
+interface RateLimitResult {
+  ok: boolean;
+  retryAfterSec: number;
+}
+
 /**
  * Sliding-window limiter. Returns { ok, retryAfterSec }.
  */
-export function rateLimit(key, { limit, windowMs }) {
+export function rateLimit(key: string, { limit, windowMs }: RateLimitOptions): RateLimitResult {
   const now = Date.now();
   if (++calls % BUCKET_SWEEP_EVERY === 0) {
     for (const [k, times] of buckets) {
@@ -148,14 +176,14 @@ export function rateLimit(key, { limit, windowMs }) {
   return { ok: true, retryAfterSec: 0 };
 }
 
-export function rateLimitResponse(req, retryAfterSec, requestId) {
-  return jsonResponse(req, { error: 'Too many requests', code: 'RATE_LIMITED', requestId }, 429, {
+export function rateLimitResponse(req: Request, retryAfterSec: number, requestId: string): Response {
+  return jsonResponse(req, { error: 'Too many requests', code: 'RATE_LIMITED', requestId } satisfies ApiErrorBody, 429, {
     'Retry-After': String(retryAfterSec),
   });
 }
 
 /** Reset limiter state — for tests. */
-export function _resetRateLimiter() {
+export function _resetRateLimiter(): void {
   buckets.clear();
   calls = 0;
 }
