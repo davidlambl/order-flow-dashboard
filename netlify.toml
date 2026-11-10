@@ -20,3 +20,10 @@
   # market calendar). Static imports are traced automatically; this keeps it explicit.
   # Netlify bundles shared/** into every function; the test files there are never imported, so they stay out.
   included_files = ["shared/**", "!shared/**/*.test.js"]
+
+# The nightly collector is the one function still in Netlify's v1 form (a named `handler`). The default bundler
+# converts such a function to CommonJS, and its require of @netlify/functions then asks for a file the bundle does
+# not carry: the function failed at load on every scheduled run and never stored a row. esbuild bundles the package
+# into the function instead. The six functions with a default export are bundled as before.
+[functions.collectFlowHistory]
+  node_bundler = "esbuild"
