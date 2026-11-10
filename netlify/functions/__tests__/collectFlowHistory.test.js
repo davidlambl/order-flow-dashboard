@@ -3,8 +3,11 @@
 // Supabase is a recording fake of the collector's own queries (not test/helpers/fakeSupabase.js). Timers are real:
 // the concurrency and deadline checks wait on them.
 import { describe, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { DEFAULT_TRACKED_TICKERS, parseTrackedTickers, runCollection, handler } from '../collectFlowHistory.js';
+import collectFlow, { DEFAULT_TRACKED_TICKERS, parseTrackedTickers, runCollection, config } from '../collectFlowHistory.js';
+import * as collectorModule from '../collectFlowHistory.js'; // the schedule check looks for a handler export on it
 import { EXPIRY_WINDOW } from '../lib/marketDataHelpers.js';
 import { installFunctionHarness } from '../../../test/helpers/functions.js';
 
@@ -239,17 +242,29 @@ describe('collector', () => {
     assert.deepEqual(supabase.upserts.map((u) => u.row.ticker), ['SPY']);
   });
 
-  it('scheduled handler without Supabase env → 200, nothing fetched', async () => {
+  it('scheduled function without Supabase env → resolves to undefined, nothing fetched', async () => {
     setFetch(async (url) => cboeOk(url, FRIDAY));
     const warn = console.warn;
     const warned = [];
     console.warn = (...args) => { warned.push(args.join(' ')); };
     try {
-      assert.deepEqual(await handler({}, {}), { statusCode: 200 });
+      // What Netlify sends on a scheduled run: a POST whose body names the NEXT run, which the function ignores.
+      const scheduled = new Request('https://site.test/.netlify/functions/collectFlowHistory', {
+        method: 'POST', body: JSON.stringify({ next_run: '2026-09-28T21:30:00.000Z' }),
+      });
+      assert.equal(await collectFlow(scheduled), undefined);
     } finally {
       console.warn = warn;
     }
     assert.equal(calls.length, 0);
     assert.ok(warned.some((l) => l.includes('Supabase env vars not set')), 'guard reason logged');
+  });
+
+  it('runs Mon–Fri at 21:30 UTC, declared in the one form Netlify reads at build time', async () => {
+    assert.deepEqual(config, { schedule: '30 21 * * 1-5' });
+    assert.equal('handler' in collectorModule, false, 'a named handler export makes the file a v1 function, which has no schedule');
+    // The value is not enough: Netlify reads the schedule from the source when it bundles the function, in this form only.
+    const source = await readFile(path.join(import.meta.dirname, '..', 'collectFlowHistory.ts'), 'utf8');
+    assert.match(source, /^export const config: Config = \{ schedule: '30 21 \* \* 1-5' \};$/m);
   });
 });
