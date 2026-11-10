@@ -210,7 +210,7 @@ describe('sse', () => {
       await assert.rejects(pending, (err) => err.name === 'AbortError' && isTimeoutError(err));
 
       // askLLM streams: every provider call opts out of the body timeout.
-      const src = await readFile(new URL('../askLLM.js', import.meta.url), 'utf8');
+      const src = await readFile(new URL('../askLLM.ts', import.meta.url), 'utf8');
       const providerCalls = (src.match(/\bfetchWithTimeout\(/g) || []).length;
       assert.equal(providerCalls, 3, 'one fetchWithTimeout call per provider');
       assert.equal((src.match(/\{ bodyTimeout: false \}\);/g) || []).length, providerCalls, 'each provider call passes { bodyTimeout: false }');

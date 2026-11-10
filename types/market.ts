@@ -363,3 +363,21 @@ export interface ApiErrorBody {
   /** validateToken failure bodies (validateToken.js:23-36). */
   valid?: false;
 }
+
+/**
+ * The validateToken 200 body (validateToken.ts): what the verified token says. Its other JSON answers are
+ * ApiErrorBody, with `valid: false` except on the 405 and the 429.
+ */
+export interface TokenValidation {
+  valid: true;
+  /** Normalised: a missing or unknown tier claim reads as 'trial'. */
+  tier: 'trial' | 'pro';
+  /**
+   * The token's subject: a string in every token the token script mints. Verification only requires it present, and
+   * this body relays it as it is.
+   */
+  sub: string;
+  /** ISO 8601, from the token's `exp`. */
+  expiresAt: string;
+  requestId: string;
+}
