@@ -1,10 +1,12 @@
-// netlify/functions/lib/supabaseAdmin.js
+// netlify/functions/lib/supabaseAdmin.ts
 // Server-side Supabase client with service role (full access, bypasses RLS).
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../../../types/supabase.js';
 
-let client = null;
+let client: SupabaseClient<Database> | null = null;
 
-export function getSupabaseAdmin() {
+export function getSupabaseAdmin(): SupabaseClient<Database> {
   if (client) return client;
 
   const url = process.env.SUPABASE_URL;
@@ -14,7 +16,7 @@ export function getSupabaseAdmin() {
     throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
   }
 
-  client = createClient(url, key, {
+  client = createClient<Database>(url, key, {
     auth: { persistSession: false },
   });
   return client;

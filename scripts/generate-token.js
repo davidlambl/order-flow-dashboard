@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   TOKEN_ISSUER, TOKEN_AUDIENCE, TOKEN_ALGORITHM, MIN_SECRET_LENGTH, VALID_TIERS,
-} from '../netlify/functions/lib/auth.js';
+} from '../netlify/functions/lib/auth.ts';
 
 const TIER_DEFAULTS = { trial: 7, pro: 365 };
 
