@@ -1,5 +1,6 @@
 // netlify/functions/__tests__/collectFlowHistory.test.js — the nightly flow collector (roadmap Phase 2): ET
-// trading-date gating, per-ticker upserts, cum_premium lookup errors, the concurrency cap and the run deadline.
+// trading-date gating, per-ticker upserts, cum_premium lookup errors, the concurrency cap and the run deadline; then
+// the scheduled entry point (the default export) and the one form of `config` that Netlify reads at build time.
 // Supabase is a recording fake of the collector's own queries (not test/helpers/fakeSupabase.js). Timers are real:
 // the concurrency and deadline checks wait on them.
 import { describe, it } from 'vitest';

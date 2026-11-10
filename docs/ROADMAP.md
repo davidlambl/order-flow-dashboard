@@ -285,13 +285,16 @@ injectable RNG). Export-then-test: `parseSSELine` + buffer splitting, `isMarketO
 - L2 BYOK keys stored in **localStorage** (`src/lib/store.js:20-25`) — README says session storage.
 - L3 Service-role key used for public reads (`getMarketData.js:121-131`) and for cache writes triggered by
   unauthenticated requests (`getTickerContext.js:133-137`).
-- L4 Scheduled function wiring is correct (`schedule()` v1 style); modern form is `export const config = { schedule }`.
+- L4 Scheduled function wiring is correct (`schedule()` v1 style); modern form is `export const config = { schedule }`
+  (taken in 5 (f), #87; the wiring was right, but the v1 bundle Netlify built from it could not load: #90 and
+  Phase 5 step 1).
 - L5 `netlify.toml:6` pins Node 20 (EOL 2026-04-30) → move to 22, `engines >=22`.
 - L6 Hard-coded config → env: `TRACKED_TICKERS`, `NASDAQ_100_CONSTITUENTS` (stale), `MARKET_SYMBOLS`,
   default models, token limits, 6-expiry / ±20% windows, 45-day history window. `ALPHA_VANTAGE_KEY` missing
   from `.env.example`.
 - L7 No `node_bundler = "esbuild"`; getTickerContext eagerly imports supabase-js; handlers mix v1/v2
-  signatures; no structured logs / request IDs / error tracking.
+  signatures; no structured logs / request IDs / error tracking. (All seven are v2 since 5 (f), #87, which left
+  `node_bundler` unset: Netlify bundles a v2 function the same way whatever it says.)
 
 ### Data layer / Supabase / hygiene — from reviewer (top items re-verified by me)
 **Critical**
@@ -495,6 +498,45 @@ Node target **22** (not 24): `@netlify/functions@6` needs ≥22.12, `@supabase/s
    handles it), v1 handlers (`getMarketData`, `getModels`) migrated to the v2 `Request/Response` shape at the
    same time. Supabase types: `npx supabase gen types typescript --project-id <ref>` → `types/supabase.ts`,
    `createClient<Database>` on both sides; `types:supabase` script.
+   **Built in #87 (Phase 5 (f), 2026-11-10): the functions and the Supabase types.** (The scaffolding,
+   `types/market.ts` and seven `src/lib` conversions were Phase 5 (a), #61.) Every module under `netlify/functions/`
+   except the tests moved from `.js` to `.ts` by `git mv`: the seven functions and the seven `lib/` modules, typed from
+   `types/market.ts` (which gained `TokenValidation`, validateToken's 200 body) and from `types/supabase.ts`, the
+   generator's output for the seven tables, committed as generated with the `types:supabase` script.
+   `createClient<Database>` is on both sides: the two server clients and the browser's `src/lib/supabase.ts`, renamed
+   with them. The browser's build did not change by a byte.
+   - A conversion changed no behaviour and, wherever it could, no JavaScript. Printed with the types erased, nine of
+     the fifteen converted modules equal their `.js`. Five differ only by a narrowing that never takes effect, seven
+     in all (`marketDataHelpers` and `getTickerContext` two each; `auth`, `getMarketData` and `askLLM` one each), kept
+     for an invariant the compiler cannot see and each named in its commit, with a differential against the old
+     module. What arrives untyped (a caught value, parsed JSON, a verified token's payload) is asserted where it
+     arrives, not narrowed, so an unexpected value does what it did.
+   - The fifteenth is the collector, the one module whose JavaScript changed on purpose. It took the v2 scheduled
+     form: a default export that ignores the request and returns nothing, and the schedule on the module's last line,
+     `export const config: Config = { schedule: '30 21 * * 1-5' };`. Netlify reads that line from the source when it
+     bundles the function, in this form only, so a test checks the line itself. `runCollection` lost its `= {}`
+     default, since `supabase` is required.
+   - The token script stays JavaScript under its command. Plain Node maps no `.js` specifier to a `.ts` file, so the
+     script imports `lib/auth.ts` by its real name and Node strips the types. From that follow `engines` at Node ≥
+     22.18, `erasableSyntaxOnly` in the functions tsconfig, the lint rule against the inline `import { type X }`, the
+     rule `lib/auth.ts` keeps (erasable syntax only; a relative import only as `import type` or dynamic) and a test
+     that runs the script under plain Node.
+   - Where the sketch above was wrong: `getMarketData` and `getModels` were not v1 handlers. Both had been v2 since
+     Phase 1 (#51), as were the four other HTTP functions when this phase began; the collector was the one v1. And no
+     bundler setting was needed for TypeScript: Netlify traces a v2 function with nft and builds its entry with
+     esbuild whatever `node_bundler` says, so `netlify.toml` names none.
+   - Left out on purpose: `shared/*.js` stays JavaScript, typed by inference where the functions call it; the function
+     tests stay JavaScript and import the functions by their `.js` paths, which Vite resolves; and nothing from issue
+     #60 is fixed. Where a function and the contract disagree the function is typed as it behaves, and the commit
+     bodies list what the typing found.
+   - The collector had never stored a row in production: `flow_history` was empty. Its deployed bundle could not load.
+     Netlify's nft bundling converts a v1 function of an ES-module package to CommonJS, and the converted
+     `require("@netlify/functions")` resolved to a file of that package the bundle did not carry, so every scheduled
+     run failed at import. #90 (on `main`, 2026-11-09) bundled the collector alone with esbuild, which inlines the
+     package. The v2 form removes the cause instead: the function's one import from the package is `import type`,
+     erased, and its bundle carries no `@netlify` package. The #90 setting, which a v2 function ignores, is gone again
+     and `@netlify/functions` is a devDependency. Still to be seen on a published deploy, the only place a schedule
+     runs: the function log and the `flow_history` rows of a weekday 21:30 UTC run.
 2. **TanStack Query v5** (`@tanstack/react-query@^5`, ~13 kB gz; SWR lacks function-form `refetchInterval`
    and retry control). `src/lib/queryClient.ts`: `staleTime 60 s`, `gcTime 15 min`, retry ×2 with exponential
    backoff skipping `AbortError`, `refetchOnWindowFocus:false`. New pure `src/lib/marketHours.ts`

@@ -2,7 +2,7 @@
 
 ## What this is
 Institutional order-flow dashboard: React 19 + Vite + Tailwind 4 + Recharts 3 + TanStack Query 5 frontend, Netlify
-Functions backend (Tradier → CBOE market data with validated fallback, mock data only client-side; multi-provider LLM proxy; Yahoo live quotes;
+Functions backend in TypeScript (Tradier → CBOE market data with validated fallback, mock data only client-side; multi-provider LLM proxy; Yahoo live quotes;
 Finnhub / Alpha Vantage ticker context; nightly flow-history collector), Supabase for auth + persistence.
 
 ## Roadmap-driven work
@@ -43,8 +43,14 @@ should:
   folder in this checkout) is in the config's global ignores.
 - `npm run typecheck` — `tsc -p tsconfig.json` (browser program: `src/`, `shared/`, `types/`; DOM lib and only Vite's
   and Vitest's ambient types, so Node globals do not typecheck in `src/`) then `tsc -p tsconfig.functions.json` (Node
-  program: `netlify/`, `shared/`, `types/`, `scripts/`; `@types/node`, no DOM). `allowJs` with `checkJs: false`: the
-  remaining JS is parsed, never checked. Blocking in CI (inside the required build job) and part of `npm run check`.
+  program: `netlify/`, `shared/`, `types/`, `scripts/`; `@types/node`, no DOM; `erasableSyntaxOnly`, which refuses what
+  Node's own type stripping cannot erase: an enum, a namespace, a parameter property). Every function and `lib/` module
+  is TypeScript, so that program checks them whole. `allowJs` with `checkJs: false`: the remaining JS is parsed, never
+  checked. Blocking in CI (inside the required build job) and part of `npm run check`.
+- `npm run types:supabase` — rewrites `types/supabase.ts` from the project's schema (`npx supabase@3 gen types
+  typescript`, the project id in the script; it needs `npx supabase@3 login` or `SUPABASE_ACCESS_TOKEN`, which is why
+  the output is committed). Run it after a new migration and commit the file as generated: a header added by hand is
+  gone at the next run.
 - `npm test` — Vitest (`vitest.config.js`, two projects). `node`: `netlify/functions/__tests__/*.test.js` (every
   function driven in-process with the recording `fetch` stub and helpers in `test/helpers/functions.js`),
   `shared/*.test.js`, `scripts/**/*.test.js`, and `src/**/*.node.test.js` (pure `src/lib` modules loaded under Node with the browser-global
@@ -76,12 +82,16 @@ should:
   with `npx vitest run -u src/lib/financialContext.node.test.js` only after an intended change (CI never writes a
   snapshot: a missing one fails as mismatched, an obsolete one fails the file).
 - `npm audit --omit=dev --audit-level=high` — must stay clean (CI `audit` job).
-- `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`).
+- `node scripts/generate-token.js` — mint premium JWTs (`TOKEN_SECRET`). Plain Node, 22.18 or newer (the `engines`
+  floor): the script imports `netlify/functions/lib/auth.ts` by its real name, because Node maps no `.js` specifier
+  to a `.ts` file, and Node strips the types itself. `lib/auth.ts` therefore keeps to erasable syntax and has a
+  relative import only as `import type { … }` or a dynamic one, as its header says; `scripts/generate-token.test.js`
+  runs the script under plain Node, which is what fails if it stops loading.
 
 ## Layout
 - `src/lib/` pure helpers + storage (`store.ts` localStorage backend with the `StoreBackend` interface and the typed
   `PrefName`/`PreferenceValues` preferences, `SupabaseBackend.js` cloud sync with an injectable client, `syncOutbox.js`
-  its persistent write queue, `supabase.js` Node-safe client factory, `session.js` the one sign-out plus the
+  its persistent write queue, `supabase.ts` the typed, Node-safe client factory, `session.js` the one sign-out plus the
   `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js` baseline-compared debounce behind
   `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`, `lazyWithPreload.ts` (code-split components: see Conventions),
   `format.ts` (numbers and dates, incl. `timeAgo` / `daysUntil` on a caller's `now`), `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
@@ -97,8 +107,10 @@ should:
   mode, the two recommendations, the price levels, staleness and both P&Ls, `now` injected)). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
-  (Vite 8 and both Vitest projects), so converting a module never touches its importers; only a test that reads the
-  source by path (`sse.test.js`, `recommend.node.test.js`) moves its path in the same commit.
+  (Vite 8, both Vitest projects and Netlify's functions bundler), so converting a module never touches its importers;
+  only a test that reads the source by path (`sse.test.js`, `recommend.node.test.js`, `askLLM.test.js`,
+  `collectFlowHistory.test.js`) moves its path in the same commit. Plain Node maps nothing: a script it runs names the
+  `.ts` file (`scripts/generate-token.js`).
 - `src/hooks/` the data hooks on TanStack Query, all `.ts`: `useMarketData` (its own silent-refresh timer, whose fetch
   carries `fetchMeta` `{ silent: true }`; returns the deadline `nextRefreshAt` and `refreshMs` instead of a per-second
   counter), `useLiveQuote` (60 s `staleTime` and `refetchInterval`), `useTickerContext` (15 min `staleTime`,
@@ -167,17 +179,34 @@ should:
   the shell over `components/position/*.tsx` (PriceDisplay, PositionInputs, PnLStat, RecommendationBadge,
   DualRecommendationView, PriceLevelBar, ReasonList: pure leaves) and `usePositionSignals`; it pairs each field's edit with
   the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)).
-- `netlify/functions/` v2 `Request/Response` handlers (`askLLM`, `getLiveQuote`, `getTickerContext`,
-  `validateToken`, `getMarketData`, `getModels`) and the v1 scheduled `collectFlowHistory` (exports `runCollection()`
-  with an injectable Supabase client for tests); shared code in `netlify/functions/lib/`.
+- `netlify/functions/` TypeScript, every function in Netlify's v2 form (a default export): six `Request → Response`
+  handlers (`askLLM`, `getLiveQuote`, `getTickerContext`, `validateToken`, `getMarketData`, `getModels`), typed from
+  `types/market.ts` (every error body is checked against `ApiErrorBody` with `satisfies`), and the scheduled
+  `collectFlowHistory`, whose default export ignores the request (Netlify posts the NEXT run's time) and returns
+  nothing; it exports `runCollection()` with an injectable Supabase client for tests. Its schedule is its last line,
+  `export const config: Config = { schedule: '30 21 * * 1-5' };`, in the one form Netlify reads from the source when it
+  bundles the function: `satisfies Config`, `as const`, a constant or a template literal there typechecks and loses
+  the schedule without an error, and a named `handler` export beside the default makes the file a v1 function, which
+  has none. The last test in `collectFlowHistory.test.js` checks the value, the absence of `handler` and the line
+  itself. `netlify.toml` names no bundler: Netlify traces a v2 function with nft and builds its entry with esbuild
+  whatever `node_bundler` says, its relative imports (`lib/`, `shared/`) bundled in and the npm packages left external.
+  Shared code in `netlify/functions/lib/`: `http.ts`, `ticker.ts`, `auth.ts` (also loaded by plain Node: see the token
+  command), `quota.ts`, `marketDataHelpers.ts`, `supabaseAdmin.ts` and `supabasePublic.ts`.
 - `shared/` pure modules imported by both `src/` and `netlify/` (`marketCalendar.js`: ET clock, NYSE holidays and
   early closes, session windows, `isExpiryClosed`; `thresholds.js`: the P/C, dark-pool, P&L, GEX, staleness and
   recommendation cut-offs used by the engine, the KPI cards, the chat context and the LLM prompt). No Node or
   browser APIs, no `console`, injectable `now`; `netlify.toml` lists it in `included_files`.
 - `supabase/migrations/` — run 001→005 in order in the SQL editor; all idempotent (see `supabase/README.md`).
 - `types/market.ts` — the JSON contracts shared by `src/` and `netlify/` (`MarketData`/`MarketDataResponse`,
-  `LiveQuote`, `TickerContext`, `ModelList`, `ApiErrorBody` and the error-code unions); declarations only, included by
-  both tsconfigs; `netlify/` must never import `src/`. Server/client discrepancies found while deriving it: #60.
+  `LiveQuote`, `TickerContext`, `ModelList`, `TokenValidation`, `ApiErrorBody` and the error-code unions); declarations
+  only, included by both tsconfigs; `netlify/` must never import `src/`. Server/client discrepancies found while
+  deriving it: #60. Where a function and the contract disagree, the function is typed as it behaves, its payload
+  unchanged: converting the functions fixed none of them.
+- `types/supabase.ts` — the Supabase generator's output for the public schema (the seven tables of migrations
+  001→005), committed exactly as generated (`npm run types:supabase`) and imported only with `import type`. It is the
+  `Database` of every `createClient<Database>` (`lib/supabaseAdmin.ts`, `lib/supabasePublic.ts`,
+  `src/lib/supabase.ts`), so a query written in TypeScript is checked against the tables and their columns; the
+  JavaScript callers (`SupabaseBackend.js`, `session.js`) are not.
 - `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
   Phase 8) Terraform for AWS. See the roadmap's Phase 7/8 for the skill-building rationale.
 
@@ -217,9 +246,9 @@ should:
   `ai-settings-changed` no longer exists; `data-source-changed` stays for the data hooks; `auth-changed` feeds
   `usePremiumStatus`.
 - Functions accept BYOK via headers/body (`x-tradier-key`, `x-finnhub-key`, `userApiKey`); server keys are
-  only for access-token holders (`netlify/functions/lib/auth.js`), and refused with 503 if `TOKEN_SECRET`
-  is unset. New functions must use `lib/http.js` (CORS allowlist, `fetchWithTimeout`, `errorResponse`
-  with a request id, `rateLimit`) and `lib/ticker.js` before touching an upstream URL.
+  only for access-token holders (`netlify/functions/lib/auth.ts`), and refused with 503 if `TOKEN_SECRET`
+  is unset. New functions must use `lib/http.ts` (CORS allowlist, `fetchWithTimeout`, `errorResponse`
+  with a request id, `rateLimit`) and `lib/ticker.ts` before touching an upstream URL.
 - Market-hours logic is Eastern Time via `shared/marketCalendar.js` (holidays and early closes included); never
   use local `Date` for market decisions.
 - Data fetching (Phase 5 (b)): one `QueryClient` (`src/lib/queryClient.ts`) with `retry: false` (the market-data hook
@@ -248,10 +277,21 @@ should:
 - `generateMockData` is random — memoize/stub in tests.
 - TypeScript (Phase 5, incremental): new and converted modules are `.ts`/`.tsx`; relative specifiers keep the `.js`
   extension, except that a not-yet-converted `.jsx` module is imported by its real `.jsx` extension (Vite maps `.js`
-  to `.ts`/`.tsx` only, and `.jsx` to `.tsx` once the target converts); `import type` for types (`verbatimModuleSyntax`); `as const` objects with derived unions, never `enum`;
+  to `.ts`/`.tsx` only, and `.jsx` to `.tsx` once the target converts); `import type { X }` for types
+  (`verbatimModuleSyntax`), never the inline `import { type X }` (lint's `no-import-type-side-effects`: Node's type
+  stripping erases the inline specifier and keeps the import, which then looks for a `.js` file that does not exist);
+  `as const` objects with derived unions, never `enum`;
   no `any`, no `!`, no `@ts-ignore`/`@ts-expect-error`; types state the documented contract and a permissive overload
   keeps a test-pinned tolerance honest (`formatShortDate(42) → 42`); a conversion changes no runtime behaviour and
-  no importer; tests stay JS until converted on purpose. `npm run typecheck` must be clean.
+  no importer; tests stay JS until converted on purpose. A conversion also changes no JavaScript wherever it can. A
+  value that arrives untyped is asserted, not narrowed, because a narrowing changes what an unexpected value does: a
+  caught value keeps the read it had (`(err as Error).message`, as `src/lib/api.ts` already did), and parsed JSON is
+  asserted once, where it is parsed, to the fields the code reads, each with a comment saying why the assertion holds.
+  A narrowing whose test never decides (`m.get(k) ?? []` for a `k` taken from `m.keys()`, a second operand for two
+  variables that are set together) is kept for an invariant the compiler cannot see and no erased construct states
+  honestly; it carries a comment and is named in the commit. The check: print the old `.js` and the new `.ts` through
+  the TypeScript emitter with types erased and comments off, and every line the two differ in must be one of those
+  narrowings. `npm run typecheck` must be clean.
 - Commit messages: imperative subject, body explains *why*. End every commit with
   `Co-Authored-By: Claude <noreply@anthropic.com>` and `Claude-Session: <session url>` (a local CLI session without a
   URL uses its session id, `$CLAUDE_CODE_SESSION_ID`: owner, 2026-09-29); never a model identifier

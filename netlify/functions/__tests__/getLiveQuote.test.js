@@ -21,9 +21,9 @@ const noFetch = async (url) => { throw new Error(`unexpected fetch: ${url}`); };
 const PERIODS = { pre: { start: 0, end: 1000 }, regular: { start: 1000, end: 2000 }, post: { start: 2000, end: 3000 } };
 
 // AAPL (a Nasdaq-100 member) last traded at 10 after a 9 prior close, and NQ is up 5 %.
-// getLiveQuote.js caches the NQ quote for 60 s with no reset (futuresCache), and each test file gets its own copy
+// getLiveQuote.ts caches the NQ quote for 60 s with no reset (futuresCache), and each test file gets its own copy
 // of the module: this is the file's ONLY NQ fixture, so whatever the cache holds is this one, whichever check
-// filled it. A second NQ fixture needs a cache reset exported from getLiveQuote.js first.
+// filled it. A second NQ fixture needs a cache reset exported from getLiveQuote.ts first.
 const AAPL = chart({ meta: { regularMarketPrice: 10, regularMarketTime: 100, chartPreviousClose: 9 } });
 const NQ = chart({ meta: { regularMarketPrice: 21000, regularMarketTime: 100, chartPreviousClose: 20000 } });
 const stockAndFutures = async (url) => {

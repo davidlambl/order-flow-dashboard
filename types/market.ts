@@ -3,29 +3,29 @@
 
 // ─── getMarketData ───────────────────────────────────────────────────────────
 
-/** `provider` of getMarketData (marketDataHelpers.js:42, :159) plus generateMockData's 'mock' (mockData.ts:69). */
+/** `provider` of getMarketData (marketDataHelpers.ts:153, :274) plus generateMockData's 'mock' (mockData.ts:70). */
 export type MarketProvider = 'cboe' | 'tradier' | 'tradier-sandbox' | 'mock';
 
-/** `delay` label paired with each provider (marketDataHelpers.js:43, :160; mockData.ts:70). */
+/** `delay` label paired with each provider (marketDataHelpers.ts:154, :275; mockData.ts:71). */
 export type MarketDelay = '15-min delayed' | 'real-time' | 'sandbox (delayed)' | 'simulated';
 
 /**
- * Why getMarketData served CBOE although Tradier was tried (getMarketData.js:125, :135); null when it was not tried or
- * succeeded, and always in the demo payload (mockData.ts:74).
+ * Why getMarketData served CBOE although Tradier was tried (getMarketData.ts:129, :139); null when it was not tried or
+ * succeeded, and always in the demo payload (mockData.ts:75).
  */
 export type FallbackReason = 'tradier-timeout' | 'tradier-error' | 'tradier-no-spot' | 'tradier-no-options';
 
-/** One strike of `gexByStrike`: computeGEX (marketDataHelpers.js:224, :235) or generateMockData (mockData.ts:35-40). */
+/** One strike of `gexByStrike`: computeGEX (marketDataHelpers.ts:356, :367) or generateMockData (mockData.ts:36-41). */
 export interface GexRow {
   strike: number;
   callGex: number;
-  /** ≤ 0: put gamma is subtracted (marketDataHelpers.js:230). */
+  /** ≤ 0: put gamma is subtracted (marketDataHelpers.ts:362). */
   putGex: number;
-  /** Server-side: callGex + putGex (marketDataHelpers.js:235), and rows with |gex| = 0 are dropped (:236). */
+  /** Server-side: callGex + putGex (marketDataHelpers.ts:367), and rows with |gex| = 0 are dropped (:368). */
   gex: number;
 }
 
-/** One session of `flowHistory`: a flow_history row (getMarketData.js:67-73; migration 001) or a mock weekday (mockData.ts:55-61). */
+/** One session of `flowHistory`: a flow_history row (getMarketData.ts:71-77; migration 001) or a mock weekday (mockData.ts:56-62). */
 export interface FlowHistoryRow {
   /** 'YYYY-MM-DD'. */
   date: string;
@@ -36,27 +36,27 @@ export interface FlowHistoryRow {
 }
 
 /**
- * `kpis` of getMarketData (getMarketData.js:168-181) and of generateMockData (mockData.ts:79-92), which sets whole
- * volumes and open interest and derives both ratios from them (mockData.ts:22-27), as the function does.
+ * `kpis` of getMarketData (getMarketData.ts:178-191) and of generateMockData (mockData.ts:80-93), which sets whole
+ * volumes and open interest and derives both ratios from them (mockData.ts:23-28), as the function does.
  */
 export interface MarketKpis {
   netPremium: number;
   callPremium: number;
   putPremium: number;
-  /** 25–55, or null without a stock volume and IV30 (marketDataHelpers.js:353): always null on Tradier. */
+  /** 25–55, or null without a stock volume and IV30 (marketDataHelpers.ts:498): always null on Tradier. */
   darkPoolPct: number | null;
-  /** null when no open expiry has open interest (marketDataHelpers.js:296). */
+  /** null when no open expiry has open interest (marketDataHelpers.ts:432). */
   maxPain: number | null;
-  /** Puts ÷ calls by volume; null without call volume (marketDataHelpers.js:317). */
+  /** Puts ÷ calls by volume; null without call volume (marketDataHelpers.ts:459). */
   putCallRatio: number | null;
   /**
    * Expiry max pain was measured on ('YYYY-MM-DD'); from the function, null together with maxPain. Always null in the
    * demo payload, whose maxPain (the strike nearest spot) belongs to no expiry.
    */
   maxPainExpiry: string | null;
-  /** Puts ÷ calls by open interest; null without call OI (marketDataHelpers.js:318). */
+  /** Puts ÷ calls by open interest; null without call OI (marketDataHelpers.ts:460). */
   putCallOIRatio: number | null;
-  /** Call volume in whole contracts over the expiry window (computePutCallRatio, marketDataHelpers.js:299-324); 0 if none. */
+  /** Call volume in whole contracts over the expiry window (computePutCallRatio, marketDataHelpers.ts:441-466); 0 if none. */
   callVolume: number;
   /** Put volume, summed the same way; 0 if none. */
   putVolume: number;
@@ -67,38 +67,38 @@ export interface MarketKpis {
 }
 
 /**
- * The getMarketData 200 body (getMarketData.js:156-191) and the generateMockData value (mockData.ts:64-96): both carry
+ * The getMarketData 200 body (getMarketData.ts:166-202) and the generateMockData value (mockData.ts:65-97): both carry
  * every field, so demo mode uses the mock as it is. flowHistory alone is optional: the mock always has it, and the
  * function omits it when Supabase is unconfigured, has no recent rows for the ticker or the read fails
- * (getMarketData.js:54, :64-65, :189-191).
+ * (getMarketData.ts:58, :68-69, :199-202).
  */
 export interface MarketData {
   ticker: string;
   provider: MarketProvider;
   delay: MarketDelay;
-  /** Validated finite and > 0 before a provider's answer is accepted (getMarketData.js:116-118). */
+  /** Validated finite and > 0 before a provider's answer is accepted (getMarketData.ts:120-122). */
   spotPrice: number;
   priceChange: number;
   priceChangePct: number;
   kpis: MarketKpis;
-  /** Strikes within ±20 % of spot, ascending (getMarketData.js:152-154). */
+  /** Strikes within ±20 % of spot, ascending (getMarketData.ts:162-164). */
   gexByStrike: GexRow[];
   /** ISO 8601, stamped when the body is built. */
   lastUpdated: string;
-  /** Chronological, at most 30 rows from the last 45 days (getMarketData.js:40-41, :66-67). */
+  /** Chronological, at most 30 rows from the last 45 days (getMarketData.ts:44-45, :70-71). */
   flowHistory?: FlowHistoryRow[];
   fallbackReason: FallbackReason | null;
-  /** Percent (e.g. 31.4); null on Tradier (marketDataHelpers.js:164), when CBOE omits it, and in the demo payload. */
+  /** Percent (e.g. 31.4); null on Tradier (marketDataHelpers.ts:279), when CBOE omits it, and in the demo payload. */
   iv30: number | null;
   /**
-   * CBOE: a date-time string; Tradier: epoch milliseconds (marketDataHelpers.js:49, :166); null in the demo payload.
+   * CBOE: a date-time string; Tradier: epoch milliseconds (marketDataHelpers.ts:160, :281); null in the demo payload.
    * Read by nothing in src/.
    */
   lastTradeTime: string | number | null;
   /** Contracts left after normalizeChain (the expiry window); the demo payload counts a call and a put per strike. */
   totalOptionsCount: number;
   /**
-   * The expiry window: 'YYYY-MM-DD', ascending, at most EXPIRY_WINDOW = 6 (marketDataHelpers.js:9, :194); [] in the
+   * The expiry window: 'YYYY-MM-DD', ascending, at most EXPIRY_WINDOW = 6 (marketDataHelpers.ts:10, :317); [] in the
    * demo payload.
    */
   expiries: string[];
@@ -112,10 +112,10 @@ export interface MarketDataResponse extends Omit<MarketData, 'provider' | 'delay
 
 // ─── getLiveQuote ────────────────────────────────────────────────────────────
 
-/** Where `current` came from (getLiveQuote.js:200-202, :335). 'futures-implied' is never emitted. */
+/** Where `current` came from (getLiveQuote.ts:276-278, :415). 'futures-implied' is never emitted. */
 export type LiveQuoteSource = 'yahoo-regular' | 'yahoo-post' | 'yahoo-pre' | 'finnhub';
 
-/** NQ futures move attached for context only (getLiveQuote.js:288-293); never changes `current`. */
+/** NQ futures move attached for context only (getLiveQuote.ts:365-370); never changes `current`. */
 export interface FuturesContext {
   nqChangePercent: number;
   /** previousClose × (1 + nqChangePercent / 100): an estimate anchored on the stock's prior close. */
@@ -124,7 +124,7 @@ export interface FuturesContext {
   nqPreviousClose: number;
 }
 
-/** The getLiveQuote 200 body (getLiveQuote.js:265-274 Yahoo, :326-336 Finnhub). */
+/** The getLiveQuote 200 body (getLiveQuote.ts:342-351 Yahoo, :406-416 Finnhub). */
 export interface LiveQuote {
   ticker: string;
   /** Always a real traded price > 0. */
@@ -132,19 +132,19 @@ export interface LiveQuote {
   previousClose: number | null;
   /** null when previousClose is missing or 0. */
   changePercent: number | null;
-  /** Epoch milliseconds of the price itself; null only on the Finnhub path when it sends no time (getLiveQuote.js:334). */
+  /** Epoch milliseconds of the price itself; null only on the Finnhub path when it sends no time (getLiveQuote.ts:414). */
   timestamp: number | null;
   source: LiveQuoteSource;
   /**
    * Only for a Nasdaq-100 member whose newest price is a regular-session print, with a non-zero previousClose, while
-   * the equity session is closed and NQ moved > 0.1 % (getLiveQuote.js:279-285).
+   * the equity session is closed and NQ moved > 0.1 % (getLiveQuote.ts:356-362).
    */
   futuresContext?: FuturesContext;
 }
 
 // ─── getTickerContext ────────────────────────────────────────────────────────
 
-/** A company-news item (getTickerContext.js:380-387), at most 7. */
+/** A company-news item (getTickerContext.ts:532-539), at most 7. */
 export interface NewsItem {
   headline: string;
   summary: string;
@@ -156,7 +156,7 @@ export interface NewsItem {
   sentiment: number | null;
 }
 
-/** A general market headline (getTickerContext.js:471-476), at most 5. */
+/** A general market headline (getTickerContext.ts:627-632), at most 5. */
 export interface MarketHeadline {
   headline: string;
   source: string;
@@ -165,8 +165,8 @@ export interface MarketHeadline {
 }
 
 /**
- * Latest reported quarter (getTickerContext.js:250-259; revenue :393-395); served from the earnings_cache row's `data`
- * JSON when fresh, and from a stale row when Alpha Vantage cannot refresh it (:213-220).
+ * Latest reported quarter (getTickerContext.ts:399-408; revenue :549-551); served from the earnings_cache row's `data`
+ * JSON when fresh, and from a stale row when Alpha Vantage cannot refresh it (:360-368).
  */
 export interface EarningsInfo {
   /** Reported date 'YYYY-MM-DD'. */
@@ -183,7 +183,7 @@ export interface EarningsInfo {
   surprise: number | null;
 }
 
-/** Latest Finnhub recommendation trend (getTickerContext.js:404-411, :422-429). Counts default to 0. */
+/** Latest Finnhub recommendation trend (getTickerContext.ts:560-567, :578-585). Counts default to 0. */
 export interface AnalystConsensus {
   buy: number;
   hold: number;
@@ -194,7 +194,7 @@ export interface AnalystConsensus {
   period: string | null;
 }
 
-/** Price-target consensus (getTickerContext.js:412-417); all null when /stock/price-target failed (:430). */
+/** Price-target consensus (getTickerContext.ts:568-573); all null when /stock/price-target failed (:586). */
 export interface PriceTarget {
   mean: number | null;
   median: number | null;
@@ -202,15 +202,15 @@ export interface PriceTarget {
   low: number | null;
 }
 
-/** `analysts` (getTickerContext.js:398-432); null when /stock/recommendation failed. */
+/** `analysts` (getTickerContext.ts:554-588); null when /stock/recommendation failed. */
 export interface AnalystInfo {
   consensus: AnalystConsensus;
   priceTarget: PriceTarget;
 }
 
 /**
- * From a year of daily candles (getTickerContext.js:440-447); null as a whole when /stock/candle failed (403 on free
- * keys) or answered without s: 'ok' (:435).
+ * From a year of daily candles (getTickerContext.ts:596-603); null as a whole when /stock/candle failed (403 on free
+ * keys) or answered without s: 'ok' (:591).
  */
 export interface Technicals {
   sma50: number | null;
@@ -222,7 +222,7 @@ export interface Technicals {
   fiftyTwoWeekLow: number | null;
 }
 
-/** Finnhub /stock/metric subset (getTickerContext.js:453-467); null as a whole when that call failed. */
+/** Finnhub /stock/metric subset (getTickerContext.ts:609-623); null as a whole when that call failed. */
 export interface Fundamentals {
   /** Finnhub reports it in millions (the chat's context builder divides by 1e3 for billions). */
   marketCap: number | null;
@@ -240,12 +240,12 @@ export interface Fundamentals {
   revenuePerShareTTM: number | null;
 }
 
-/** Index proxies quoted by getTickerContext (getTickerContext.js:334). */
+/** Index proxies quoted by getTickerContext (getTickerContext.ts:483). */
 export type MarketSymbol = 'SPY' | 'QQQ' | 'VIX' | 'USO' | 'GLD';
 
-/** One entry of `marketQuotes` (getTickerContext.js:483-489); present only when Finnhub returned a non-zero price. */
+/** One entry of `marketQuotes` (getTickerContext.ts:639-645); present only when Finnhub returned a non-zero price. */
 export interface MarketIndex {
-  /** 'S&P 500' | 'Nasdaq 100' | 'VIX' | 'Oil (USO)' | 'Gold (GLD)' (getTickerContext.js:335). */
+  /** 'S&P 500' | 'Nasdaq 100' | 'VIX' | 'Oil (USO)' | 'Gold (GLD)' (getTickerContext.ts:484). */
   label: string;
   price: number;
   change: number | null;
@@ -253,25 +253,25 @@ export interface MarketIndex {
   previousClose: number | null;
 }
 
-/** Keys of the `errors` map (getTickerContext.js:48, :361-362). */
+/** Keys of the `errors` map (getTickerContext.ts:54, :511-513). */
 export type ContextSection =
   | 'news' | 'earningsCalendar' | 'recommendation' | 'priceTarget' | 'metrics' | 'candles' | 'marketNews'
   | 'marketQuotes' | 'earnings';
 
-/** Client-safe failure reason (getTickerContext.js:97-99); 'rate-limited' only for `earnings` (:45). */
+/** Client-safe failure reason (getTickerContext.ts:236-238); 'rate-limited' only for `earnings` (:51). */
 export type ContextErrorReason = 'timeout' | 'error' | 'rate-limited' | `HTTP ${number}`;
 
 /** Per-section failures; {} when every section answered. Also carried by the 401/502 error bodies. */
 export type ContextErrors = Partial<Record<ContextSection, ContextErrorReason>>;
 
-/** The getTickerContext 200 body (getTickerContext.js:493-498). Sections fail independently. */
+/** The getTickerContext 200 body (getTickerContext.ts:649-654). Sections fail independently. */
 export interface TickerContext {
   ticker: string;
   /** [] when the news call failed. */
   news: NewsItem[];
   /**
-   * null without a valid access token, BYOK key or not (Alpha Vantage is token-holder only: getTickerContext.js:303-305,
-   * :339-341), without ALPHA_VANTAGE_KEY, or when AV had nothing usable and no row was cached.
+   * null without a valid access token, BYOK key or not (Alpha Vantage is token-holder only: getTickerContext.ts:452-454,
+   * :488-490), without ALPHA_VANTAGE_KEY, or when AV had nothing usable and no row was cached.
    */
   earnings: EarningsInfo | null;
   analysts: AnalystInfo | null;
@@ -286,21 +286,21 @@ export interface TickerContext {
 
 // ─── getModels ───────────────────────────────────────────────────────────────
 
-/** LLM providers getModels and askLLM accept (getModels.js:12). */
+/** LLM providers getModels and askLLM accept (getModels.ts:13). */
 export type LlmProvider = 'anthropic' | 'openai' | 'gemini';
 
-/** One listed model (getModels.js:25, :49, :61). */
+/** One listed model (getModels.ts:46, :70, :82). */
 export interface ModelInfo {
   /** Provider model id (Gemini's 'models/' prefix stripped). */
   id: string;
-  /** Display name, falling back to the id (Gemini: to its full 'models/…' name, getModels.js:61). */
+  /** Display name, falling back to the id (Gemini: to its full 'models/…' name, getModels.ts:82). */
   name: string;
   provider: LlmProvider;
 }
 
 /**
- * The getModels 200 body (getModels.js:104). With no key and no server key the function still answers 200 with
- * `models: []` plus `error`/`code: 'KEY_REQUIRED'` (getModels.js:90-93), which AppSettings shows as `result.error`.
+ * The getModels 200 body (getModels.ts:127). With no key and no server key the function still answers 200 with
+ * `models: []` plus `error`/`code: 'KEY_REQUIRED'` (getModels.ts:113-116), which AppSettings shows as `result.error`.
  */
 export interface ModelList {
   models: ModelInfo[];
@@ -313,15 +313,15 @@ export interface ModelList {
 // ─── Error bodies ────────────────────────────────────────────────────────────
 
 /**
- * Access-token verdicts (netlify/functions/lib/auth.js:59-92), relayed as `code` by askLLM.js:287, getModels.js:97,
- * validateToken.js:36 and getTickerContext.js:307-309 (only without a BYOK key, and never TOKEN_REQUIRED or
- * AUTH_NOT_CONFIGURED); getMarketData and getLiveQuote never relay them (getMarketData.js:95-99, getLiveQuote.js:369-372).
+ * Access-token verdicts (netlify/functions/lib/auth.ts:96-131), relayed as `code` by askLLM.ts:401, getModels.ts:120,
+ * validateToken.ts:45 and getTickerContext.ts:456-458 (only without a BYOK key, and never TOKEN_REQUIRED or
+ * AUTH_NOT_CONFIGURED); getMarketData and getLiveQuote never relay them (getMarketData.ts:99-103, getLiveQuote.ts:450-453).
  */
 export type AuthErrorCode = 'AUTH_NOT_CONFIGURED' | 'TOKEN_REQUIRED' | 'TOKEN_EXPIRED' | 'TOKEN_INVALID' | 'TOKEN_REVOKED';
 
 /**
- * Codes only askLLM sends (askLLM.js:200-233 validation, :265-359), except INVALID_JSON, which validateToken sends too
- * (validateToken.js:23); listed because src/lib/api.js's apiError is shared.
+ * Codes only askLLM sends (askLLM.ts:314-347 validation, :379-474), except INVALID_JSON, which validateToken sends too
+ * (validateToken.ts:32); listed because src/lib/api.ts's apiError is shared.
  */
 export type AskLlmErrorCode =
   | 'INVALID_JSON' | 'PROVIDER_REQUIRED' | 'MESSAGES_REQUIRED' | 'TOO_MANY_MESSAGES' | 'INVALID_MESSAGE'
@@ -339,9 +339,9 @@ export type ApiErrorCode =
   | AskLlmErrorCode;
 
 /**
- * A non-2xx JSON body from any function (lib/http.js:70 errorResponse, :152 rateLimitResponse, and the inline
- * jsonResponse bodies). src/lib/api.js:16-27 reads `error`, `code` and `requestId`; the rest are per-endpoint extras.
- * RATE_LIMITED carries its retry delay in the `Retry-After` header, not in the body (http.js:151-155).
+ * A non-2xx JSON body from any function (lib/http.ts:81 errorResponse, :180 rateLimitResponse, and the inline
+ * jsonResponse bodies). src/lib/api.ts:30-38 reads `error`, `code` and `requestId`; the rest are per-endpoint extras.
+ * RATE_LIMITED carries its retry delay in the `Retry-After` header, not in the body (http.ts:179-183).
  */
 export interface ApiErrorBody {
   error: string;
@@ -354,13 +354,13 @@ export interface ApiErrorBody {
   fallbackReason?: FallbackReason | null;
   /** getTickerContext FINNHUB_KEY_REJECTED / CONTEXT_UNAVAILABLE. */
   errors?: ContextErrors;
-  /** getModels INVALID_PROVIDER, KEY_PROVIDER_MISMATCH and token-failure bodies (getModels.js:76, :84, :97); not its UPSTREAM_* bodies. */
+  /** getModels INVALID_PROVIDER, KEY_PROVIDER_MISMATCH and token-failure bodies (getModels.ts:99, :107, :120); not its UPSTREAM_* bodies. */
   models?: [];
-  /** askLLM UPSTREAM_ERROR: the provider's HTTP status (askLLM.js:341). */
+  /** askLLM UPSTREAM_ERROR: the provider's HTTP status (askLLM.ts:456). */
   upstreamStatus?: number;
-  /** askLLM 400 validation bodies duplicate `error` here (askLLM.js:270). */
+  /** askLLM 400 validation bodies duplicate `error` here (askLLM.ts:384). */
   message?: string;
-  /** validateToken failure bodies (validateToken.js:23-36). */
+  /** validateToken failure bodies (validateToken.ts:32-45). */
   valid?: false;
 }
 

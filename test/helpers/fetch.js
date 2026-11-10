@@ -10,7 +10,7 @@
 /**
  * Replace `globalThis.fetch` with a recorder: each call pushes `{ url: String(url), init }` into `calls`, then
  * returns what the current implementation returns. Implementations should be async like the real fetch:
- * callers chain on the result (lib/http.js's fetchWithTimeout calls `.finally()` on it).
+ * callers chain on the result (lib/http.ts's fetchWithTimeout calls `.finally()` on it).
  * @param {object} [options]
  * @param {FetchImpl} [options.defaultResponse] answers until setFetch() and again after resetFetch(); by
  *   default every request gets `{}` with status 200

@@ -1,4 +1,4 @@
-// netlify/functions/__tests__/auth.test.js — access-token verification in lib/auth.js (roadmap Phase 1): without
+// netlify/functions/__tests__/auth.test.js — access-token verification in lib/auth.ts (roadmap Phase 1): without
 // TOKEN_SECRET, or with one under 32 characters, nothing verifies; a token must be HS256, signed with the secret and
 // carry the functions' issuer and audience, a jti and an expiry.
 import { describe, it } from 'vitest';
