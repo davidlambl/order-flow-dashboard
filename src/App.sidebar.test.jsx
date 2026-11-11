@@ -15,7 +15,7 @@
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { server } from './test/setup.js';
 import App from './App.jsx';

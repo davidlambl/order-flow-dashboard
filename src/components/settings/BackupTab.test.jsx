@@ -19,7 +19,7 @@ import { StrictMode, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import AppSettings from '../AppSettings.jsx';
 import { getPosition, getPreference, setChatHistory, setPosition, setPreference } from '../../lib/store.js';
 import { server } from '../../test/setup.js';

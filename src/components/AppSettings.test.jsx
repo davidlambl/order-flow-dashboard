@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import AppSettings from './AppSettings.jsx';
 import { server } from '../test/setup.js';
 import { withContexts } from '../test/contexts.jsx';

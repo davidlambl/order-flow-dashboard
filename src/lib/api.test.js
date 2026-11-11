@@ -8,11 +8,12 @@
 // In the askLLMStream block the fetch recorder (test/helpers/fetch.js) goes over the dom setup's fetch before each test
 // and answers with the streamed bodies built here, so no request reaches MSW and the recorded URL is the relative one
 // api.js fetches. The fetchers block keeps the setup's fetch, which resolves those relative URLs against jsdom's origin
-// for MSW. auth.js and store.js read the access token and the API keys from jsdom's localStorage, which the setup
+// for MSW, except for a status without a reason phrase, which MSW cannot send: the recorder answers those two requests.
+// auth.js and store.js read the access token and the API keys from jsdom's localStorage, which the setup
 // clears after each test. The abort tests run on real timers: never fake timers in this file.
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import * as api from './api.js';
 import { AUTH_EVENT } from './auth.js';
 import { STOP_REASON } from './sse.js';
@@ -295,19 +296,34 @@ describe('fetchers (MSW)', () => {
   });
 
   it('a non-JSON error body: the message is the status text, or without one (HTTP/2 has none) the status fallback', async () => {
-    for (const [status, statusText, message] of [
-      [429, 'Slow Down', 'Slow Down'], // HTTP/1.1 reason phrase: res.statusText
-      [429, '', 'Too many requests'], // none: apiError's 429 text
-      [502, '', 'API error: 502'], // none: apiError's `${fallback}: ${status}`
-    ]) {
-      server.use(route('getMarketData', () => new Response('<h1>not JSON</h1>', { status, statusText })));
-      await assert.rejects(api.fetchMarketData('AVGO'), (err) => {
-        assert.equal(err.message, message);
-        assert.equal(err.status, status);
-        assert.equal(err.code, null);
-        assert.equal('requestId' in err, false);
-        return true;
-      });
+    const notJson = (status, statusText) => new Response('<h1>not JSON</h1>', { status, statusText });
+    const rejectsWith = (status, message) => assert.rejects(api.fetchMarketData('AVGO'), (err) => {
+      assert.equal(err.message, message);
+      assert.equal(err.status, status);
+      assert.equal(err.code, null);
+      assert.equal('requestId' in err, false);
+      return true;
+    });
+
+    // An HTTP/1.1 reason phrase, through MSW: res.statusText.
+    server.use(route('getMarketData', () => notJson(429, 'Slow Down')));
+    await rejectsWith(429, 'Slow Down');
+
+    // None: apiError's own text. These come from the fetch recorder, which returns the Response as built: msw 3 writes
+    // a mocked response out as HTTP/1.1 and fills an empty status text in from Node's table (429 → 'Too Many
+    // Requests'), so through MSW neither branch below is reached.
+    const rec = installFetchRecorder();
+    try {
+      for (const [status, message] of [
+        [429, 'Too many requests'], // apiError's 429 text
+        [502, 'API error: 502'], // apiError's `${fallback}: ${status}`
+      ]) {
+        rec.setFetch(async () => notJson(status, ''));
+        await rejectsWith(status, message);
+      }
+      assert.equal(rec.calls.length, 2);
+    } finally {
+      rec.uninstall();
     }
   });
 

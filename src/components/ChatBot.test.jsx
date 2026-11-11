@@ -21,7 +21,7 @@ import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse } from 'msw/http';
 import ChatBot from './ChatBot.jsx';
 import { server } from '../test/setup.js';
 import { withContexts } from '../test/contexts.jsx';

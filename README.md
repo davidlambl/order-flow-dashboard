@@ -311,8 +311,9 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
 └── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
-                            cache reset, every lazily loaded component preloaded), contexts.jsx (the two contexts
-                            for component tests), lazy.js (the opt-out and the import gate for tests of a lazy part)
+                            cache reset, every lazily loaded component preloaded), setup.test.js (the setup refuses a
+                            request no handler answers), contexts.jsx (the two contexts for component tests), lazy.js
+                            (the opt-out and the import gate for tests of a lazy part)
 test/helpers/               fakeSupabase.js (recording fake client, its auth timed like supabase-js), fetch.js
                             (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
