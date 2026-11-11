@@ -505,8 +505,7 @@ export default async (req: Request): Promise<Response> => {
   // Per-section failures, as client-safe reasons ('HTTP 403', 'timeout', ...).
   const errors: ContextErrors = {};
   SECTIONS.forEach((section, i) => {
-    // An element read by a variable index is not narrowed by its status check: asserted behind it.
-    if (settled[i].status === 'rejected') errors[section] = reasonOf((settled[i] as PromiseRejectedResult).reason);
+    if (settled[i].status === 'rejected') errors[section] = reasonOf(settled[i].reason);
   });
   if (quoteResults.every((r) => r.status === 'rejected')) errors.marketQuotes = reasonOf(quoteResults[0].reason);
   // The pattern admits only 'rate-limited', 'timeout', 'error' and 'HTTP nnn', which the compiler cannot read from it.
