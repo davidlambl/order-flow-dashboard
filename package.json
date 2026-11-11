@@ -13,7 +13,7 @@
     "check:bundle": "node scripts/check-bundle.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.functions.json",
-    "types:supabase": "npx supabase@3 gen types typescript --project-id ebovyltvpufvopmjryxg --schema public > types/supabase.ts",
+    "types:supabase": "out=$(npx supabase@3 gen types typescript --project-id ebovyltvpufvopmjryxg --schema public) && printf '%s\\n' \"$out\" > types/supabase.ts",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

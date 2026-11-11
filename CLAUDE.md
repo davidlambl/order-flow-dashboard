@@ -50,7 +50,8 @@ should:
 - `npm run types:supabase` — rewrites `types/supabase.ts` from the project's schema (`npx supabase@3 gen types
   typescript`, the project id in the script; it needs `npx supabase@3 login` or `SUPABASE_ACCESS_TOKEN`, which is why
   the output is committed). Run it after a new migration and commit the file as generated: a header added by hand is
-  gone at the next run.
+  gone at the next run. The script replaces the file only once the generator has succeeded, so a run without a login
+  leaves it as it was.
 - `npm test` — Vitest (`vitest.config.js`, two projects). `node`: `netlify/functions/__tests__/*.test.js` (every
   function driven in-process with the recording `fetch` stub and helpers in `test/helpers/functions.js`),
   `shared/*.test.js`, `scripts/**/*.test.js`, and `src/**/*.node.test.js` (pure `src/lib` modules loaded under Node with the browser-global
