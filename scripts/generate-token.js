@@ -13,6 +13,9 @@
 // It is never accepted as a command-line argument, so it can't leak via shell
 // history or the process list.
 //
+// Runs under plain Node 22.18 or newer: it imports the functions' auth module by its real .ts name, since Node maps
+// no .js specifier to a .ts file, and Node strips the types itself.
+//
 // Every token carries a unique jti. To revoke one, insert its jti into the
 // revoked_tokens table (see supabase/migrations/004_security_hardening.sql).
 

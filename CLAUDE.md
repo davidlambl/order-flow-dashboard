@@ -207,7 +207,7 @@ should:
   001→005), committed exactly as generated (`npm run types:supabase`) and imported only with `import type`. It is the
   `Database` of every `createClient<Database>` (`lib/supabaseAdmin.ts`, `lib/supabasePublic.ts`,
   `src/lib/supabase.ts`), so a query written in TypeScript is checked against the tables and their columns; the
-  JavaScript callers (`SupabaseBackend.js`, `session.js`) are not.
+  JavaScript callers (`SupabaseBackend.js`, `session.js`, `LoginForm.jsx`) are not.
 - `services/quant/` (planned, Phase 7) Python FastAPI quant service + nightly pipeline; `infra/` (planned,
   Phase 8) Terraform for AWS. See the roadmap's Phase 7/8 for the skill-building rationale.
 
@@ -273,8 +273,9 @@ should:
   too). `{ idle: true }` parts (the markdown renderer, the Settings dialog, the context editor's dialog) load in
   `scheduleIdlePreload()`, which App starts once the dashboard shows (`requestIdleCallback`, a 2 s timeout where it is
   missing, nothing under `saveData`); the charts are never preloaded. The chat shell and its hooks, `useSupabaseAuth` and
-  the Supabase client stay eager: a lazy `getSupabase()` is planned as its own change, since it alters the start-up
-  path of sign-in and sync.
+  the Supabase client stay eager: a lazy `getSupabase()` would be its own change, since it alters the start-up
+  path of sign-in and sync. It is deferred (issue #37): a configured build already preloads the SDK beside the entry
+  chunk, so loading it on demand would put it behind the entry for a signed-in visitor.
 - `generateMockData` is random — memoize/stub in tests.
 - TypeScript (Phase 5, incremental): new and converted modules are `.ts`/`.tsx`; relative specifiers keep the `.js`
   extension, except that a not-yet-converted `.jsx` module is imported by its real `.jsx` extension (Vite maps `.js`

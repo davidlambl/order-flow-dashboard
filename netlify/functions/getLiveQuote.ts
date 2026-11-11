@@ -66,10 +66,11 @@ interface YahooQuote extends LiveQuote {
 // res.json() is unknown. Each body is asserted once, where it is parsed, to just the fields this file reads. The
 // prices, previous closes and times in Yahoo's meta, the session bounds and Finnhub's fields are unknown: each goes
 // through Number() and a finiteness check (isFiniteNum, or Number.isFinite after the conversion), which accept a
-// numeric string, so any value is handled as it always was. The candle series are typed as Yahoo sends them, Unix seconds and closes (null for a minute without
-// a trade), and the candle loop compares a time only once isFiniteNum has passed it. The reads cope as they always
-// have: the optional chains read a missing or null result, quote or close series as none, a missing session window
-// as no candle, and a result without meta still throws in the futures lookup, which only drops futuresContext.
+// numeric string, so any value is handled as it always was. The candle series are typed as Yahoo sends them, Unix
+// seconds and closes (null for a minute without a trade), and the candle loop compares a time only once isFiniteNum
+// has passed it. The reads cope as they always have: the optional chains read a missing or null result, quote or
+// close series as none, a missing session window as no candle, and a result without meta still throws in the futures
+// lookup, which only drops futuresContext.
 
 /** Yahoo's v8 chart body; `result` is null for a symbol it does not know. */
 interface YahooChartBody {

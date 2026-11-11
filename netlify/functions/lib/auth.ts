@@ -59,7 +59,7 @@ export function _resetRevocationCache(): void {
 
 // ─── Verification ────────────────────────────────────────────────────────────
 
-/** A verified token's claims, the tier normalised. */
+/** A verified token's claims, the tier normalised. Verification requires jti and sub only truthy (VerifiedPayload). */
 export interface TokenClaims {
   [claim: string]: unknown;
   exp: number;
