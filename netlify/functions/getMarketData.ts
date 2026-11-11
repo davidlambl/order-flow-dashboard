@@ -1,4 +1,4 @@
-// netlify/functions/getMarketData.js
+// netlify/functions/getMarketData.ts
 //
 // TIERED DATA PROVIDER — automatically selects the best available source:
 //
@@ -34,14 +34,18 @@ import {
   computeNetPremium,
   estimateDarkPoolPct,
 } from './lib/marketDataHelpers.js';
+import type { NormalizedChain, ProviderAnswer } from './lib/marketDataHelpers.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ApiErrorBody, FallbackReason, FlowHistoryRow, MarketDataResponse } from '../../types/market.js';
+import type { Database } from '../../types/supabase.js';
 
 const ALLOWED_HEADERS = 'x-tradier-key';
 const RATE_LIMIT = { limit: 60, windowMs: 60 * 1000 };
 const HISTORY_DAYS = 45;
 const HISTORY_ROWS = 30;
 
-async function fetchFlowHistory(ticker) {
-  let client = null;
+async function fetchFlowHistory(ticker: string): Promise<FlowHistoryRow[] | null> {
+  let client: SupabaseClient<Database> | null = null;
   try {
     const { getSupabasePublic } = await import('./lib/supabasePublic.js');
     client = getSupabasePublic();
@@ -73,9 +77,9 @@ async function fetchFlowHistory(ticker) {
   }));
 }
 
-export default async (req) => {
+export default async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return preflight(req, ALLOWED_HEADERS);
-  if (req.method !== 'GET') return jsonResponse(req, { error: 'GET only', code: 'METHOD_NOT_ALLOWED' }, 405);
+  if (req.method !== 'GET') return jsonResponse(req, { error: 'GET only', code: 'METHOD_NOT_ALLOWED' } satisfies ApiErrorBody, 405);
 
   const requestId = newRequestId();
   const rl = rateLimit(`getMarketData:${clientIp(req)}`, RATE_LIMIT);
@@ -84,7 +88,7 @@ export default async (req) => {
   const rawTicker = new URL(req.url).searchParams.get('ticker') || 'AVGO';
   const ticker = parseTicker(rawTicker);
   if (!ticker) {
-    return jsonResponse(req, { error: 'Invalid ticker format', code: 'INVALID_TICKER', requestId }, 400);
+    return jsonResponse(req, { error: 'Invalid ticker format', code: 'INVALID_TICKER', requestId } satisfies ApiErrorBody, 400);
   }
 
   // ── Key selection: BYOK always; server Tradier key only for token holders; else CBOE ──
@@ -107,9 +111,9 @@ export default async (req) => {
       ? [{ name: 'tradier', run: () => fetchTradier(ticker, tradierKey, req.signal) }, cboeAttempt]
       : [cboeAttempt];
 
-    let rawData = null;
-    let chain = null;
-    let fallbackReason = null;
+    let rawData: ProviderAnswer | null = null;
+    let chain: NormalizedChain | null = null;
+    let fallbackReason: FallbackReason | null = null;
     for (const attempt of attempts) {
       try {
         const candidate = await attempt.run();
@@ -128,15 +132,21 @@ export default async (req) => {
         }
         // CBOE is the last resort: report its unusable answer, plus why Tradier was skipped.
         return problem === 'no-spot'
-          ? jsonResponse(req, { error: `No valid spot price for ${ticker}`, code: 'NO_SPOT_PRICE', provider: candidate.provider, fallbackReason, requestId }, 502)
-          : jsonResponse(req, { error: `No options data found for ${ticker}`, code: 'NO_OPTIONS', provider: candidate.provider, fallbackReason, requestId }, 404);
+          ? jsonResponse(req, { error: `No valid spot price for ${ticker}`, code: 'NO_SPOT_PRICE', provider: candidate.provider, fallbackReason, requestId } satisfies ApiErrorBody, 502)
+          : jsonResponse(req, { error: `No options data found for ${ticker}`, code: 'NO_OPTIONS', provider: candidate.provider, fallbackReason, requestId } satisfies ApiErrorBody, 404);
       } catch (err) {
         if (attempt.name !== 'tradier') throw err; // CBOE failed too → outer catch (504 / 502)
         fallbackReason = isTimeoutError(err) ? 'tradier-timeout' : 'tradier-error';
-        console.warn(`[${requestId}] Tradier (${keySource} key) failed, falling back to CBOE:`, err.message);
+        // A caught value is unknown. What reaches here is in practice an Error (fetchTradier's own, fetch's TypeError
+        // or the aborting signal's reason, a JSON SyntaxError), so this asserts that instead of narrowing, which would
+        // change what any other value does: `.message` stays the unguarded read it was.
+        console.warn(`[${requestId}] Tradier (${keySource} key) failed, falling back to CBOE:`, (err as Error).message);
       }
     }
 
+    // For the compiler: the attempts end with CBOE's, which leaves the loop only by the break that sets both, by a
+    // return or by a throw, so this never throws.
+    if (!rawData || !chain) throw new Error(`No provider answer for ${ticker}`);
     const { provider, delay } = rawData;
     const spotPrice = Number(rawData.spotPrice);
     // Metrics are computed on the normalized expiry window only (identical for every provider).
@@ -153,7 +163,7 @@ export default async (req) => {
       (s) => s.strike >= spotPrice * 0.80 && s.strike <= spotPrice * 1.20
     );
 
-    const result = {
+    const result: MarketDataResponse = {
       ticker,
       provider,
       delay,
@@ -187,7 +197,8 @@ export default async (req) => {
       const flowHistory = await fetchFlowHistory(ticker);
       if (flowHistory) result.flowHistory = flowHistory;
     } catch (err) {
-      console.warn(`[${requestId}] Flow history fetch failed (non-fatal):`, err.message);
+      // Asserted as in the provider loop: the history read throws its own Error, the client's or a failed import's.
+      console.warn(`[${requestId}] Flow history fetch failed (non-fatal):`, (err as Error).message);
     }
 
     return jsonResponse(req, result, 200, {

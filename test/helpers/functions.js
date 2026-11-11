@@ -55,13 +55,13 @@ export const FUNCTION_ENV_KEYS = [
   'TOKEN_SECRET', 'ANTHROPIC_API_KEY', 'TRADIER_API_KEY', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_KEY', 'SITE_ORIGIN',
   'ALLOWED_MODELS', 'TRACKED_TICKERS', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY',
   'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY',
-  // The CORS allowlist (lib/http.js), the output cap (askLLM.js), the daily quotas (lib/quota.js).
+  // The CORS allowlist (lib/http.ts), the output cap (askLLM.ts), the daily quotas (lib/quota.ts).
   'URL', 'DEPLOY_PRIME_URL', 'MAX_OUTPUT_TOKENS', 'DAILY_REQUEST_QUOTA_TRIAL', 'DAILY_REQUEST_QUOTA_PRO',
 ];
 
 /**
- * Put the functions' per-instance state back: the rate limiter (lib/http.js), the token revocation cache
- * (lib/auth.js) and every FUNCTION_ENV_KEYS variable. Leaves fetch alone.
+ * Put the functions' per-instance state back: the rate limiter (lib/http.ts), the token revocation cache
+ * (lib/auth.ts) and every FUNCTION_ENV_KEYS variable. Leaves fetch alone.
  */
 export function resetFunctionState() {
   _resetRateLimiter();

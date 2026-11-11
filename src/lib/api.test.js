@@ -246,7 +246,7 @@ describe('fetchers (MSW)', () => {
     ]);
   });
 
-  it('a JSON error body (lib/http.js errorResponse) becomes the thrown Error: message, code, status and requestId', async () => {
+  it('a JSON error body (lib/http.ts errorResponse) becomes the thrown Error: message, code, status and requestId', async () => {
     server.use(route('getMarketData', () => HttpResponse.json(
       { error: 'Failed to fetch market data for AVGO', code: 'UPSTREAM_ERROR', requestId: 'r1' }, { status: 502 })));
     await assert.rejects(api.fetchMarketData('AVGO'), (err) => {

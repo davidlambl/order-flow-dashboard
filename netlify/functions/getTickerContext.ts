@@ -1,4 +1,4 @@
-// netlify/functions/getTickerContext.js
+// netlify/functions/getTickerContext.ts
 //
 // Fetches enriched ticker context from Finnhub + Alpha Vantage in parallel:
 //   - Company news (last 7 days)
@@ -25,6 +25,12 @@ import {
 } from './lib/http.js';
 import { verifyRequestToken } from './lib/auth.js';
 import { parseTicker } from './lib/ticker.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type {
+  AnalystInfo, ApiErrorBody, ContextErrorReason, ContextErrors, ContextSection, EarningsInfo, Fundamentals,
+  MarketIndex, MarketSymbol, Technicals, TickerContext,
+} from '../../types/market.js';
+import type { Database, Json, Tables } from '../../types/supabase.js';
 
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const ALLOWED_HEADERS = 'x-finnhub-key';
@@ -45,9 +51,139 @@ const REVENUE_MATCH_WINDOW_MS = 3 * DAY_MS;
 const EARNINGS_ERROR_RE = /^(rate-limited|timeout|error|HTTP \d{3})$/;
 
 // Order of the non-quote entries in the handler's Promise.allSettled.
-const SECTIONS = ['news', 'earningsCalendar', 'recommendation', 'priceTarget', 'metrics', 'candles', 'marketNews'];
+const SECTIONS: ContextSection[] = ['news', 'earningsCalendar', 'recommendation', 'priceTarget', 'metrics', 'candles', 'marketNews'];
 
-function computeSMA(closes, period) {
+/** Why fetchEarnings has no current quarter: no Alpha Vantage key, nothing reported, or the call failed. */
+type EarningsReason = 'no-key' | 'no-data' | ContextErrorReason;
+
+/**
+ * fetchEarnings's answer. `data` is the quarter just fetched, or a cached row's `data` served as it is stored: jsonb
+ * that nothing here validates.
+ */
+interface EarningsResult {
+  data: EarningsInfo | Json | null;
+  reason: EarningsReason | null;
+}
+
+/** An earnings_cache row, as read. */
+type CachedEarnings = Pick<Tables<'earnings_cache'>, 'data' | 'next_report_date' | 'fetched_at'>;
+
+/** What fetchEarnings lets a test inject: the cache's client (null when Supabase is not configured) and the clock. */
+interface EarningsDeps {
+  getClient?: () => SupabaseClient<Database> | null;
+  now?: () => Date;
+}
+
+/** The 200 body: a TickerContext whose earnings may be whatever JSON a cached row holds. */
+type TickerContextBody = Omit<TickerContext, 'earnings'> & { earnings: EarningsInfo | Json | null };
+
+/** finnhubGet's Error for a non-2xx answer carries the upstream status. */
+type FinnhubError = Error & { status?: number };
+
+/** fetch's network failure is a TypeError whose cause is the system error, with its code (ECONNRESET…). */
+type NetworkError = Error & { cause?: { code?: string } };
+
+// res.json() is unknown. Each body is asserted once, where it is parsed (finnhubGet's caller names the endpoint's
+// shape), to just the fields read here, typed as Finnhub and Alpha Vantage send them; only a calendar entry's date is
+// unknown, as the code checks it before parsing it. The reads cope as they always have with a null body or a missing
+// field (`|| []`, `|| {}`, `?.`, `?? null`, `?? 0`), read the candles only with s: 'ok' and a quote only with a
+// non-zero price, and refuse an Alpha Vantage answer whose first quarter is not an object. They never checked a
+// field's type, so a value of another type still does what it did.
+
+/** A company-news or general-news item; `datetime` is Unix seconds. Finnhub sends no `sentiment`: it reads as null. */
+interface FinnhubNewsItem {
+  headline: string;
+  summary: string;
+  source: string;
+  url: string;
+  datetime?: number;
+  sentiment?: number;
+}
+
+interface FinnhubEarningsCalendar {
+  earningsCalendar?: FinnhubCalendarEntry[];
+}
+
+/** One report: `date` is 'YYYY-MM-DD'; a revenue Finnhub does not have is null. */
+interface FinnhubCalendarEntry {
+  date?: unknown;
+  revenueEstimate?: number | null;
+  revenueActual?: number | null;
+}
+
+/** One month of analyst ratings; /stock/recommendation lists them newest first. */
+interface FinnhubRecommendation {
+  buy?: number;
+  hold?: number;
+  sell?: number;
+  strongBuy?: number;
+  strongSell?: number;
+  period?: string;
+}
+
+/** The snake_case names are read as a fallback. */
+interface FinnhubPriceTarget {
+  targetMean?: number;
+  targetMedian?: number;
+  targetHigh?: number;
+  targetLow?: number;
+  target_mean?: number;
+  target_median?: number;
+  target_high?: number;
+  target_low?: number;
+}
+
+/** The few of /stock/metric's figures that are read. */
+interface FinnhubMetrics {
+  metric?: {
+    marketCapitalization?: number;
+    peBasicExclExtraTTM?: number;
+    forwardPE?: number;
+    dividendYieldIndicatedAnnual?: number;
+    beta?: number;
+    revenueGrowthQuarterlyYoy?: number;
+    epsGrowthQuarterlyYoy?: number;
+    grossMarginTTM?: number;
+    operatingMarginTTM?: number;
+    roeTTM?: number;
+    totalDebtToEquityQuarterly?: number;
+    freeCashFlowTTM?: number;
+    revenuePerShareTTM?: number;
+  };
+}
+
+/** Daily candles: `s` is 'ok' when there are any; c, h and l are the closes, highs and lows, oldest first. */
+interface FinnhubCandles {
+  s?: string;
+  c?: number[];
+  h?: number[];
+  l?: number[];
+}
+
+/** `c` is the price (0 for a symbol Finnhub does not know), `d` and `dp` the change, `pc` the previous close. */
+interface FinnhubQuote {
+  c?: number;
+  d?: number | null;
+  dp?: number | null;
+  pc?: number;
+}
+
+/** Alpha Vantage throttles with HTTP 200 and a `Note` (per minute) or an `Information` (per day). */
+interface AvEarningsBody {
+  quarterlyEarnings?: AvQuarter[];
+  Note?: string;
+  Information?: string;
+}
+
+/** A reported quarter, newest first; Alpha Vantage sends every value as a string. */
+interface AvQuarter {
+  reportedDate?: string;
+  estimatedEPS?: string;
+  reportedEPS?: string;
+  surprise?: string;
+}
+
+function computeSMA(closes: number[], period: number): number | null {
   if (closes.length < period) return null;
   const slice = closes.slice(-period);
   return slice.reduce((s, v) => s + v, 0) / period;
@@ -57,9 +193,9 @@ function computeSMA(closes, period) {
  * Wilder's RSI. The average gain/loss is seeded with the simple mean of the
  * first `period` changes, then every later change is folded in with Wilder's
  * smoothing, avg = (avg * (period - 1) + change) / period, over the whole series.
- * @returns {number|null} null with fewer than period + 1 closes or a flat series
+ * @returns null with fewer than period + 1 closes or a flat series
  */
-export function computeRSI(closes, period = 14) {
+export function computeRSI(closes: number[], period = 14): number | null {
   if (!Array.isArray(closes) || closes.length < period + 1) return null;
   let avgGain = 0;
   let avgLoss = 0;
@@ -79,34 +215,37 @@ export function computeRSI(closes, period = 14) {
   return 100 - 100 / (1 + avgGain / avgLoss);
 }
 
-async function finnhubGet(path, params, token, signal) {
+async function finnhubGet<T>(path: string, params: Record<string, string | number>, token: string, signal: AbortSignal): Promise<T> {
   const url = new URL(`${FINNHUB_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
   url.searchParams.set('token', token);
   const res = await fetchWithTimeout(url, {}, UPSTREAM_TIMEOUT_MS, signal);
   if (!res.ok) {
-    const err = new Error(`Finnhub ${path}: ${res.status}`);
+    const err: FinnhubError = new Error(`Finnhub ${path}: ${res.status}`);
     err.status = res.status;
     throw err;
   }
-  return res.json();
+  return res.json() as Promise<T>;
 }
 
 // Client-safe summary of a failed upstream call. Never err.message: it can
 // carry the request URL, and with it the API key.
-function reasonOf(err) {
-  return isTimeoutError(err) ? 'timeout' : err?.status ? `HTTP ${err.status}` : 'error';
+// What reaches here is in practice an Error (finnhubGet's, with its status; fetch's TypeError or the aborting
+// signal's reason; a JSON SyntaxError), so this asserts that instead of narrowing, which would change what any other
+// value does: `status` stays the optional-chained read it was, and behind it, the number finnhubGet set.
+function reasonOf(err: unknown): ContextErrorReason {
+  return isTimeoutError(err) ? 'timeout' : (err as FinnhubError | undefined)?.status ? `HTTP ${(err as { status: number }).status}` : 'error';
 }
 
 // The Finnhub calendar entry for the quarter Alpha Vantage reported: the same
 // date, else the closest within REVENUE_MATCH_WINDOW_MS. Never another quarter's
 // entry (the next quarter's estimate must not be paired with the last one's EPS).
-function matchEarningsCalendar(calendar, date) {
+function matchEarningsCalendar(calendar: FinnhubCalendarEntry[] | undefined, date: unknown): FinnhubCalendarEntry | null {
   if (!date || !Array.isArray(calendar)) return null;
   const exact = calendar.find((e) => e?.date === date);
   if (exact) return exact;
   const target = Date.parse(`${date}T00:00:00Z`);
-  let best = null;
+  let best: FinnhubCalendarEntry | null = null;
   let bestGap = Infinity;
   for (const e of calendar) {
     const gap = typeof e?.date === 'string' ? Math.abs(Date.parse(`${e.date}T00:00:00Z`) - target) : NaN;
@@ -118,7 +257,7 @@ function matchEarningsCalendar(calendar, date) {
   return best;
 }
 
-function toNumberOrNull(value) {
+function toNumberOrNull(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   const num = typeof value === 'number' ? value : parseFloat(value);
   return Number.isFinite(num) ? num : null;
@@ -130,10 +269,10 @@ function toNumberOrNull(value) {
  * has passed AV can keep returning the same quarter for days, so the row is then
  * fresh for EARNINGS_REFETCH_FLOOR_MS after each fetch (or touch) rather than
  * every request spending one of the free tier's 25 daily calls.
- * @param {{ cached: { data, next_report_date, fetched_at }|null, now?: Date }} args
- * @returns {'fresh'|'refetch'}
  */
-export function earningsCacheState({ cached, now = new Date() } = {}) {
+export function earningsCacheState(
+  { cached, now = new Date() }: { cached?: CachedEarnings | null; now?: Date } = {},
+): 'fresh' | 'refetch' {
   if (!cached?.data) return 'refetch';
   const nowMs = Number(now);
   if (cached.next_report_date) {
@@ -151,19 +290,22 @@ let noCacheLogged = false;
 
 // The Supabase client, or null when it is not configured (no cache: every
 // token-holder request asks Alpha Vantage).
-function earningsCacheClient(getClient) {
+function earningsCacheClient(getClient: () => SupabaseClient<Database> | null): SupabaseClient<Database> | null {
   try {
     return getClient() || null;
   } catch (err) {
     if (!noCacheLogged) {
       noCacheLogged = true;
-      console.debug('Earnings cache disabled:', err?.message || err);
+      // What getClient throws is in practice an Error (getSupabaseAdmin's, when Supabase is not configured), so this
+      // asserts that instead of narrowing, which would change what any other value does: the optional chain reads as
+      // it did.
+      console.debug('Earnings cache disabled:', (err as Error | undefined)?.message || err);
     }
     return null;
   }
 }
 
-async function readEarningsCache(sb, ticker) {
+async function readEarningsCache(sb: SupabaseClient<Database>, ticker: string): Promise<CachedEarnings | null> {
   try {
     const { data, error } = await sb
       .from('earnings_cache')
@@ -175,13 +317,15 @@ async function readEarningsCache(sb, ticker) {
     if (error.code !== 'PGRST116') console.warn('Earnings cache read error:', error.message || error);
     return null;
   } catch (err) {
-    console.warn('Earnings cache read failed:', err?.message || err);
+    // supabase-js answers with { error } rather than throwing, so what lands here is in practice an Error (a broken
+    // client): asserted as in earningsCacheClient. The same for the cache's touch and upsert.
+    console.warn('Earnings cache read failed:', (err as Error | undefined)?.message || err);
     return null;
   }
 }
 
 // Restart the refetch floor on a row Alpha Vantage could not refresh.
-async function touchEarningsCache(sb, ticker, now) {
+async function touchEarningsCache(sb: SupabaseClient<Database>, ticker: string, now: () => Date): Promise<void> {
   try {
     const { error } = await sb
       .from('earnings_cache')
@@ -189,33 +333,37 @@ async function touchEarningsCache(sb, ticker, now) {
       .eq('ticker', ticker);
     if (error) console.warn('Earnings cache touch error:', error.message || error);
   } catch (err) {
-    console.warn('Earnings cache touch failed:', err?.message || err);
+    console.warn('Earnings cache touch failed:', (err as Error | undefined)?.message || err);
   }
 }
 
 /**
  * Latest reported quarter's EPS from Alpha Vantage, cached in Supabase
  * (earnings_cache). Never throws.
- * @param {string} ticker
- * @param {AbortSignal} [signal]
- * @param {{ getClient?: () => object, now?: () => Date }} [deps] injectable for tests
- * @returns {Promise<{ data: object|null, reason: string|null }>} reason is null
+ * @param deps - injectable for tests
+ * @returns reason is null
  *   when data is current; otherwise 'no-key' | 'rate-limited' | 'no-data' |
  *   'HTTP nnn' | 'timeout' | 'error', with data = the stale cached row, if any.
  */
-export async function fetchEarnings(ticker, signal, { getClient = getSupabaseAdmin, now = () => new Date() } = {}) {
+export async function fetchEarnings(
+  ticker: string,
+  signal?: AbortSignal,
+  { getClient = getSupabaseAdmin, now = () => new Date() }: EarningsDeps = {},
+): Promise<EarningsResult> {
   const avKey = process.env.ALPHA_VANTAGE_KEY;
   if (!avKey) return { data: null, reason: 'no-key' };
 
   const sb = earningsCacheClient(getClient);
   const cached = sb ? await readEarningsCache(sb, ticker) : null;
-  if (earningsCacheState({ cached, now: now() }) === 'fresh') return { data: cached.data, reason: null };
+  // For the compiler: 'fresh' needs a cached row with data, so `&& cached` never decides.
+  if (earningsCacheState({ cached, now: now() }) === 'fresh' && cached) return { data: cached.data, reason: null };
   const stale = cached?.data ?? null;
 
   // Alpha Vantage had nothing usable: serve the stale row, and touch it so the
   // refetch floor holds off the next requests (a throttled AV keeps saying no).
-  const giveUp = async (reason) => {
-    if (stale) await touchEarningsCache(sb, ticker, now);
+  const giveUp = async (reason: EarningsReason): Promise<EarningsResult> => {
+    // For the compiler: a stale row was read through sb, so `&& sb` never decides.
+    if (stale && sb) await touchEarningsCache(sb, ticker, now);
     return { data: stale, reason };
   };
 
@@ -223,14 +371,15 @@ export async function fetchEarnings(ticker, signal, { getClient = getSupabaseAdm
   avUrl.searchParams.set('function', 'EARNINGS');
   avUrl.searchParams.set('symbol', ticker);
   avUrl.searchParams.set('apikey', avKey);
-  let res;
-  let body;
+  let res: Response | undefined;
+  let body: AvEarningsBody | null | undefined;
   try {
     res = await fetchWithTimeout(avUrl, {}, UPSTREAM_TIMEOUT_MS, signal);
-    if (res.ok) body = await res.json();
+    if (res.ok) body = await res.json() as AvEarningsBody | null;
   } catch (err) {
     const reason = reasonOf(err);
-    console.warn(`Alpha Vantage earnings ${ticker}: ${reason}`, err?.cause?.code || err?.name || '');
+    // Asserted as in reasonOf: fetch's TypeError carries the network error's code in its cause.
+    console.warn(`Alpha Vantage earnings ${ticker}: ${reason}`, (err as NetworkError | undefined)?.cause?.code || (err as NetworkError | undefined)?.name || '');
     return giveUp(reason);
   }
   if (!res.ok) {
@@ -256,10 +405,10 @@ export async function fetchEarnings(ticker, signal, { getClient = getSupabaseAdm
     quarter: null,
     year: null,
     surprise: toNumberOrNull(q.surprise),
-  };
+  } satisfies EarningsInfo;
 
   // Estimate next report date: last reported + 95 days (quarterly cadence + buffer)
-  let nextReportDate = null;
+  let nextReportDate: string | null = null;
   const reported = q.reportedDate ? new Date(`${q.reportedDate}T00:00:00Z`) : null;
   if (reported && Number.isFinite(reported.getTime())) {
     reported.setUTCDate(reported.getUTCDate() + 95);
@@ -275,16 +424,16 @@ export async function fetchEarnings(ticker, signal, { getClient = getSupabaseAdm
       );
       if (upsertError) console.warn('Earnings cache upsert error:', upsertError.message || upsertError);
     } catch (cacheErr) {
-      console.warn('Earnings cache write failed:', cacheErr?.message || cacheErr);
+      console.warn('Earnings cache write failed:', (cacheErr as Error | undefined)?.message || cacheErr);
     }
   }
 
   return { data: earnings, reason: null };
 }
 
-export default async (req) => {
+export default async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return preflight(req, ALLOWED_HEADERS);
-  if (req.method !== 'GET') return jsonResponse(req, { error: 'GET only', code: 'METHOD_NOT_ALLOWED' }, 405);
+  if (req.method !== 'GET') return jsonResponse(req, { error: 'GET only', code: 'METHOD_NOT_ALLOWED' } satisfies ApiErrorBody, 405);
 
   const requestId = newRequestId();
   const rl = rateLimit(`getTickerContext:${clientIp(req)}`, RATE_LIMIT);
@@ -292,7 +441,7 @@ export default async (req) => {
 
   const ticker = parseTicker(new URL(req.url).searchParams.get('ticker') || '');
   if (!ticker) {
-    return jsonResponse(req, { error: 'Invalid or missing ticker', code: 'INVALID_TICKER', requestId }, 400);
+    return jsonResponse(req, { error: 'Invalid or missing ticker', code: 'INVALID_TICKER', requestId } satisfies ApiErrorBody, 400);
   }
 
   // Finnhub: BYOK for anyone; the server key (and the server-only Alpha Vantage
@@ -306,14 +455,14 @@ export default async (req) => {
     if (!finnhubKey && tokenHolder && process.env.FINNHUB_API_KEY) finnhubKey = process.env.FINNHUB_API_KEY;
     if (!finnhubKey && !auth.ok && auth.code !== 'TOKEN_REQUIRED' && auth.code !== 'AUTH_NOT_CONFIGURED') {
       // A token was presented but is invalid/expired/revoked: say so.
-      return jsonResponse(req, { error: auth.message, code: auth.code, requestId }, auth.status);
+      return jsonResponse(req, { error: auth.message, code: auth.code, requestId } satisfies ApiErrorBody, auth.status);
     }
   }
   if (!finnhubKey) {
     return jsonResponse(req, {
       error: 'A Finnhub API key is required. Add one in Settings, or activate an access token.',
       code: 'KEY_REQUIRED', requestId,
-    }, 401);
+    } satisfies ApiErrorBody, 401);
   }
   const signal = req.signal;
 
@@ -331,41 +480,43 @@ export default async (req) => {
   const earningsTo = new Date(now);
   earningsTo.setDate(earningsTo.getDate() + 60);
 
-  const MARKET_SYMBOLS = ['SPY', 'QQQ', 'VIX', 'USO', 'GLD'];
-  const MARKET_LABELS = { SPY: 'S&P 500', QQQ: 'Nasdaq 100', VIX: 'VIX', USO: 'Oil (USO)', GLD: 'Gold (GLD)' };
+  const MARKET_SYMBOLS: MarketSymbol[] = ['SPY', 'QQQ', 'VIX', 'USO', 'GLD'];
+  const MARKET_LABELS: Record<MarketSymbol, string> = { SPY: 'S&P 500', QQQ: 'Nasdaq 100', VIX: 'VIX', USO: 'Oil (USO)', GLD: 'Gold (GLD)' };
 
   // Fetch Alpha Vantage earnings (EPS, cached) in parallel with Finnhub calls (revenue + everything else)
   const [earningsResult, settled] = await Promise.all([
     tokenHolder
-      ? fetchEarnings(ticker, signal).catch((err) => ({ data: null, reason: reasonOf(err) }))
+      ? fetchEarnings(ticker, signal).catch((err: unknown) => ({ data: null, reason: reasonOf(err) }))
       : Promise.resolve({ data: null, reason: null }),
     Promise.allSettled([
-      finnhubGet('/company-news', { symbol: ticker, from: fromStr, to: toDate }, finnhubKey, signal),
-      finnhubGet('/calendar/earnings', { symbol: ticker, from: earningsFrom.toISOString().slice(0, 10), to: earningsTo.toISOString().slice(0, 10) }, finnhubKey, signal),
-      finnhubGet('/stock/recommendation', { symbol: ticker }, finnhubKey, signal),
-      finnhubGet('/stock/price-target', { symbol: ticker }, finnhubKey, signal),
-      finnhubGet('/stock/metric', { symbol: ticker, metric: 'all' }, finnhubKey, signal),
-      finnhubGet('/stock/candle', { symbol: ticker, resolution: 'D', from: oneYearAgo, to: nowUnix }, finnhubKey, signal),
-      finnhubGet('/news', { category: 'general' }, finnhubKey, signal),
-      ...MARKET_SYMBOLS.map((sym) => finnhubGet('/quote', { symbol: sym }, finnhubKey, signal)),
+      finnhubGet<FinnhubNewsItem[] | null>('/company-news', { symbol: ticker, from: fromStr, to: toDate }, finnhubKey, signal),
+      finnhubGet<FinnhubEarningsCalendar | null>('/calendar/earnings', { symbol: ticker, from: earningsFrom.toISOString().slice(0, 10), to: earningsTo.toISOString().slice(0, 10) }, finnhubKey, signal),
+      finnhubGet<FinnhubRecommendation[] | null>('/stock/recommendation', { symbol: ticker }, finnhubKey, signal),
+      finnhubGet<FinnhubPriceTarget | null>('/stock/price-target', { symbol: ticker }, finnhubKey, signal),
+      finnhubGet<FinnhubMetrics | null>('/stock/metric', { symbol: ticker, metric: 'all' }, finnhubKey, signal),
+      finnhubGet<FinnhubCandles | null>('/stock/candle', { symbol: ticker, resolution: 'D', from: oneYearAgo, to: nowUnix }, finnhubKey, signal),
+      finnhubGet<FinnhubNewsItem[] | null>('/news', { category: 'general' }, finnhubKey, signal),
+      ...MARKET_SYMBOLS.map((sym) => finnhubGet<FinnhubQuote | null>('/quote', { symbol: sym }, finnhubKey, signal)),
     ]),
   ]);
   const [newsRes, earningsRevRes, recRes, ptRes, metricsRes, candleRes, generalNewsRes, ...quoteResults] = settled;
   const { data: earningsData, reason: earningsReason } = earningsResult;
 
   // Per-section failures, as client-safe reasons ('HTTP 403', 'timeout', ...).
-  const errors = {};
+  const errors: ContextErrors = {};
   SECTIONS.forEach((section, i) => {
     if (settled[i].status === 'rejected') errors[section] = reasonOf(settled[i].reason);
   });
   if (quoteResults.every((r) => r.status === 'rejected')) errors.marketQuotes = reasonOf(quoteResults[0].reason);
-  if (!earningsData && EARNINGS_ERROR_RE.test(earningsReason || '')) errors.earnings = earningsReason;
+  // The pattern admits only 'rate-limited', 'timeout', 'error' and 'HTTP nnn', which the compiler cannot read from it.
+  if (!earningsData && EARNINGS_ERROR_RE.test(earningsReason || '')) errors.earnings = earningsReason as ContextErrorReason;
 
   if (!earningsData && settled.every((r) => r.status === 'rejected')) {
-    const allUnauthorized = settled.every((r) => reasonOf(r.reason) === 'HTTP 401');
+    // Every result was rejected (the test above), which the compiler does not carry into this callback: asserted.
+    const allUnauthorized = settled.every((r) => reasonOf((r as PromiseRejectedResult).reason) === 'HTTP 401');
     if (allUnauthorized && byok) {
       // The caller's own key was refused: say so, so the UI can ask for a working one.
-      return jsonResponse(req, { error: 'Finnhub rejected the API key', code: 'FINNHUB_KEY_REJECTED', errors, requestId }, 401);
+      return jsonResponse(req, { error: 'Finnhub rejected the API key', code: 'FINNHUB_KEY_REJECTED', errors, requestId } satisfies ApiErrorBody, 401);
     }
     if (allUnauthorized) {
       // The server's FINNHUB_API_KEY was refused: a deployment problem, not the caller's.
@@ -373,7 +524,7 @@ export default async (req) => {
     } else {
       console.warn(`[${requestId}] CONTEXT_UNAVAILABLE: ${ticker}`, JSON.stringify(errors));
     }
-    return jsonResponse(req, { error: `Ticker context unavailable for ${ticker}`, code: 'CONTEXT_UNAVAILABLE', errors, requestId }, 502);
+    return jsonResponse(req, { error: `Ticker context unavailable for ${ticker}`, code: 'CONTEXT_UNAVAILABLE', errors, requestId } satisfies ApiErrorBody, 502);
   }
 
   const news = newsRes.status === 'fulfilled'
@@ -387,15 +538,19 @@ export default async (req) => {
       }))
     : [];
 
-  // EPS from Alpha Vantage (accurate), revenue from Finnhub's entry for the same quarter
-  const earnings = earningsData ? { ...earningsData } : null;
+  // EPS from Alpha Vantage (accurate), revenue from Finnhub's entry for the same quarter.
+  // A cached row's data is any JSON, and TypeScript spreads no type that includes a string, number or boolean. The
+  // operand is asserted to what spreading any JSON value gives, a plain object of JSON values ({} for a number or a
+  // boolean, the characters of a string, the items of an array by index); a copy without a `date` matches no
+  // calendar entry, as before.
+  const earnings = earningsData ? { ...(earningsData as { [key: string]: Json | undefined }) } : null;
   if (earnings && earningsRevRes.status === 'fulfilled') {
     const match = matchEarningsCalendar(earningsRevRes.value?.earningsCalendar, earnings.date);
     earnings.revenueEstimate = match?.revenueEstimate ?? null;
     earnings.revenueActual = match?.revenueActual ?? null;
   }
 
-  let analysts = null;
+  let analysts: AnalystInfo | null = null;
   if (recRes.status === 'fulfilled' && ptRes.status === 'fulfilled') {
     const recs = recRes.value || [];
     const latest = recs[0] || {};
@@ -431,7 +586,7 @@ export default async (req) => {
     };
   }
 
-  let technicals = null;
+  let technicals: Technicals | null = null;
   if (candleRes.status === 'fulfilled' && candleRes.value?.s === 'ok') {
     const candle = candleRes.value;
     const closes = candle.c || [];
@@ -447,7 +602,7 @@ export default async (req) => {
     };
   }
 
-  let fundamentals = null;
+  let fundamentals: Fundamentals | null = null;
   if (metricsRes.status === 'fulfilled') {
     const m = metricsRes.value?.metric || {};
     fundamentals = {
@@ -476,7 +631,7 @@ export default async (req) => {
       }))
     : [];
 
-  const marketQuotes = {};
+  const marketQuotes: Partial<Record<MarketSymbol, MarketIndex>> = {};
   MARKET_SYMBOLS.forEach((sym, i) => {
     const r = quoteResults[i];
     if (r.status === 'fulfilled' && r.value && r.value.c) {
@@ -490,7 +645,7 @@ export default async (req) => {
     }
   });
 
-  const body = {
+  const body: TickerContextBody = {
     ticker, news, earnings, analysts, technicals, fundamentals,
     marketNews,
     marketQuotes: Object.keys(marketQuotes).length > 0 ? marketQuotes : null,

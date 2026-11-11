@@ -1,4 +1,4 @@
-// netlify/functions/collectFlowHistory.js
+// netlify/functions/collectFlowHistory.ts
 //
 // Scheduled function: snapshots each tracked ticker's options flow into the Supabase
 // flow_history table, one row per ticker per trading day (UNIQUE (date, ticker)).
@@ -9,6 +9,8 @@
 // server-local date. Weekends and NYSE holidays are skipped via shared/marketCalendar.js:
 // on a weekday holiday CBOE re-serves the previous session, and storing it again would
 // count that session's net premium into cum_premium twice.
+// Request: ignored. Netlify posts { next_run }, the time of the NEXT run, so a row dated
+// from it would file Friday's flow under Monday.
 // Budget: Netlify scheduled functions are killed after 30 s, so the run gets a
 // COLLECTION_BUDGET_MS (24 s) deadline. Tickers run DEFAULT_CONCURRENCY at a time, each
 // CBOE fetch is capped at 8 s and aborted when the deadline passes, and every row is
@@ -21,16 +23,18 @@
 // re-run on the same date recomputes from the prior day and overwrites the row.
 // Tickers: TRACKED_TICKERS (comma-separated), else DEFAULT_TRACKED_TICKERS.
 
-import { schedule } from '@netlify/functions';
+import type { Config } from '@netlify/functions';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import pLimit from 'p-limit';
 import { getSupabaseAdmin } from './lib/supabaseAdmin.js';
 import { fetchCBOE, normalizeChain, computeNetPremium, computePutCallRatio } from './lib/marketDataHelpers.js';
 import { isTimeoutError } from './lib/http.js';
 import { parseTicker } from './lib/ticker.js';
 import { etDateString, isTradingDay } from '../../shared/marketCalendar.js';
+import type { Database } from '../../types/supabase.js';
 
 /** User positions + major indices/ETFs. Override with the TRACKED_TICKERS env var. */
-export const DEFAULT_TRACKED_TICKERS = Object.freeze([
+export const DEFAULT_TRACKED_TICKERS: readonly string[] = Object.freeze([
   'AVGO', 'NVDA', 'AAPL', 'TSLA', 'MSFT',
   'META', 'AMZN', 'GOOGL', 'AMD',
   'SPY', 'QQQ',
@@ -38,15 +42,36 @@ export const DEFAULT_TRACKED_TICKERS = Object.freeze([
 export const DEFAULT_CONCURRENCY = 3;
 export const COLLECTION_BUDGET_MS = 24_000; // Netlify scheduled functions are limited to 30 s
 
+/** The three console methods the collector reports through; tests pass their own. */
+type Logger = Pick<Console, 'log' | 'warn' | 'error'>;
+
+/** collectTicker's outcome for one ticker: a skipped or failed ticker carries its reason. */
+export type TickerResult =
+  | { ticker: string; status: 'stored' }
+  | { ticker: string; status: 'skipped'; reason: 'no-options' | 'lookup-error' }
+  | { ticker: string; status: 'failed'; reason: 'upsert-error' | 'timeout' | 'error' };
+
+/**
+ * runCollection's outcome: the ET date it ran for (null when unknown), 'not-trading-day' when it skipped the day,
+ * and each ticker's result in the order given.
+ */
+export interface CollectionResult {
+  date: string | null;
+  skipped: 'not-trading-day' | null;
+  results: TickerResult[];
+}
+
 /**
  * Parse a comma-separated ticker list such as TRACKED_TICKERS. Each entry is trimmed and
  * validated by parseTicker; invalid entries are dropped and duplicates removed (first
  * occurrence wins). Nothing valid (or no string at all) → `fallback`.
- * @returns {readonly string[]}
  */
-export function parseTrackedTickers(raw, fallback = DEFAULT_TRACKED_TICKERS) {
+export function parseTrackedTickers(
+  raw: unknown,
+  fallback: readonly string[] = DEFAULT_TRACKED_TICKERS,
+): readonly string[] {
   if (typeof raw !== 'string') return fallback;
-  const tickers = new Set();
+  const tickers = new Set<string>();
   for (const entry of raw.split(',')) {
     const ticker = parseTicker(entry);
     if (ticker) tickers.add(ticker);
@@ -57,9 +82,15 @@ export function parseTrackedTickers(raw, fallback = DEFAULT_TRACKED_TICKERS) {
 /**
  * Snapshot one ticker's flow for `date` and upsert its row immediately. Never throws.
  * Reasons: skipped → 'no-options' | 'lookup-error'; failed → 'upsert-error' | 'timeout' | 'error'.
- * @returns {Promise<{ ticker: string, status: 'stored' | 'skipped' | 'failed', reason?: string }>}
  */
-export async function collectTicker({ ticker, date, now, supabase, signal, log = console }) {
+export async function collectTicker({ ticker, date, now, supabase, signal, log = console }: {
+  ticker: string;
+  date: string;
+  now: Date;
+  supabase: SupabaseClient<Database>;
+  signal?: AbortSignal | null;
+  log?: Logger;
+}): Promise<TickerResult> {
   try {
     const raw = await fetchCBOE(ticker, signal);
     const { options } = normalizeChain(raw.options, { now });
@@ -108,7 +139,10 @@ export async function collectTicker({ ticker, date, now, supabase, signal, log =
     return { ticker, status: 'stored' };
   } catch (err) {
     const reason = isTimeoutError(err) ? 'timeout' : 'error';
-    log.error(`Failed to collect ${ticker} (${reason}):`, err?.message ?? String(err));
+    // A caught value is unknown. What reaches here is in practice an Error (fetchCBOE's own, fetch's TypeError, an
+    // abort's TimeoutError or AbortError, a non-JSON body), so this asserts that instead of narrowing, which would
+    // change what any other value does: `.message` stays the optional-chained read it was, String(err) its fallback.
+    log.error(`Failed to collect ${ticker} (${reason}):`, (err as Error | undefined)?.message ?? String(err));
     return { ticker, status: 'failed', reason };
   }
 }
@@ -117,7 +151,6 @@ export async function collectTicker({ ticker, date, now, supabase, signal, log =
  * Collect every ticker for the Eastern-Time trading date of `now`, `concurrency` at a
  * time, under the `signal` deadline. Weekends and NYSE holidays (or an unknown ET date)
  * are skipped without fetching anything.
- * @returns {Promise<{ date: string | null, skipped: 'not-trading-day' | null, results: object[] }>}
  */
 export async function runCollection({
   tickers = parseTrackedTickers(process.env.TRACKED_TICKERS),
@@ -126,7 +159,14 @@ export async function runCollection({
   signal = AbortSignal.timeout(COLLECTION_BUDGET_MS),
   concurrency = DEFAULT_CONCURRENCY,
   log = console,
-} = {}) {
+}: {
+  tickers?: readonly string[];
+  supabase: SupabaseClient<Database>;
+  now?: Date;
+  signal?: AbortSignal;
+  concurrency?: number;
+  log?: Logger;
+}): Promise<CollectionResult> {
   const date = etDateString(now);
   if (!date || !isTradingDay(date)) {
     log.log(date
@@ -140,24 +180,26 @@ export async function runCollection({
     tickers.map((ticker) => limit(() => collectTicker({ ticker, date, now, supabase, signal, log }))),
   );
 
-  const count = (status) => results.filter((r) => r.status === status).length;
+  const count = (status: TickerResult['status']) => results.filter((r) => r.status === status).length;
   log.log(`Flow history ${date}: ${count('stored')} stored, ${count('skipped')} skipped, ${count('failed')} failed.`);
   return { date, skipped: null, results };
 }
 
-const collectFlow = async () => {
+export default async (_req: Request): Promise<void> => {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     console.warn('Supabase env vars not set — skipping flow collection.');
-    return { statusCode: 200 };
+    return;
   }
 
   try {
     await runCollection({ supabase: getSupabaseAdmin() });
   } catch (err) {
-    console.error('Flow collection failed:', err?.message ?? String(err));
+    // Asserted as in collectTicker: in practice this is the Supabase client's Error for a malformed SUPABASE_URL.
+    console.error('Flow collection failed:', (err as Error | undefined)?.message ?? String(err));
   }
-  return { statusCode: 200 };
 };
 
-// Mon–Fri at 21:30 UTC — 4:30 PM EST / 5:30 PM EDT, always after the options close.
-export const handler = schedule('30 21 * * 1-5', collectFlow);
+// Mon–Fri at 21:30 UTC — 4:30 PM EST / 5:30 PM EDT, always after the options close. Netlify reads this object
+// statically when it bundles the function: keep the annotation and the string literal (`satisfies`, `as const`, a
+// constant or a template literal lose the schedule without an error; the test checks this line).
+export const config: Config = { schedule: '30 21 * * 1-5' };

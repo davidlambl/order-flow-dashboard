@@ -1,4 +1,4 @@
-// netlify/functions/askLLM.js
+// netlify/functions/askLLM.ts
 // Multi-provider chat proxy with SSE streaming: Anthropic, OpenAI, Google Gemini.
 //
 // Key handling:
@@ -16,16 +16,18 @@ import {
   fetchWithTimeout, isTimeoutError, clientIp, rateLimit, rateLimitResponse,
 } from './lib/http.js';
 import { verifyRequestToken } from './lib/auth.js';
+import type { TokenClaims } from './lib/auth.js';
 import { checkDailyQuota, logUsage } from './lib/quota.js';
 import { parseTicker } from './lib/ticker.js';
 import { PUT_CALL } from '../../shared/thresholds.js';
+import type { ApiErrorBody, LlmProvider } from '../../types/market.js';
 
 const ALLOWED_HEADERS = 'x-api-key';
-const PROVIDERS = ['anthropic', 'openai', 'gemini'];
-const KEY_PREFIX = { anthropic: 'sk-ant-', openai: 'sk-', gemini: 'AIza' };
+const PROVIDERS: readonly LlmProvider[] = ['anthropic', 'openai', 'gemini'];
+const KEY_PREFIX: Record<LlmProvider, string> = { anthropic: 'sk-ant-', openai: 'sk-', gemini: 'AIza' };
 // Used when the request names no model. The OpenAI and Gemini defaults are re-verified each
 // phase against the providers' model lists: gpt-4o and gemini-2.0-flash were retired in 2026.
-const DEFAULT_MODEL = { anthropic: 'claude-opus-5', openai: 'gpt-5.1', gemini: 'gemini-3.8-flash' };
+const DEFAULT_MODEL: Record<LlmProvider, string> = { anthropic: 'claude-opus-5', openai: 'gpt-5.1', gemini: 'gemini-3.8-flash' };
 
 // Request-shape limits (cost control + abuse resistance)
 const MAX_MESSAGES = 40;
@@ -36,7 +38,7 @@ const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const RATE_LIMIT = { limit: 30, windowMs: 60 * 1000 };
 const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 60_000; // time to first byte, not the whole stream
 
-function buildSystemPrompt(ticker, financialContext) {
+function buildSystemPrompt(ticker: string | null, financialContext: string): string {
   return `You are a senior institutional equity & options analyst embedded in a trading dashboard. Your role is to provide concise, actionable analysis based on the live market data provided below.
 
 CURRENT TICKER: ${ticker || 'UNKNOWN'}
@@ -62,12 +64,12 @@ ANALYSIS GUIDELINES:
 // ─── Model policy ────────────────────────────────────────────────────────────
 
 /** Comma-separated patterns; a trailing '*' matches any suffix. Default: any Claude model. */
-function allowedModelPatterns() {
+function allowedModelPatterns(): string[] {
   const raw = process.env.ALLOWED_MODELS || 'claude-*';
   return raw.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
-export function modelAllowed(model, patterns = allowedModelPatterns()) {
+export function modelAllowed(model: string, patterns: readonly string[] = allowedModelPatterns()): boolean {
   return patterns.some((p) => (p.endsWith('*') ? model.startsWith(p.slice(0, -1)) : model === p));
 }
 
@@ -78,7 +80,7 @@ export function modelAllowed(model, patterns = allowedModelPatterns()) {
  * above the model's limit is rejected upstream (400), which is why an unknown model
  * gets the conservative DEFAULT_OUTPUT_CAP.
  */
-export const PROVIDER_OUTPUT_CAPS = [
+export const PROVIDER_OUTPUT_CAPS: [prefix: string, cap: number][] = [
   // Anthropic
   ['claude-fable-5-1', 128000], ['claude-fable-5', 128000], ['claude-mythos-', 128000],
   ['claude-opus-5-5', 128000], ['claude-opus-5', 128000], ['claude-opus-4-8', 128000],
@@ -103,21 +105,27 @@ export const DEFAULT_OUTPUT_CAP = 16384;
 /** Ceiling for bring-your-own-key requests, whatever the model allows: bounds one reply's size and latency. */
 export const BYOK_OUTPUT_CAP = 16384;
 
-/** The model's own output limit: the longest matching prefix in PROVIDER_OUTPUT_CAPS, else DEFAULT_OUTPUT_CAP. */
-export function providerOutputCap(model) {
+/**
+ * The model's own output limit: the longest matching prefix in PROVIDER_OUTPUT_CAPS, else DEFAULT_OUTPUT_CAP.
+ * Takes any value: a non-string gets DEFAULT_OUTPUT_CAP.
+ */
+export function providerOutputCap(model: unknown): number {
   if (typeof model !== 'string') return DEFAULT_OUTPUT_CAP;
-  let best = null;
+  let best: [prefix: string, cap: number] | null = null;
   for (const [prefix, cap] of PROVIDER_OUTPUT_CAPS) {
     if (model.startsWith(prefix) && (!best || prefix.length > best[0].length)) best = [prefix, cap];
   }
   return best ? best[1] : DEFAULT_OUTPUT_CAP;
 }
 
+/** Whose key a request spends: the caller's own (BYOK) or the server's. */
+type KeySource = 'user' | 'server';
+
 /**
  * Output cap for one request: the model's limit, further capped at BYOK_OUTPUT_CAP for a
  * user's own key, or by MAX_OUTPUT_TOKENS (default 4096) for server-key spend.
  */
-export function maxOutputTokens(model, keySource) {
+export function maxOutputTokens(model: string, keySource: KeySource): number {
   const cap = providerOutputCap(model);
   if (keySource !== 'server') return Math.min(cap, BYOK_OUTPUT_CAP);
   const envCap = Number(process.env.MAX_OUTPUT_TOKENS);
@@ -126,7 +134,49 @@ export function maxOutputTokens(model, keySource) {
 
 // ─── Provider calls ──────────────────────────────────────────────────────────
 
-function callAnthropic({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }) {
+/** One turn of the conversation, as validatePayload keeps it. */
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** What each provider call takes; `signal` is the client's, so a disconnect aborts the upstream call. */
+interface ProviderCall {
+  apiKey: string;
+  model: string;
+  messages: ChatMessage[];
+  systemPrompt: string;
+  stream: boolean;
+  maxTokens: number;
+  signal: AbortSignal;
+}
+
+/** The body sent to Anthropic's Messages API. */
+interface AnthropicRequest {
+  model: string;
+  max_tokens: number;
+  system: string;
+  stream: boolean;
+  messages: ChatMessage[];
+}
+
+/** The body sent to OpenAI's Chat Completions: one of the two token limits, and the prompt as the first message. */
+interface OpenAIRequest {
+  model: string;
+  stream: boolean;
+  max_tokens?: number;
+  max_completion_tokens?: number;
+  messages: { role: 'developer' | 'system' | 'user' | 'assistant'; content: string }[];
+}
+
+/** The body sent to Gemini's generateContent (streamGenerateContent when streaming: the URL says which). */
+interface GeminiRequest {
+  contents: { role: 'user' | 'model'; parts: { text: string }[] }[];
+  systemInstruction: { parts: { text: string }[] };
+  generationConfig: { maxOutputTokens: number };
+}
+
+function callAnthropic({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }: ProviderCall): Promise<Response> {
   return fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -140,11 +190,11 @@ function callAnthropic({ apiKey, model, messages, systemPrompt, stream, maxToken
       system: systemPrompt,
       stream,
       messages,
-    }),
+    } satisfies AnthropicRequest),
   }, LLM_TIMEOUT_MS, signal, { bodyTimeout: false });
 }
 
-function callOpenAI({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }) {
+function callOpenAI({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }: ProviderCall): Promise<Response> {
   // o-series and gpt-5.x reject max_tokens and take the system prompt as a developer message.
   const isReasoning = /^(o[134]|gpt-5)/.test(model);
   return fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
@@ -158,11 +208,11 @@ function callOpenAI({ apiKey, model, messages, systemPrompt, stream, maxTokens, 
         { role: isReasoning ? 'developer' : 'system', content: systemPrompt },
         ...messages,
       ],
-    }),
+    } satisfies OpenAIRequest),
   }, LLM_TIMEOUT_MS, signal, { bodyTimeout: false });
 }
 
-function callGemini({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }) {
+function callGemini({ apiKey, model, messages, systemPrompt, stream, maxTokens, signal }: ProviderCall): Promise<Response> {
   const endpoint = stream ? 'streamGenerateContent' : 'generateContent';
   const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:${endpoint}`);
   if (stream) url.searchParams.set('alt', 'sse');
@@ -176,13 +226,37 @@ function callGemini({ apiKey, model, messages, systemPrompt, stream, maxTokens, 
       })),
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: { maxOutputTokens: maxTokens },
-    }),
+    } satisfies GeminiRequest),
   }, LLM_TIMEOUT_MS, signal, { bodyTimeout: false });
 }
 
 const CALLERS = { anthropic: callAnthropic, openai: callOpenAI, gemini: callGemini };
 
-function extractText(provider, data) {
+// A non-streamed reply. response.json() is unknown: asserted once, where it is parsed, to the fields extractText reads
+// under the provider it is told, typed as each provider documents them (an Anthropic block's `type` is only
+// compared). A falsy body is answered as unreadable; past that, the optional chains read a missing field as no text
+// and nothing else is checked: a value of another type is relayed, read as no text, or throws where it is read
+// without a chain, as its type allows.
+
+/** Anthropic's reply: the first text block. */
+interface AnthropicReply {
+  content?: { type?: unknown; text?: string }[];
+}
+
+/** OpenAI's reply: the first choice's message. */
+interface OpenAIReply {
+  choices?: { message?: { content?: string | null } }[];
+}
+
+/** Gemini's reply: the first candidate's parts, joined. */
+interface GeminiReply {
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+}
+
+/** Whichever provider answered; extractText reads only that provider's fields. */
+type ProviderReply = AnthropicReply & OpenAIReply & GeminiReply;
+
+function extractText(provider: LlmProvider, data: ProviderReply): string {
   switch (provider) {
     case 'openai': return data.choices?.[0]?.message?.content || 'No response generated.';
     case 'gemini': return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || 'No response generated.';
@@ -192,9 +266,49 @@ function extractText(provider, data) {
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
+/** The request body as validatePayload reads it (see the assertion there). */
+interface AskLlmPayload {
+  provider: LlmProvider;
+  messages?: { role?: unknown; content?: unknown }[];
+  financialContext?: unknown;
+  ticker?: unknown;
+  userApiKey?: unknown;
+  model?: unknown;
+  stream?: unknown;
+}
+
+/** The payload validatePayload accepts, cleaned: what the handler goes on to use. */
+interface ValidPayload {
+  provider: LlmProvider;
+  messages: ChatMessage[];
+  /** '' when the request has none. */
+  financialContext: string;
+  /** Normalised by parseTicker; null when the request has none. */
+  ticker: string | null;
+  /** Trimmed; null when the request has none, and the handler then turns to the server's key. */
+  userApiKey: string | null;
+  /** The request's, else the provider's DEFAULT_MODEL. */
+  model: string;
+  stream: boolean;
+}
+
+/** What validatePayload refuses a payload with; the handler answers each with a 400. */
+type PayloadErrorCode =
+  | 'PROVIDER_REQUIRED' | 'MESSAGES_REQUIRED' | 'TOO_MANY_MESSAGES' | 'INVALID_MESSAGE' | 'MESSAGE_TOO_LONG'
+  | 'CONTEXT_TOO_LONG' | 'INVALID_TICKER' | 'KEY_PROVIDER_MISMATCH' | 'INVALID_MODEL';
+
+/** validatePayload's verdict: the first problem found, or the cleaned payload. */
+type PayloadCheck =
+  | { error: { code: PayloadErrorCode; message: string }; value?: undefined }
+  | { value: ValidPayload; error?: undefined };
+
 /** Returns { error: { code, message } } or { value }. */
-export function validatePayload(payload) {
-  const { messages, financialContext, ticker, userApiKey, model, provider, stream } = payload || {};
+export function validatePayload(payload: unknown): PayloadCheck {
+  // The body is any JSON value. Asserted once, here, to the fields read: the provider as one, which PROVIDERS.includes
+  // checks before anything else reads it; the messages as an array of objects, which Array.isArray and the
+  // per-message check confirm; the rest unknown until their own checks (stream only goes through Boolean()). `|| {}`
+  // and the destructuring read null, a primitive or an array as a payload without these fields.
+  const { messages, financialContext, ticker, userApiKey, model, provider, stream } = (payload as AskLlmPayload) || {};
 
   if (!PROVIDERS.includes(provider)) {
     return { error: { code: 'PROVIDER_REQUIRED', message: `provider must be one of ${PROVIDERS.join(', ')}` } };
@@ -205,7 +319,7 @@ export function validatePayload(payload) {
   if (messages.length > MAX_MESSAGES) {
     return { error: { code: 'TOO_MANY_MESSAGES', message: `at most ${MAX_MESSAGES} messages per request` } };
   }
-  const cleanMessages = [];
+  const cleanMessages: ChatMessage[] = [];
   for (const m of messages) {
     if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string') {
       return { error: { code: 'INVALID_MESSAGE', message: 'each message needs role user|assistant and string content' } };
@@ -218,7 +332,7 @@ export function validatePayload(payload) {
   if (financialContext != null && (typeof financialContext !== 'string' || financialContext.length > MAX_CONTEXT_CHARS)) {
     return { error: { code: 'CONTEXT_TOO_LONG', message: `financialContext must be a string of at most ${MAX_CONTEXT_CHARS} characters` } };
   }
-  let cleanTicker = null;
+  let cleanTicker: string | null = null;
   if (ticker != null && ticker !== '') {
     cleanTicker = parseTicker(ticker);
     if (!cleanTicker) return { error: { code: 'INVALID_TICKER', message: 'ticker has an invalid format' } };
@@ -249,49 +363,49 @@ export function validatePayload(payload) {
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
-export default async (req) => {
+export default async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return preflight(req, ALLOWED_HEADERS);
-  if (req.method !== 'POST') return jsonResponse(req, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' }, 405);
+  if (req.method !== 'POST') return jsonResponse(req, { error: 'POST only', code: 'METHOD_NOT_ALLOWED' } satisfies ApiErrorBody, 405);
 
   const requestId = newRequestId();
 
   const rl = rateLimit(`askLLM:${clientIp(req)}`, RATE_LIMIT);
   if (!rl.ok) return rateLimitResponse(req, rl.retryAfterSec, requestId);
 
-  let payload;
+  let payload: unknown;
   try {
     payload = await req.json();
   } catch {
-    return jsonResponse(req, { error: 'Invalid JSON body', code: 'INVALID_JSON', requestId }, 400);
+    return jsonResponse(req, { error: 'Invalid JSON body', code: 'INVALID_JSON', requestId } satisfies ApiErrorBody, 400);
   }
 
   const validated = validatePayload(payload);
   if (validated.error) {
-    return jsonResponse(req, { ...validated.error, error: validated.error.message, requestId }, 400);
+    return jsonResponse(req, { ...validated.error, error: validated.error.message, requestId } satisfies ApiErrorBody, 400);
   }
   const { provider, messages, financialContext, ticker, userApiKey, model, stream } = validated.value;
 
   // ── Key selection ──
   let apiKey = userApiKey;
-  let keySource = 'user';
-  let claims = null;
+  let keySource: KeySource = 'user';
+  let claims: TokenClaims | null = null;
 
   if (!apiKey) {
     if (provider !== 'anthropic' || !process.env.ANTHROPIC_API_KEY) {
       return jsonResponse(req, {
         error: `No API key for ${provider}. Add your key in Settings.`, code: 'KEY_REQUIRED', requestId,
-      }, 400);
+      } satisfies ApiErrorBody, 400);
     }
     const auth = await verifyRequestToken(req);
     if (!auth.ok) {
-      return jsonResponse(req, { error: auth.message, code: auth.code, requestId }, auth.status);
+      return jsonResponse(req, { error: auth.message, code: auth.code, requestId } satisfies ApiErrorBody, auth.status);
     }
     claims = auth.claims;
     if (!modelAllowed(model)) {
       return jsonResponse(req, {
         error: 'That model is not available with the shared key. Add your own API key in Settings to use it.',
         code: 'MODEL_NOT_ALLOWED', requestId,
-      }, 403);
+      } satisfies ApiErrorBody, 403);
     }
     const quota = await checkDailyQuota({ sub: claims.sub, tier: claims.tier });
     if (!quota.ok) {
@@ -299,7 +413,7 @@ export default async (req) => {
         error: quota.error ? 'Usage quota is temporarily unavailable' : `Daily request quota reached (${quota.limit}/day)`,
         code: quota.error ? 'QUOTA_UNAVAILABLE' : 'QUOTA_EXCEEDED',
         requestId,
-      }, quota.error ? 503 : 429);
+      } satisfies ApiErrorBody, quota.error ? 503 : 429);
     }
     apiKey = process.env.ANTHROPIC_API_KEY;
     keySource = 'server';
@@ -308,7 +422,7 @@ export default async (req) => {
   const systemPrompt = buildSystemPrompt(ticker, financialContext);
   const maxTokens = maxOutputTokens(model, keySource);
 
-  let response;
+  let response: Response;
   try {
     response = await CALLERS[provider]({
       apiKey, model, messages, systemPrompt, stream, maxTokens, signal: req.signal,
@@ -322,7 +436,8 @@ export default async (req) => {
     });
   }
 
-  if (keySource === 'server') {
+  // For the compiler: keySource is 'server' only once claims is set, so the null test never decides.
+  if (keySource === 'server' && claims !== null) {
     // Not awaited: usage logging must never delay or fail the response.
     logUsage({ sub: claims.sub, tier: claims.tier, provider, model, stream, keySource, requestId });
   }
@@ -338,7 +453,7 @@ export default async (req) => {
         : status === 400 && keySource === 'user'
           ? `The ${provider} API rejected the request (check the model name)`
           : `The ${provider} API returned an error`;
-    return jsonResponse(req, { error: message, code: 'UPSTREAM_ERROR', upstreamStatus: status, requestId },
+    return jsonResponse(req, { error: message, code: 'UPSTREAM_ERROR', upstreamStatus: status, requestId } satisfies ApiErrorBody,
       [401, 403, 429].includes(status) ? status : 502);
   }
 
@@ -354,7 +469,7 @@ export default async (req) => {
     });
   }
 
-  const data = await response.json().catch(() => null);
+  const data = await response.json().catch(() => null) as ProviderReply | null;
   if (!data) {
     return errorResponse(req, { status: 502, code: 'UPSTREAM_INVALID', message: `Unreadable response from ${provider}`, requestId });
   }

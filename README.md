@@ -26,8 +26,8 @@ without functions, or a failed first load) and never auto-refreshes. Once real d
 refresh keeps it on screen with an ERROR badge and background refreshes back off (up to 5 minutes).
 
 Stack: React 19, Vite 8 (Rolldown), Tailwind CSS 4, Recharts 3, TanStack Query 5, lucide-react 1, react-markdown; Netlify
-Functions on Node 22 (`@netlify/functions` 6); Supabase. Upstreams: CBOE, Tradier, Yahoo Finance, Finnhub,
-Alpha Vantage, Anthropic, OpenAI, Google Gemini.
+Functions in TypeScript on Node 22 (`@netlify/functions` 6, for its types); Supabase. Upstreams: CBOE, Tradier,
+Yahoo Finance, Finnhub, Alpha Vantage, Anthropic, OpenAI, Google Gemini.
 
 ## Features
 
@@ -114,7 +114,7 @@ earnings (server key only).
 
 ## Quick start
 
-Node 22 (`.nvmrc`; `engines` requires ≥ 22.12):
+Node 22 (`.nvmrc`; `engines` requires ≥ 22.18):
 
 ```bash
 nvm use && npm ci
@@ -129,8 +129,8 @@ for `/.netlify/functions/*`.
 
 | Variable | Required | Used by | Purpose |
 |---|---|---|---|
-| `TOKEN_SECRET` | **Yes**, for any server key to be usable | `lib/auth.js`, `scripts/generate-token.js` | Signs and verifies access tokens; ≥ 32 characters |
-| `SITE_ORIGIN` | No | `lib/http.js` | Extra origins allowed cross-origin (comma-separated) |
+| `TOKEN_SECRET` | **Yes**, for any server key to be usable | `lib/auth.ts`, `scripts/generate-token.js` | Signs and verifies access tokens; ≥ 32 characters |
+| `SITE_ORIGIN` | No | `lib/http.ts` | Extra origins allowed cross-origin (comma-separated) |
 | `TRADIER_API_KEY` | No | `getMarketData` | Tradier chain for token holders |
 | `TRACKED_TICKERS` | No | `collectFlowHistory` | Tickers snapshotted nightly; default `AVGO,NVDA,AAPL,TSLA,MSFT,META,AMZN,GOOGL,AMD,SPY,QQQ` |
 | `ANTHROPIC_API_KEY` | No | `askLLM`, `getModels` | Shared Anthropic key for token holders |
@@ -159,8 +159,10 @@ token revocation and no LLM quota.
 4. Add the site's URL (and your local one) under Authentication → URL Configuration → Redirect URLs, since
    the magic link returns to the page it was requested from.
 
-The nightly collector `collectFlowHistory` (needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`) runs
-`30 21 * * 1-5` (Mon–Fri 21:30 UTC, after the options close), skips NYSE holidays and upserts one
+The nightly collector `collectFlowHistory` (needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`) is a
+scheduled function: its source declares the schedule (`export const config`, `30 21 * * 1-5`: Mon–Fri
+21:30 UTC, after the options close), which Netlify reads when it builds the functions, and Netlify runs it
+on the published deploy only, never on a deploy preview. It skips NYSE holidays and upserts one
 `flow_history` row per ticker in `TRACKED_TICKERS` per Eastern-Time trading day: CBOE net premium, running
 cumulative premium, call/put volume and premium, spot. `getMarketData` returns the last 30 rows, so the
 flow chart stays empty without the collector or for untracked tickers.
@@ -181,7 +183,8 @@ echo "$SECRET" | node scripts/generate-token.js --secret-stdin --tier trial --la
 `--tier trial|pro` (default `trial`), `--days N` (1–3650; default 7 for trial, 365 for pro), `--label`
 (the subject; default `token-<jti prefix>`). The secret comes from `TOKEN_SECRET` (environment or `.env`)
 or stdin with `--secret-stdin`, never an argument. The script prints the tier, subject, `jti`, expiry,
-token and the revocation SQL.
+token and the revocation SQL. It runs under plain Node 22.18 or newer: it imports the functions'
+`lib/auth.ts`, which Node loads by stripping the types (on by default from that release).
 
 Both tiers unlock the premium panels and the server keys; they differ in default lifetime, the daily quota
 on the shared Anthropic key (50 / 500) and the header badge. Users paste the token into a lock screen or
@@ -197,28 +200,30 @@ for that form under Site → Forms → Notifications in Netlify; your address st
 ## Architecture
 
 ```
-netlify/functions/          One function per top-level file (HTTP: /.netlify/functions/<name>, /api/<name>)
-├── askLLM.js               Chat proxy for Anthropic, OpenAI, Gemini; relays SSE
-├── collectFlowHistory.js   Scheduled flow_history snapshot
-├── getLiveQuote.js         Yahoo quote with extended hours, Finnhub fallback, NQ context
-├── getMarketData.js        Tradier → CBOE, KPIs and GEX, flow history
-├── getModels.js            Model lists per provider
-├── getTickerContext.js     Finnhub research, Alpha Vantage earnings
-├── validateToken.js        Token check for the unlock screens
+netlify/functions/          One function per top-level file, in TypeScript (HTTP: /.netlify/functions/<name>, /api/<name>)
+├── askLLM.ts               Chat proxy for Anthropic, OpenAI, Gemini; relays SSE
+├── collectFlowHistory.ts   Scheduled flow_history snapshot; its `config` export is the schedule
+├── getLiveQuote.ts         Yahoo quote with extended hours, Finnhub fallback, NQ context
+├── getMarketData.ts        Tradier → CBOE, KPIs and GEX, flow history
+├── getModels.ts            Model lists per provider
+├── getTickerContext.ts     Finnhub research, Alpha Vantage earnings
+├── validateToken.ts        Token check for the unlock screens
 ├── lib/
-│   ├── auth.js             Token verification; fails closed
-│   ├── http.js             CORS allowlist, responses, fetchWithTimeout, rate limit
-│   ├── marketDataHelpers.js  CBOE/Tradier fetchers, expiry window, metric maths
-│   ├── quota.js            Daily LLM quota, usage_log
-│   ├── supabaseAdmin.js    Service-role client
-│   ├── supabasePublic.js   Anon-key client
-│   └── ticker.js           Ticker validator
-└── __tests__/              Function tests (kept out of the deployed top level)
+│   ├── auth.ts             Token verification; fails closed (plain Node loads it too, for the token script)
+│   ├── http.ts             CORS allowlist, responses, fetchWithTimeout, rate limit
+│   ├── marketDataHelpers.ts  CBOE/Tradier fetchers, expiry window, metric maths
+│   ├── quota.ts            Daily LLM quota, usage_log
+│   ├── supabaseAdmin.ts    Service-role client
+│   ├── supabasePublic.ts   Anon-key client
+│   └── ticker.ts           Ticker validator
+└── __tests__/              Function tests, in JavaScript (kept out of the deployed top level)
 shared/                     Pure modules for src/ and netlify/
 ├── marketCalendar.js       ET clock, NYSE holidays, early closes, sessions (+ .test.js)
 └── thresholds.js           Cut-offs for the engine, KPI cards, chat context, prompt
-types/                      Contracts shared by src/ and netlify/ (declarations only; netlify/ never imports src/)
-└── market.ts               getMarketData, getLiveQuote, getTickerContext, getModels bodies; error bodies and codes
+types/                      Types shared by src/ and netlify/ (netlify/ never imports src/)
+├── market.ts               The functions' JSON contracts, declarations only: getMarketData, getLiveQuote,
+│                           getTickerContext, getModels and validateToken bodies; error bodies and codes
+└── supabase.ts             The database schema's types, as Supabase's generator writes them (npm run types:supabase)
 src/                        Tests sit beside the code: *.node.test.js (node), other *.test.{js,jsx} (dom)
 ├── main.jsx                Entry: StrictMode, ErrorBoundary, App
 ├── App.tsx                 The dashboard shell: the screens, the layout, MarketContext and AuthContext, over the
@@ -302,7 +307,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── staleness.js        Stale-data rule
 │   ├── store.ts            localStorage store, key classes, export/import, events
 │   ├── storeEvents.ts      store-changed subscriptions, scoped versions, savePreference
-│   ├── supabase.js         Browser Supabase client
+│   ├── supabase.ts         Browser Supabase client, typed with types/supabase.ts
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
 │   └── syncOutbox.js       Persistent write queue
 └── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
@@ -312,7 +317,8 @@ test/helpers/               fakeSupabase.js (recording fake client, its auth tim
                             (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
 supabase/                   migrations/001…005, README.md
-scripts/                    generate-token.js (mints access tokens), check-bundle.js (the bundle budget, after a build)
+scripts/                    generate-token.js (mints access tokens; plain Node ≥ 22.18), check-bundle.js (the bundle
+                            budget, after a build)
 docs/ROADMAP.md             Findings and the phased plan
 .github/                    workflows/ci.yml, dependabot.yml, pull_request_template.md
 index.html                  App shell, hidden access-request form for Netlify Forms
@@ -334,6 +340,7 @@ tsconfig.json               Browser type-check program (src/, shared/, types/); 
 | `npm run preview` | Serve `dist/` |
 | `npm run lint` | ESLint 10 (typescript-eslint 8 for `.ts`/`.tsx`) |
 | `npm run typecheck` | `tsc` over `tsconfig.json` (browser: `src/`, `shared/`, `types/`) and `tsconfig.functions.json` (Node: `netlify/`, `shared/`, `types/`, `scripts/`); blocking in CI |
+| `npm run types:supabase` | Regenerate `types/supabase.ts` from the Supabase project's schema, after a migration (needs a Supabase login: [supabase/README.md](supabase/README.md)) |
 | `npm test` | Vitest 5, both projects |
 | `npm run test:watch` | Vitest in watch mode |
 | `npm run test:coverage` | Tests with coverage into `coverage/` (CI) |

@@ -81,12 +81,12 @@ export function decodeTokenPayload(token: string | null | undefined): TokenPaylo
   }
 }
 
-/** validateToken.js's 200 body as-is, or the failure built here from any other status. */
+/** validateToken.ts's 200 body as-is, or the failure built here from any other status. */
 export type ValidateTokenResult =
   | { valid: true; tier: string; sub: string; expiresAt: string; requestId: string }
   | { valid: false; error: string; code: string | null };
 
-/** validateToken.js's JSON answer: the success body on a 200, else `{ valid: false, error, code, requestId }` (no `valid` on a 429). */
+/** validateToken.ts's JSON answer: the success body on a 200, else `{ valid: false, error, code, requestId }` (no `valid` on a 429). */
 interface ValidateTokenBody {
   valid?: boolean;
   tier?: string;

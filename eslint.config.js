@@ -31,6 +31,9 @@ export default defineConfig([
     },
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^[A-Z_]' }],
+      // A type-only import is written `import type { X }`, never `import { type X }`: the inline form leaves a runtime
+      // import behind, which Node's own type stripping then tries to load (the token script runs the auth module under it).
+      '@typescript-eslint/no-import-type-side-effects': 'error',
     },
   },
 

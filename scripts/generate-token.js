@@ -13,6 +13,9 @@
 // It is never accepted as a command-line argument, so it can't leak via shell
 // history or the process list.
 //
+// Runs under plain Node 22.18 or newer: it imports the functions' auth module by its real .ts name, since Node maps
+// no .js specifier to a .ts file, and Node strips the types itself.
+//
 // Every token carries a unique jti. To revoke one, insert its jti into the
 // revoked_tokens table (see supabase/migrations/004_security_hardening.sql).
 
@@ -23,7 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   TOKEN_ISSUER, TOKEN_AUDIENCE, TOKEN_ALGORITHM, MIN_SECRET_LENGTH, VALID_TIERS,
-} from '../netlify/functions/lib/auth.js';
+} from '../netlify/functions/lib/auth.ts';
 
 const TIER_DEFAULTS = { trial: 7, pro: 365 };
 

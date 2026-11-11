@@ -12,6 +12,7 @@ import { clearAll, emitStoreChanged, LocalStorageBackend, migrateSessionToLocal,
 import {
   claimLocalData, isAuthSkipped, LOCAL_OWNER_KEY, setAuthSkipped as persistAuthSkipped, signOut as endSession,
 } from '../lib/session.js';
+import type { Database } from '../../types/supabase.js';
 
 /** hydrate()'s report, as SupabaseBackend types it. */
 type HydrateReport = Awaited<ReturnType<SupabaseBackend['hydrate']>>;
@@ -85,7 +86,7 @@ export interface SupabaseAuthOptions {
   /** Writes an edit still inside its debounce (the position draft's flush). Must keep one identity. */
   flushPendingEdits: () => void;
   /** The Supabase client: the app's own (null when cloud sign-in is not configured) unless a test injects one. */
-  client?: SupabaseClient | null;
+  client?: SupabaseClient<Database> | null;
 }
 
 /** What useSupabaseAuth returns. */

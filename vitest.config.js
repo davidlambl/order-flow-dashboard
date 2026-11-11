@@ -9,7 +9,7 @@ export default defineConfig({
     restoreMocks: true,
     unstubGlobals: true,
     unstubEnvs: true,
-    // A developer's .env sets VITE_SUPABASE_*; tests must never build the default client (src/lib/supabase.js).
+    // A developer's .env sets VITE_SUPABASE_*; tests must never build the default client (src/lib/supabase.ts).
     env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
     coverage: {
       provider: 'v8',
