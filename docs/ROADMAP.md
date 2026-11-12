@@ -676,15 +676,18 @@ inputs stay visible while loading.
 
 **Built in #94 (Phase 6, PR A, 2026-11-12).** Of the list above it built everything but the error and retry surfaces,
 the remembered ticker and the position inputs during a load:
-- The chat is one element at every width, never remounted: from `md` up the complementary landmark beside `main`;
-  below it, while open, a modal dialog over the whole viewport with `main` and the header inert, which Escape closes,
-  focus going back to the chat button. It is a `div`, since an `aside` may not take the dialog role. The resize handle
-  is a focusable separator whose value is the width, moved by pointer events with capture (a mouse, a finger, a pen)
-  or by the arrow keys, Home and End, and stored once per drag or key release, since the width syncs.
+- The chat is one element at every width, never remounted: from `md` up, while open, the complementary landmark
+  beside `main` (closed, an empty element with no role); below it, while open, a modal dialog over the whole viewport
+  with `main` and the header inert, which Escape closes from inside it or from wherever focus fell, focus going back
+  to the chat button. It is a `div`, since an `aside` may not take the dialog role. The resize handle is a focusable
+  separator whose value is the width, in pixels and in words, moved by pointer events with capture (a mouse, a
+  finger, a pen; its pointer target is 17 px on a 5 px line) or by the arrow keys, Home and End, and stored once per
+  drag or key release, since the width syncs.
 - Settings, the strategic context editor, the sync choice and the stand-ins shown while their chunks load each draw
   their panel in `ModalDialog`, the native `<dialog>` opened with `showModal()`. Settings' tab bar is a tab list driven
   by the arrow keys, Home and End, in a row that scrolls sideways where it does not fit.
 - Every form field has a label that is not its placeholder, and a refused entry is an alert that describes its field.
+  A result said as a status (a valid key, an import, a sent request) fills a region that was already there, empty.
   The message actions show at rest. What only a colour, a tooltip or a drawing said is in words too: the KPI cards'
   readings, news sentiment, the analysts' counts, spot's place in the price-target range, the earnings date, a
   one-sentence summary of each chart. The sections' and the chat's titles are `h2` headings, an open section's content
@@ -712,9 +715,20 @@ Tab stays inside Settings, the editor and the phone's chat, Escape gives focus b
 chat focuses its button instead of `body`, and the handle steps by key. At 375 by 812 px the open chat covers the
 viewport and the main content keeps its 375 px; before, the chat squeezed it to 32 px and ran past the screen's right
 edge. A reply went on streaming while the window crossed 768 px both ways, the chat's node unchanged; the sync choice
-stayed open through Escape presses and clicks outside its panel, and nothing was written until a choice was made. Not
-seen in a browser: a slow Settings chunk, Mobile Safari, a finger on the handle, a screen reader's speech. The entry
-chunk grew from 160.69 to 167.88 kB (49.10 to 51.58 kB gzip); startup JavaScript is 636.39 of its 700 kB.
+stayed open through Escape presses and clicks outside its panel, and nothing was written until a choice was made. On
+the production build under Slow 3G the Settings stand-in held focus from 28 ms until the loaded dialog took it 2.8 s
+later. In Mobile Safari (iOS 26.5 in a simulator, reached with scripted clicks) the chat covers the screen with the
+composer just above the on-screen keyboard, and Settings and the editor open as modal dialogs. Safari has no
+`closedby`: there the sync choice rests on the prevented `cancel` and on opening again if the browser closes it,
+which only the unit tests' stand-in has exercised. Not seen in a browser: a real finger (a tap, the handle on a
+tablet), that Safari path, a screen reader's speech.
+
+A whole-PR adversarial review found no blocker and five defects, fixed on the branch and seen fixed in a browser:
+on a phone Escape did nothing while focus was on `body`, where it is after every send; a control focused by Shift+Tab
+scrolled under the Settings panel's sticky header at 200% zoom (WCAG 2.4.11); three results were announced by a
+status inserted together with its text; a drag rendered App on every pointer move, also those that changed no width;
+the handle was a 5 px touch target. The closed sidebar also stayed a named, empty landmark. The entry chunk grew
+from 160.69 to 168.43 kB (49.10 to 51.77 kB gzip); startup JavaScript is 636.94 of its 700 kB.
 
 Where this overruled the sketch:
 - Lighthouse's accessibility score was already 94 (desktop) and 96 (phone) on `main`, before any of this: it audits

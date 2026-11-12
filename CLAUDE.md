@@ -76,8 +76,10 @@ should:
   `show()` and `close()` (`showModal()` throws on a dialog already open, as older engines do: open with
   `if (!dialog.open)`; `close` fires a microtask later: `await act(async () => {})` before asserting on it); pointer
   capture (one element per pointer id, nothing retargeted: a test fires the later events on the capturing element);
-  and `requestDialogClose(dialog, { cancelable? })`, which stands for Escape (`cancelable: false` is Chromium's second
-  Escape, whose `cancel` no `preventDefault()` stops). Not emulated, so never asserted: the top layer, `::backdrop`,
+  `requestDialogClose(dialog, { cancelable? })`, which stands for Escape (`cancelable: false` is Chromium's second
+  Escape, whose `cancel` no `preventDefault()` stops); and `isOpenModal(dialog)`, true only for a dialog open through
+  `showModal()`, which `dialog.open` cannot tell from `show()` or the bare attribute (a test that a layer is modal
+  asserts this, not `.open`). Not emulated, so never asserted: the top layer, `::backdrop`,
   the inert page and the focus trap (Tab is not simulated). `src/test/viewport.js`: `matchMedia` over an emulated
   width, a desktop (`DESKTOP_WIDTH`, 1280 px) that the setup restores after every test, dropping every listener;
   `setViewportWidth(px)` (`PHONE_WIDTH` is 375), inside `act()` once a component listens, fires `change` on each list
@@ -181,9 +183,11 @@ should:
   value App spreads on the resize handle, a separator: a drag by pointer events with pointer capture, so a mouse, a
   finger and a pen take one path, the primary button only and one drag at a time, listening on document so that its
   release still arrives if the handle goes away mid-drag; ArrowLeft and ArrowRight 16 px, Home and End the 280 and
-  640 px bounds; `aria-valuenow` the width shown. The width is stored once through `savePreference`: on the pointerup
-  (a pointercancel stores nothing), or on a key's release or a blur, since `sidebarWidth` syncs and a held key would
-  queue a cloud write per repeat; `isResizing` is a drag alone); `useMediaQuery(query)` → whether a media query
+  640 px bounds; `aria-valuenow` the width shown and `aria-valuetext` the same in words ("384 pixels"). The width is
+  stored once through `savePreference`: on the pointerup (a pointercancel stores nothing), or on a key's release or a
+  blur, since `sidebarWidth` syncs and a held key would queue a cloud write per repeat. A pointermove that leaves the
+  width where it is (a vertical move, one past a bound) returns the same state, so App does not render per move;
+  `isResizing` is a drag alone); `useMediaQuery(query)` → whether a media query
   matches, followed as it changes (`useSyncExternalStore` over `matchMedia`; false where there is none).
 - `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
   provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
@@ -197,13 +201,19 @@ should:
   `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
   with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
   The chat is ONE element at every width and never remounts, since a remount would cut a streaming reply: a `div` (an
-  `aside` may not take the dialog role) that is the complementary landmark "AI Co-Pilot" from `md` up, with the
-  resize handle before it, and below `md`, while open, a modal dialog fixed over the viewport with `main` and a wrapper
-  around `Header` `inert` and no handle; closed below `md`, it is `hidden`. The layout follows
+  `aside` may not take the dialog role) that from `md` up is the complementary landmark "AI Co-Pilot" while open,
+  with the resize handle before it (closed, it is an empty 0 px element with neither role nor name, so that no empty
+  landmark is listed), and below `md`, while open, a modal dialog fixed over the viewport with `main` and a wrapper
+  around `Header` `inert` and no handle; closed below `md`, it is `hidden`. The handle's box is 5 px wide; a
+  transparent `::before` widens what a pointer can press by 12 px to the right, over the chat's own padding (to the
+  left is `main`'s scrollbar). The layout follows
   `useMediaQuery('(min-width: 48rem)')`, Tailwind's `md` (the stylesheet writes `(width >= 48rem)`, a range the test
-  stand-in does not parse). Escape closes the chat only while it covers the page, heard on the chat element itself:
-  Settings renders outside it, and the context editor stops its own Escape in the capture phase. Closing it with focus
-  inside moves focus to "Open AI Co-Pilot", which mounts in the same commit. The account-keyed root is never inert:
+  stand-in does not parse). Escape closes the chat only while it covers the page, heard on `document` by a listener
+  that lives only then: from inside the chat or from `body`, where focus is after a send (the composer is disabled
+  while a reply streams) or once a pressed button unmounts, and never while a `<dialog>` is open, since Settings hears
+  Escape on `window`, after `document`, and one key would otherwise close both. Closing it with focus inside, or on
+  `body` while it covered the page, moves focus to "Open AI Co-Pilot", which mounts in the same commit. The
+  account-keyed root is never inert:
   Settings and the sync choice render in it, and an inert ancestor would leave even a top-layer dialog dead.
   Every dialog but the chat draws its panel in `ModalDialog.tsx`: `settings/SettingsDialog.tsx` and its stand-in
   `SettingsPlaceholder.tsx`, `StrategicContextDialog.tsx` and its stand-in (`StrategicContextEditor.tsx`'s
@@ -357,9 +367,15 @@ should:
   dialog is still closed. Every input, select and textarea has a programmatic label that is not its placeholder: a
   visible `<label htmlFor>` where the layout has room, an `sr-only` one where an icon and a placeholder are the design,
   ids from `useId()` (the token form shows up to three times on one screen). An error is an `alert`, and one about a
-  field describes it and marks it `aria-invalid` until the next edit. One pattern per toggle: a fixed name with
-  `aria-pressed` (`aria-expanded` for a section), or a name that states the action and no `aria-pressed` (the
-  auto-refresh button). A control's name contains the text it shows (WCAG 2.5.3). Nothing is conveyed by a colour, a
+  field describes it and marks it `aria-invalid` until the next edit. A result announced as a `status` keeps its
+  region in the tree from the component's first render, empty and `sr-only` alone, and fills that same node (the AI
+  tab's key test, the Backup tab's import, the access request): a live region announces a change inside it, and one
+  inserted together with its text is not read by every screen reader; an alert may be inserted with its text. A panel
+  that scrolls under a sticky header carries scroll padding above the header's height (`scroll-pt-32` on the Settings
+  panel and its stand-in), so a control scrolled into view for focus is never under it. One pattern per toggle: a
+  fixed name with `aria-pressed` (`aria-expanded` for a section), or a name that states the action and no
+  `aria-pressed` (the auto-refresh button). A control's name contains the text it shows (WCAG 2.5.3). Nothing is
+  conveyed by a colour, a
   hover or a drawing alone: a reading has its words, visible or `sr-only` beside it (the KPI cards, news sentiment,
   each chart's one-sentence summary), and controls show at rest (the message actions at 75% opacity). What a class
   hides below a breakpoint and a screen reader needs is `sr-only` there, not `display: none` (the header's one `h1`);
