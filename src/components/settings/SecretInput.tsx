@@ -2,7 +2,9 @@
 // An API key field of the settings tabs (the AI provider's key, the Tradier and Finnhub keys): the label with the
 // autosave's Saved flash, the password input with its reveal toggle, and the hint under it. Whether the key shows is the
 // field's own state, so a remount hides it again: the AI tab keys its field on the provider for that.
-import { useState } from 'react';
+// The label names the input and the status lines and the hint describe it, all tied by ids from useId: the Data tab
+// shows two of these at once. The Saved flash is no live region: it follows typing, and a result is what gets announced.
+import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Check, Eye, EyeOff } from 'lucide-react';
 
@@ -16,9 +18,14 @@ interface SecretInputProps {
   saved: boolean;
   /** A control in the input's row (the AI tab's Test button), which then shares the row with the input. */
   action?: ReactNode;
-  /** Lines between the input and the hint (the AI tab's test result). */
+  /**
+   * Lines between the input and the hint (the AI tab's test result), which describe the input before the hint does;
+   * null or absent while there are none, since an empty node would still be referenced as part of the description.
+   */
   status?: ReactNode;
-  /** The muted hint under the input. */
+  /** The key was refused (the AI tab's failed test): the input is marked invalid while the parent says so. */
+  invalid?: boolean;
+  /** The muted hint under the input, which describes it. */
   children: ReactNode;
 }
 
@@ -31,23 +38,34 @@ function SavedIndicator({ show }: { show: boolean }) {
   );
 }
 
-export default function SecretInput({ label, value, onChange, placeholder, saved, action, status, children }: SecretInputProps) {
+export default function SecretInput({
+  label, value, onChange, placeholder, saved, action, status, invalid = false, children,
+}: SecretInputProps) {
   const [revealed, setRevealed] = useState(false);
+  const id = useId();
+  const inputId = `${id}-input`;
+  const statusId = `${id}-status`;
+  const hintId = `${id}-hint`;
 
   const field = (
     <>
       <input
+        id={inputId}
         type={revealed ? 'text' : 'password'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-describedby={status ? `${statusId} ${hintId}` : hintId}
+        aria-invalid={invalid || undefined}
         className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg pl-3 pr-9 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
       />
+      {/* A 24 px target around the 14 px icon (WCAG 2.5.8): 5 px of padding, the box 5 px further right, so the icon
+          itself stays where it was. */}
       {value && (
         <button
           type="button"
           onClick={() => setRevealed((v) => !v)}
-          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+          className="absolute right-1.25 top-1/2 -translate-y-1/2 p-1.25 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
           aria-label={revealed ? 'Hide key' : 'Reveal key'}
         >
           {revealed ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -59,7 +77,7 @@ export default function SecretInput({ label, value, onChange, placeholder, saved
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <label className="text-xs font-medium text-[var(--color-text-secondary)]">
+        <label htmlFor={inputId} className="text-xs font-medium text-[var(--color-text-secondary)]">
           {label}
         </label>
         <SavedIndicator show={saved} />
@@ -76,8 +94,8 @@ export default function SecretInput({ label, value, onChange, placeholder, saved
           {field}
         </div>
       )}
-      {status}
-      <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+      {status && <div id={statusId}>{status}</div>}
+      <p id={hintId} className="text-[10px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
         {children}
       </p>
     </div>

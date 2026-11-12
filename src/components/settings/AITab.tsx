@@ -5,7 +5,11 @@
 // The model list comes from useAIModels on the SAVED key, so it reloads when a key is saved, not on every keystroke:
 // the one-file dialog requested it twice per open and once per keystroke. Test and Refresh models act on the key in
 // the field: a successful Test saves it, and Refresh saves it before it reloads, so the list follows the field.
-import { useCallback, useEffect, useState } from 'react';
+// For a screen reader: the provider buttons are toggles with fixed names, the one in use pressed; Test keeps a name
+// while an icon stands in for its word; its result is announced (a refusal as an alert, which also marks the key field
+// invalid; a valid key as a status) and describes the key field. The result line is inserted with its role, not kept
+// as an empty live region: AppSettings.lazy.test.jsx reads any status role in the dialog as its stand-in's loading line.
+import { useCallback, useEffect, useId, useState } from 'react';
 import { Check, CircleAlert, LoaderCircle, RefreshCw, Star } from 'lucide-react';
 import { getPreference } from '../../lib/store.js';
 import { savePreference } from '../../lib/storeEvents.js';
@@ -66,6 +70,7 @@ export default function AITab() {
   const { status: testStatus, error: testError, test, reset: resetTest } = useKeyTester();
   const { models, loading, error: modelError, refresh } = useAIModels(provider, savedKey || null);
   const hasModels = models.length > 0;
+  const modelSelectId = useId();
 
   // A stored model the list does not offer (none yet, another provider's, a retired one) gives way to the list's
   // first, as the one-file dialog did whenever a list loaded. Only the store is written, and the select follows it.
@@ -112,14 +117,32 @@ export default function AITab() {
     savePreference('ai_model_name', modelObj?.name || modelId);
   };
 
+  // Test's result under the key field, or null while there is none, so the field is never described by an empty line.
+  const testResult = testStatus === 'error' && testError ? (
+    <div role="alert" className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
+      <CircleAlert size={11} className="shrink-0 mt-px" />
+      <span>{testError}</span>
+    </div>
+  ) : testStatus === 'success' ? (
+    <div role="status" className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--color-bull)]">
+      <Check size={11} className="shrink-0" />
+      <span>Key valid — models loaded.</span>
+    </div>
+  ) : null;
+
   return (
     <div className="p-6 space-y-4 fade-in">
-      {/* Provider picker */}
-      <div className="flex gap-1.5 p-1 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]">
+      {/* Provider picker: no visible text names it, so the group carries its name */}
+      <div
+        role="group"
+        aria-label="AI provider"
+        className="flex gap-1.5 p-1 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border-subtle)]"
+      >
         {AI_PROVIDERS.map((p) => (
           <button
             key={p.id}
             onClick={() => handleProviderChange(p.id)}
+            aria-pressed={provider === p.id}
             className={`flex-1 text-xs font-medium py-2 rounded-lg transition-all duration-150 flex items-center justify-center gap-1.5 ${
               provider === p.id
                 ? 'bg-[var(--color-surface)] text-[var(--color-text-primary)] shadow-sm border border-[var(--color-border-subtle)]'
@@ -140,47 +163,44 @@ export default function AITab() {
         onChange={handleKeyChange}
         placeholder={meta?.hint || 'API key...'}
         saved={saved}
+        invalid={testStatus === 'error'}
         action={(
           <button
             onClick={() => { void handleTest(); }}
             disabled={!draft.trim() || testStatus === 'testing'}
             className="px-3 py-2 text-xs font-medium rounded-lg border transition-colors disabled:opacity-30 disabled:cursor-not-allowed bg-[var(--color-surface-2)] border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]"
           >
+            {/* The icons are hidden from the tree, so each stands with a name: still "Test" once a result shows, which
+                the line under the field says in words. */}
             {testStatus === 'testing' ? (
-              <LoaderCircle size={12} className="animate-spin" />
+              <>
+                <LoaderCircle size={12} className="animate-spin" />
+                <span className="sr-only">Testing key</span>
+              </>
             ) : testStatus === 'success' ? (
-              <Check size={12} className="text-[var(--color-bull)]" />
+              <>
+                <Check size={12} className="text-[var(--color-bull)]" />
+                <span className="sr-only">Test</span>
+              </>
             ) : testStatus === 'error' ? (
-              <CircleAlert size={12} className="text-[var(--color-bear)]" />
+              <>
+                <CircleAlert size={12} className="text-[var(--color-bear)]" />
+                <span className="sr-only">Test</span>
+              </>
             ) : (
               'Test'
             )}
           </button>
         )}
-        status={(
-          <>
-            {testStatus === 'error' && testError && (
-              <div className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
-                <CircleAlert size={11} className="shrink-0 mt-px" />
-                <span>{testError}</span>
-              </div>
-            )}
-            {testStatus === 'success' && (
-              <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--color-bull)]">
-                <Check size={11} className="shrink-0" />
-                <span>Key valid — models loaded.</span>
-              </div>
-            )}
-          </>
-        )}
+        status={testResult}
       >
         Stored locally in your browser.
         {meta?.needsKey ? ' Required for this provider (no server default).' : ' Optional — server key used if empty.'}
       </SecretInput>
 
-      {/* Model */}
+      {/* Model: the label names the select while there is one; loading and an empty list show a line in its place */}
       <div>
-        <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
+        <label htmlFor={modelSelectId} className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
           Model
         </label>
         {loading ? (
@@ -189,6 +209,7 @@ export default function AITab() {
           </div>
         ) : hasModels ? (
           <select
+            id={modelSelectId}
             value={savedModel}
             onChange={(e) => handleModelChange(e.target.value)}
             className="w-full bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors cursor-pointer"
@@ -208,7 +229,7 @@ export default function AITab() {
             <button
               onClick={handleRefresh}
               disabled={meta?.needsKey && !draft.trim()}
-              className="text-[10px] text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+              className="min-h-6 text-[10px] text-[var(--color-accent)] hover:text-[var(--color-accent-hover)] disabled:text-[var(--color-text-muted)] disabled:cursor-not-allowed transition-colors flex items-center gap-1"
             >
               <RefreshCw size={10} /> Refresh models
             </button>

@@ -54,7 +54,7 @@ function PremiumLock({ featureName }: { featureName?: string }) {
           ) : (
             <button
               onClick={() => setShowRequest(true)}
-              className="w-full text-center text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors pt-1"
+              className="w-full min-h-6 text-center text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors pt-1"
             >
               Don't have a token? <span className="underline">Request access</span>
             </button>

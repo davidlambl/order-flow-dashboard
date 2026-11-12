@@ -1,6 +1,7 @@
 // src/components/settings/BackupTab.tsx
 // The Backup tab: the strategic context (a preview of the stored document, the editor it opens, Clear), then exporting
-// everything but the API keys to a JSON file and importing one behind a confirm, then Reset all settings.
+// everything but the API keys to a JSON file and importing one behind a confirm, then Reset all settings. An import that
+// fails is announced as an alert, one that finishes as a status.
 import { useCallback, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { Check, CircleAlert, Download, FileText, HardDrive, Pencil, RotateCcw, Upload } from 'lucide-react';
@@ -125,7 +126,7 @@ export default function BackupTab() {
                     savePreference('strategic_context', null);
                   }
                 }}
-                className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
+                className="min-h-6 min-w-6 text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
               >
                 Clear
               </button>
@@ -191,12 +192,15 @@ export default function BackupTab() {
           >
             <Upload size={12} /> Import
           </button>
+          {/* Never shown: the Import button opens it. The hidden attribute, not a class, so the DOM says so (jsdom and
+              axe included), and a name all the same. */}
           <input
             ref={fileInputRef}
             type="file"
             accept=".json"
             onChange={handleImport}
-            className="hidden"
+            hidden
+            aria-label="Backup file to import"
           />
         </div>
 
@@ -216,7 +220,7 @@ export default function BackupTab() {
           </div>
         )}
         {importStatus === 'error' && (
-          <div className="flex items-start gap-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
+          <div role="alert" className="flex items-start gap-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
             <CircleAlert size={11} className="shrink-0 mt-px" />
             <span>{importError}</span>
           </div>
@@ -235,7 +239,7 @@ export default function BackupTab() {
       {/* Reset */}
       <button
         onClick={handleReset}
-        className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+        className="min-h-6 flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
       >
         <RotateCcw size={11} />
         Reset all settings

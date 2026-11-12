@@ -27,7 +27,7 @@ export default function AccountTab() {
             </div>
             <button
               onClick={() => { void signOut(); }}
-              className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+              className="min-h-6 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
             >
               Sign out
             </button>
@@ -101,7 +101,7 @@ export default function AccountTab() {
             <button
               type="button"
               onClick={() => clearToken()}
-              className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
+              className="min-h-6 text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
             >
               Remove access token
             </button>
@@ -112,15 +112,12 @@ export default function AccountTab() {
         </div>
       ) : (
         <>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
-              Activate Token
-            </label>
-            <TokenActivationForm
-              placeholder="Paste access token..."
-              hint="Unlocks premium features: AI Co-Pilot, Position Analysis, and Ticker Research."
-            />
-          </div>
+          {/* The form draws the label, tied to its input */}
+          <TokenActivationForm
+            label="Activate Token"
+            placeholder="Paste access token..."
+            hint="Unlocks premium features: AI Co-Pilot, Position Analysis, and Ticker Research."
+          />
 
           {/* Request access */}
           {showRequest ? (
