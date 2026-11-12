@@ -1,9 +1,13 @@
 // src/components/KPICards.jsx
+// The four headline numbers. Where a card's colour (and its icon) is the reading — the put/call ratio's band, the side
+// the premium leans to — the word for it follows the value as visually hidden text, in the chat context's words
+// (financialContext.ts), so a screen reader hears what the colour shows. A badge's abbreviation is hidden from a
+// screen reader, which hears its expansion instead; a pointer finds the expansion in the badge's title.
 import { TrendingUp, TrendingDown, Moon, Crosshair, ArrowRightLeft } from 'lucide-react';
 import { formatDollar, formatPct, formatRatio, formatPrice, formatCompact } from '../lib/format';
 import { PUT_CALL } from '../../shared/thresholds.js';
 
-function KPICard({ label, badge, value, icon: Icon, color, bgColor, subtitle, loading }) {
+function KPICard({ label, badge, value, signal, icon: Icon, color, bgColor, subtitle, loading }) {
   if (loading) {
     return (
       <div className="flex flex-col gap-2 p-4 rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
@@ -21,11 +25,16 @@ function KPICard({ label, badge, value, icon: Icon, color, bgColor, subtitle, lo
           <span className="text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wider">
             {label}
           </span>
-          {badge && (
-            <span className="text-[9px] font-semibold uppercase leading-none px-1 py-0.5 rounded bg-[var(--color-surface-3)] text-[var(--color-text-muted)]">
-              {badge}
+          {badge && (<>
+            <span
+              aria-hidden="true"
+              title={badge.expansion}
+              className="text-[9px] font-semibold uppercase leading-none px-1 py-0.5 rounded bg-[var(--color-surface-3)] text-[var(--color-text-muted)]"
+            >
+              {badge.text}
             </span>
-          )}
+            <span className="sr-only">{badge.expansion}</span>
+          </>)}
         </div>
         <div
           className="flex items-center justify-center w-7 h-7 rounded-lg"
@@ -39,6 +48,7 @@ function KPICard({ label, badge, value, icon: Icon, color, bgColor, subtitle, lo
         style={{ color }}
       >
         {value}
+        {signal && <span className="sr-only">, {signal}</span>}
       </p>
       {subtitle && (
         <p className="text-xs text-[var(--color-text-muted)] tabular-nums">{subtitle}</p>
@@ -59,8 +69,9 @@ export default function KPICards({ kpis, loading }) {
   const cards = [
     {
       label: 'Premium Traded',
-      badge: 'C \u2212 P',
+      badge: { text: 'C \u2212 P', expansion: 'Calls minus puts' },
       value: formatDollar(k.netPremium),
+      signal: netPrem == null ? null : netPrem >= 0 ? 'call-heavy' : 'put-heavy',
       icon: netPrem != null && netPrem < 0 ? TrendingDown : TrendingUp,
       color: netPrem == null ? 'var(--color-text-muted)' : netPrem >= 0 ? 'var(--color-bull)' : 'var(--color-bear)',
       bgColor: netPrem == null ? 'var(--color-surface-3)' : netPrem >= 0 ? 'var(--color-bull-bg)' : 'var(--color-bear-bg)',
@@ -78,7 +89,7 @@ export default function KPICards({ kpis, loading }) {
     },
     {
       label: 'Dark Pool Vol %',
-      badge: 'EST.',
+      badge: { text: 'EST.', expansion: 'Estimate' },
       value: formatPct(k.darkPoolPct),
       icon: Moon,
       color: 'var(--color-purple)',
@@ -88,6 +99,7 @@ export default function KPICards({ kpis, loading }) {
     {
       label: 'Put / Call Ratio',
       value: formatRatio(k.putCallRatio),
+      signal: pc == null ? null : pc > PUT_CALL.bearishAbove ? 'bearish' : pc < PUT_CALL.bullishBelow ? 'bullish' : 'neutral',
       icon: ArrowRightLeft,
       color: pc == null ? 'var(--color-text-muted)' : pc > PUT_CALL.bearishAbove ? 'var(--color-bear)' : pc < PUT_CALL.bullishBelow ? 'var(--color-bull)' : 'var(--color-warn)',
       bgColor: pc == null ? 'var(--color-surface-3)' : pc > PUT_CALL.bearishAbove ? 'var(--color-bear-bg)' : pc < PUT_CALL.bullishBelow ? 'var(--color-bull-bg)' : 'var(--color-warn-bg)',

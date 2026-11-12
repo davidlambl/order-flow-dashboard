@@ -1,5 +1,6 @@
 // src/components/research/RatingBar.tsx
-// The analysts' ratings as one bar, a segment per non-zero rating sized by its share, with the counts beneath.
+// The analysts' ratings as one bar, a segment per non-zero rating sized by its share, with the counts beneath, each
+// named in visually hidden text. Each count is the text of a span of its own, which the research panel's tests read.
 
 import type { AnalystConsensus } from '../../../types/market.js';
 
@@ -23,7 +24,8 @@ export default function RatingBar({ consensus }: RatingBarProps) {
 
   return (
     <div className="space-y-1.5">
-      <div className="flex h-3 rounded-full overflow-hidden">
+      {/* A drawing of the counts beneath, titled for a pointer: a screen reader reads the named counts instead. */}
+      <div aria-hidden="true" className="flex h-3 rounded-full overflow-hidden">
         {segments.map((s, i) => (
           <div
             key={i}
@@ -44,7 +46,9 @@ export default function RatingBar({ consensus }: RatingBarProps) {
               className="w-1.5 h-1.5 rounded-sm"
               style={{ backgroundColor: s.color, opacity: s.opacity || 1 }}
             />
-            {s.count}
+            {/* The swatch's colour names the rating for a sighted user; the words do for a screen reader. */}
+            <span className="sr-only">{s.label}: </span>
+            <span>{s.count}</span>
           </span>
         ))}
       </div>
