@@ -61,6 +61,13 @@ describe('ChatHeader: names and tooltips', () => {
   });
 });
 
+describe('ChatHeader: the title', () => {
+  it('is a level-2 heading: the chat is a section of the page beside the dashboard\'s, not a part of one', () => {
+    render(header());
+    expect(screen.getByRole('heading', { level: 2, name: 'AI Co-Pilot' })).toBeInTheDocument();
+  });
+});
+
 describe('ChatHeader: axe', () => {
   it('Pin: finds nothing with the messages shown', async () => {
     const { container } = render(header());

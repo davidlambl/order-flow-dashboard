@@ -34,9 +34,10 @@ export default function ChatHeader({
           <Sparkles size={12} className="text-[var(--color-purple)]" />
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-[var(--color-text-primary)] leading-none">
+          {/* A level-2 heading, like a dashboard section's: the chat is a part of the page beside them, not in one. */}
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] leading-none">
             AI Co-Pilot
-          </h3>
+          </h2>
           <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
             {modelName} · {ticker || '—'} context
           </p>

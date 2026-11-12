@@ -392,15 +392,14 @@ describe('App: the chat on a phone and from md up', () => {
 
   // ── axe, one run per state: the whole page, since landmarks, regions and a modal dialog are judged on it ──
 
-  // heading-order is off in both: the dashboard's headings belong to its sections and gates (a section title, the
-  // locked Position Analysis card's h3), not to the chat or its handle, and change in their own commits. What these
-  // runs judge is the chat's role and name, the handle's role and value, and the page made inert around a modal chat.
+  // These runs judge the whole page: the headings in order (the header's h1, a section's or the chat's h2, a card's
+  // h3), the chat's role and name, the handle's role and value, and the page made inert around a modal chat.
   it.each([
     // region is off on a desktop: the handle is a named, focusable separator, and it sits between `main` and the
     // chat's landmark, outside both, because the sidebar's layout is pinned (App.sidebar.test.jsx: the handle is the
     // chat's previous sibling). axe exempts a button outside landmarks, not a separator. Below md there is no handle.
-    ['a phone', PHONE_WIDTH, ['heading-order']],
-    ['a desktop', DESKTOP_WIDTH, ['heading-order', 'region']],
+    ['a phone', PHONE_WIDTH, []],
+    ['a desktop', DESKTOP_WIDTH, ['region']],
   ])('Pin: the page with the chat open on %s has no axe violation', async (_label, width, disable) => {
     const error = vi.spyOn(console, 'error');
     setViewportWidth(width);

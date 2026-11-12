@@ -210,10 +210,7 @@ describe('the tab bar', () => {
   it.each([
     ['Data', []],
     ['Account', []],
-    // The Backup tab's file input is hidden by Tailwind's `hidden` class, which jsdom does not apply, so axe judges an
-    // unlabelled control that a browser does not show. The control gets its label in another commit of this branch;
-    // until then `label` is off for this one state.
-    ['Backup', ['label']],
+    ['Backup', []],
   ])('has no axe violations with the %s tab shown', async (name, disable) => {
     await openSettings();
     fireEvent.click(screen.getByText(name, { selector: 'button' }));

@@ -22,6 +22,12 @@ describe('ChatLockScreen', () => {
     expect(screen.getByPlaceholderText('Paste access token...')).toHaveFocus();
   });
 
+  it('titles the panel with a level-2 heading, as the unlocked chat does, and the lock under it with a level-3 one', () => {
+    render(<ChatLockScreen onClose={vi.fn()} />);
+    expect(screen.getByRole('heading', { level: 2, name: 'AI Co-Pilot' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Premium Feature' })).toBeInTheDocument();
+  });
+
   it('Pin: the token field is still found by its placeholder', () => {
     render(<ChatLockScreen onClose={vi.fn()} />);
     expect(screen.getByPlaceholderText('Paste access token...')).toHaveValue('');
