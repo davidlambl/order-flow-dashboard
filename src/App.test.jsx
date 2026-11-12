@@ -70,7 +70,7 @@ function quote(ticker) {
 const tickerOf = (request) => new URL(request.url).searchParams.get('ticker');
 
 /** Header's auto-refresh toggle while auto-refresh is on: the countdown, 'Auto' or 'Paused'. */
-const toggle = () => screen.getByLabelText('Disable auto-refresh');
+const toggle = () => screen.getByRole('button', { name: /^Disable auto-refresh\b/ });
 
 describe('App', () => {
   beforeEach(() => {
