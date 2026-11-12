@@ -16,6 +16,7 @@ import StrategicContextEditor from './StrategicContextEditor.js';
 import { getPreference, setPreference } from '../lib/store.js';
 import { scheduleIdlePreload } from '../lib/lazyWithPreload.js';
 import { importGate, skipLazyPreload } from '../test/lazy.js';
+import { isOpenModal } from '../test/standins.js';
 
 skipLazyPreload();
 
@@ -81,7 +82,7 @@ it('open while the dialog loads: a spinner on a backdrop in the top layer, over 
   const loading = spinner();
   expect(loading).toBeInTheDocument();
   const layer = layerOf(loading);
-  expect(layer.open).toBe(true);
+  expect(isOpenModal(layer)).toBe(true);
   expect(layer).toHaveClass('inset-0', 'open:flex', 'items-center', 'justify-center');
   expect(layer.parentElement).toBe(document.body);
   expect(within(layer).getByRole('status').parentElement).toBe(layer);
@@ -176,7 +177,7 @@ describe('a failed import', () => {
     const box = card.parentElement;
     expect(box).toHaveClass('relative', 'max-w-sm', 'shadow-2xl');
     const layer = layerOf(card);
-    expect(layer.open).toBe(true);
+    expect(isOpenModal(layer)).toBe(true);
     expect(layer).toHaveClass('inset-0');
     expect(layer.parentElement).toBe(document.body);
     expect(box.parentElement).toBe(layer);

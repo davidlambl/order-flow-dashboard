@@ -98,6 +98,19 @@ function close(returnValue) {
   queueMicrotask(() => this.dispatchEvent(new Event('close')));
 }
 
+/**
+ * Whether `dialog` is open as a MODAL dialog: opened by showModal(), not by show() or by the `open` attribute alone,
+ * which `dialog.open` cannot tell apart. Under the stand-in it reads what showModal() recorded; where the environment
+ * has dialogs of its own it asks the :modal selector.
+ * @param {HTMLDialogElement} dialog
+ * @returns {boolean}
+ */
+export function isOpenModal(dialog) {
+  if (!dialog.open) return false;
+  if (HTMLDialogElement.prototype.showModal[STAND_IN]) return opened.get(dialog)?.modal === true;
+  return dialog.matches(':modal');
+}
+
 /** Installs showModal(), show() and close() on HTMLDialogElement when the environment has none. setup.js calls it. */
 export function installDialog() {
   if (typeof HTMLDialogElement === 'undefined' || typeof HTMLDialogElement.prototype.showModal === 'function') return;
@@ -120,7 +133,8 @@ export function installDialog() {
  * cancelable `cancel` event on the dialog and, unless a listener prevented it, closes the dialog. A dialog that is
  * closed, or open but not modal (show(), or the `open` attribute alone), has no close watcher: nothing happens.
  * `{ cancelable: false }` is the second Escape with no user activation in between, for which Chromium makes `cancel`
- * not cancelable: a listener's preventDefault() is then ignored and the dialog closes (plan D2's SyncChoice case).
+ * not cancelable: a listener's preventDefault() is then ignored and the dialog closes (what the sync choice, which
+ * nothing may dismiss, has to survive).
  * @param {HTMLDialogElement} dialog
  * @param {{ cancelable?: boolean }} [options]
  * @returns {boolean} true when the dialog closed

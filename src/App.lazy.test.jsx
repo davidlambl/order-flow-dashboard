@@ -22,6 +22,7 @@ import { http, HttpResponse } from 'msw';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { server } from './test/setup.js';
 import { importGate, skipLazyPreload } from './test/lazy.js';
+import { isOpenModal } from './test/standins.js';
 import App from './App.jsx';
 import ChunkBoundary from './components/ChunkBoundary.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -432,7 +433,7 @@ describe('App: the parts it loads on demand', () => {
       const client = renderConflict();
       const layer = await syncDialog();
       expect(layer).toBeInstanceOf(HTMLDialogElement);
-      expect(layer.open).toBe(true);
+      expect(isOpenModal(layer)).toBe(true);
       expect(layer).toHaveAttribute('aria-busy', 'true');
       expect(layer).toHaveFocus();
       expect(layer.querySelector('.animate-spin')).not.toBeNull();
@@ -461,7 +462,7 @@ describe('App: the parts it loads on demand', () => {
       await sync.reject(new TypeError(OFFLINE));
       const layer = screen.getByRole('dialog', { name: 'Sync your data' });
       expect(layer).toBeInstanceOf(HTMLDialogElement);
-      expect(layer.open).toBe(true);
+      expect(isOpenModal(layer)).toBe(true);
       expect(layer).not.toHaveAttribute('aria-busy');
       expect(placement(layer)).toEqual(placement(loading));
       expect(layer).toHaveFocus();

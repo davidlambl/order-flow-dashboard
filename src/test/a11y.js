@@ -9,8 +9,8 @@
 // jsdom has no layout (every box is 0×0, every scroll size 0), no computed colours and no canvas, and the tests load
 // no stylesheet. So:
 // - Contrast, target sizes, overflow, scrolling, focus order and anything else geometric are NOT checked here: the
-//   rules for them are switched off below, each with its reason, and the lead measures them per state in a real
-//   browser (the table in .claude/PLAN-phase-6.md, Baseline). A clean run here says nothing about them.
+//   rules for them are switched off below, each with its reason. They are measured per screen state in a real
+//   browser instead (docs/ROADMAP.md, Phase 6, has the figures). A clean run here says nothing about them.
 // - Every element counts as rendered: Tailwind's hidden, sr-only, md:… and opacity classes do nothing here. Only the
 //   `hidden` attribute, aria-hidden, inert, inline styles and a closed <dialog> hide anything.
 // - The context decides what is judged. Testing Library's `container` for a component. For a whole page with

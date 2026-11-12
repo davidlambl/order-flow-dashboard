@@ -12,7 +12,7 @@
 // and an install leaves an API the environment has alone.
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { STAND_IN, installDialog, installPointerCapture, requestDialogClose } from './standins.js';
+import { STAND_IN, installDialog, installPointerCapture, isOpenModal, requestDialogClose } from './standins.js';
 import { DESKTOP_WIDTH, PHONE_WIDTH, installMatchMedia, resetViewport, setViewportWidth } from './viewport.js';
 
 /** What `fn` threw, or null. */
@@ -214,6 +214,25 @@ describe('requestDialogClose', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
     await microtask();
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isOpenModal', () => {
+  it('is true only while a dialog is open through showModal(): not closed, not after show(), not by the attribute', () => {
+    const { dialog } = renderDialog(<button type="button">Close</button>);
+    expect(isOpenModal(dialog)).toBe(false); // closed
+    dialog.show();
+    expect(dialog.open).toBe(true);
+    expect(isOpenModal(dialog)).toBe(false); // open, not modal
+    dialog.close();
+    dialog.setAttribute('open', '');
+    expect(dialog.open).toBe(true);
+    expect(isOpenModal(dialog)).toBe(false); // the open attribute alone
+    dialog.removeAttribute('open');
+    dialog.showModal();
+    expect(isOpenModal(dialog)).toBe(true);
+    dialog.close();
+    expect(isOpenModal(dialog)).toBe(false);
   });
 });
 

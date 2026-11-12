@@ -9,7 +9,7 @@
 // text. Last, axe and the label check once per state, and pins of what must not move: the tooltips and the price
 // change's sign.
 // Tailwind's classes do nothing under jsdom (src/test/a11y.js): where a test is about what a class hides or shows, the
-// class is the evidence, and the lead measures the result in a browser.
+// class is the evidence; what it does on screen is measured in a browser.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import Header from './Header.jsx';
