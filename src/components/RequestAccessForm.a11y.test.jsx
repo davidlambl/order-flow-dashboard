@@ -5,7 +5,7 @@
 // axe run per state. Each field is still found by its placeholder (Pin). MSW answers the form's POST to the site root
 // (Netlify Forms) as a test sets it.
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../test/setup.js';
@@ -68,7 +68,7 @@ describe('RequestAccessForm', () => {
     const user = userEvent.setup();
     const { container } = render(<RequestAccessForm compact />);
     await send(user);
-    expect(await screen.findByRole('status')).toHaveTextContent("Request sent — you'll hear back soon.");
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent("Request sent — you'll hear back soon."));
     await expectNoAxeViolations(container);
   });
 

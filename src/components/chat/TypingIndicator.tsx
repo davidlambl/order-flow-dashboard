@@ -1,7 +1,9 @@
 // src/components/chat/TypingIndicator.tsx
 // Three pulsing dots beside the assistant's avatar: the reply's place while it is in flight and no text of it has
-// arrived yet. For a screen reader it is a status whose one line, visually hidden, says the assistant is typing: said
-// once when the indicator shows, since the text never changes while it is up. The avatar and the dots are decoration.
+// arrived yet. For a screen reader it is a status whose one line, visually hidden, says the assistant is typing. The
+// region mounts together with that line and the line never changes while it is up, so whether it is spoken is the
+// screen reader's choice: a live region announces a change inside it, and one inserted with its text is not read by
+// every screen reader. The avatar and the dots are decoration.
 
 import { Bot } from 'lucide-react';
 

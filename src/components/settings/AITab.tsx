@@ -6,9 +6,12 @@
 // the one-file dialog requested it twice per open and once per keystroke. Test and Refresh models act on the key in
 // the field: a successful Test saves it, and Refresh saves it before it reloads, so the list follows the field.
 // For a screen reader: the provider buttons are toggles with fixed names, the one in use pressed; Test keeps a name
-// while an icon stands in for its word; its result is announced (a refusal as an alert, which also marks the key field
-// invalid; a valid key as a status) and describes the key field. The result line is inserted with its role, not kept
-// as an empty live region: AppSettings.lazy.test.jsx reads any status role in the dialog as its stand-in's loading line.
+// while an icon stands in for its word; its result is announced and describes the key field. A valid key fills a status
+// region that is there, empty and visually hidden, from the field's first render: a live region announces a change
+// inside it, and one inserted together with its text is not read by every screen reader. A refusal is an alert in the
+// same place, which is announced as it is inserted, and also marks the key field invalid. The field's description
+// names the region throughout; an empty one adds nothing to it, so the hint alone describes the field until Test has
+// a result.
 import { useCallback, useEffect, useId, useState } from 'react';
 import { Check, CircleAlert, LoaderCircle, RefreshCw, Star } from 'lucide-react';
 import { getPreference } from '../../lib/store.js';
@@ -117,18 +120,28 @@ export default function AITab() {
     savePreference('ai_model_name', modelObj?.name || modelId);
   };
 
-  // Test's result under the key field, or null while there is none, so the field is never described by an empty line.
-  const testResult = testStatus === 'error' && testError ? (
-    <div role="alert" className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
-      <CircleAlert size={11} className="shrink-0 mt-px" />
-      <span>{testError}</span>
-    </div>
-  ) : testStatus === 'success' ? (
-    <div role="status" className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--color-bull)]">
-      <Check size={11} className="shrink-0" />
-      <span>Key valid — models loaded.</span>
-    </div>
-  ) : null;
+  // Test's result under the key field: the alert while the key was refused, and the status region always, the same
+  // node at the same place, holding the line only while the key is valid. Empty, it is `sr-only` alone (absolutely
+  // positioned, so it takes no room and shows nothing) and stays in the accessibility tree.
+  const keyValid = testStatus === 'success';
+  const testResult = (
+    <>
+      {testStatus === 'error' && testError ? (
+        <div role="alert" className="flex items-start gap-1.5 mt-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
+          <CircleAlert size={11} className="shrink-0 mt-px" />
+          <span>{testError}</span>
+        </div>
+      ) : null}
+      <div role="status" className={keyValid ? 'flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--color-bull)]' : 'sr-only'}>
+        {keyValid && (
+          <>
+            <Check size={11} className="shrink-0" />
+            <span>Key valid — models loaded.</span>
+          </>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <div className="p-6 space-y-4 fade-in">

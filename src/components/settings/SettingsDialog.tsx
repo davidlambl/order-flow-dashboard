@@ -13,6 +13,9 @@
 // flushed as the Account tab replaced them, so no save can land after the sign-out has cleared this browser's keys and
 // write one back. If a second tab is ever kept mounted (hidden, say), the hand flush before signOut has to come back.
 // The one tab panel is a single element that every tab controls, labelled by the selected tab.
+// The panel scrolls under its sticky header (the title and the tab list): its scroll padding, 8rem and more than the
+// header's height, is what a browser leaves above a control it scrolls into view for focus, so Shift+Tab never puts the
+// focused control under the header (WCAG 2.4.11). SettingsPlaceholder's panel carries the same classes.
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Cpu, Database, HardDrive, KeyRound, Settings, X } from 'lucide-react';
@@ -80,7 +83,7 @@ export default function SettingsDialog({ onClose }: SettingsDialogProps) {
       onDismiss={onClose}
       backdropClassName="backdrop:bg-black/60 backdrop:backdrop-blur-sm"
     >
-      <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl">
+      <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto scroll-pt-32 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl">
         {/* Header + Tab bar */}
         <div className="sticky top-0 z-10 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
           <div className="flex items-center justify-between px-6 py-4">

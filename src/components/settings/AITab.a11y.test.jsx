@@ -7,7 +7,7 @@
 // MSW answers getModels with the list for every request but the stored key's second, which is Test's (the first is the
 // list the tab loads for the saved key); a test passes the reply for that one.
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../test/setup.js';
@@ -49,13 +49,20 @@ async function renderTab({ stored } = {}) {
 
 const keyField = () => screen.getByLabelText('Anthropic API Key');
 
+/**
+ * A description that is `text` and nothing else, but for leading space: the field names Test's status region before
+ * the hint, empty until there is a result, and dom-accessibility-api joins the parts with a space without trimming the
+ * result, where a browser trims it.
+ */
+const only = (text) => new RegExp(`^\\s*${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+
 describe('AITab', () => {
   it('labels the key field and the model select, with nothing missing for axe', async () => {
     serveModels();
     const { container } = await renderTab();
     expectLabelledControls(container);
     expect(keyField()).toBe(screen.getByPlaceholderText('sk-ant-...'));
-    expect(keyField()).toHaveAccessibleDescription(KEY_HINT);
+    expect(keyField()).toHaveAccessibleDescription(only(KEY_HINT));
     expect(keyField()).not.toBeInvalid();
     expect(screen.getByLabelText('Model')).toBe(screen.getByRole('combobox'));
     await expectNoAxeViolations(container);
@@ -92,7 +99,7 @@ describe('AITab', () => {
     await expectNoAxeViolations(container);
 
     release();
-    expect(await screen.findByRole('status')).toHaveTextContent(VALID);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(VALID));
   });
 
   it('announces a key that lists models as a status that describes the key field, the button still named Test', async () => {
@@ -100,7 +107,7 @@ describe('AITab', () => {
     const { user, container } = await renderTab({ stored: STORED });
 
     await user.click(screen.getByRole('button', { name: 'Test' }));
-    expect(await screen.findByRole('status')).toHaveTextContent(VALID);
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(VALID));
     expect(keyField()).toHaveAccessibleDescription(`${VALID} ${KEY_HINT}`);
     expect(keyField()).not.toBeInvalid();
     expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled();
@@ -121,7 +128,7 @@ describe('AITab', () => {
     await user.type(keyField(), 'x');
     expect(screen.queryByRole('alert')).toBeNull();
     expect(keyField()).not.toBeInvalid();
-    expect(keyField()).toHaveAccessibleDescription(KEY_HINT);
+    expect(keyField()).toHaveAccessibleDescription(only(KEY_HINT));
   });
 
   it('Pin: the key field is still found by its placeholder and the model select by its role', async () => {

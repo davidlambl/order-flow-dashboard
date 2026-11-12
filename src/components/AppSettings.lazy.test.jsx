@@ -55,8 +55,15 @@ function Stateful({ onClosed }) {
   return <AppSettings isOpen={open} onClose={() => { setOpen(false); onClosed(); }} />;
 }
 
-/** The stand-in's loading line, or null once the dialog or the failure card has taken its place. */
-const loading = () => screen.queryByRole('status');
+/**
+ * The stand-in's loading line, or null once the dialog or the failure card has taken its place. Looked for in the
+ * header, where the stand-in shows it in the tab list's place: the dialog's AI tab keeps a status region of its own in
+ * the body, empty until its Test has a result.
+ */
+function loading() {
+  const open = screen.queryByRole('dialog', { name: 'Settings' });
+  return open ? within(open.firstElementChild.firstElementChild).queryByRole('status') : null;
+}
 
 /** The tab bar's labels, in document order: the dialog's own, which the stand-in has none of. */
 const tabBar = () => screen.queryAllByRole('tab')

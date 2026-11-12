@@ -2,8 +2,9 @@
 // The request for early access (a Netlify form posted to the site root): name and e-mail side by side on a premium
 // gate (`compact`), stacked in Settings, then the optional message. Each field has a visible label tied to it by an id
 // from useId (the placeholders stay as hints), and the name and e-mail fields say what they hold (autocomplete). A
-// failed request is announced as an alert (it is the request's, not a field's); a sent one replaces the form with a
-// status.
+// failed request is announced as an alert (it is the request's, not a field's); a sent one replaces the form with its
+// line in a status region that is there, empty and visually hidden, beside the form from the first render: a live
+// region announces a change inside it, and one inserted together with its text is not read by every screen reader.
 import { useState, useCallback, useId } from 'react';
 import { Send, LoaderCircle, CircleCheckBig, CircleAlert } from 'lucide-react';
 
@@ -57,75 +58,86 @@ export default function RequestAccessForm({ compact }) {
     }
   }, [name, email, message]);
 
-  if (status === 'sent') {
-    return (
-      <div role="status" className="flex items-center gap-2 py-3 px-3 rounded-lg bg-[var(--color-bull)]/10 border border-[var(--color-bull)]/20">
-        <CircleCheckBig size={14} className="text-[var(--color-bull)] shrink-0" />
-        <span className="text-xs text-[var(--color-bull)]">
-          Request sent — you'll hear back soon.
-        </span>
-      </div>
-    );
-  }
+  const sent = status === 'sent';
 
+  // The status region throughout, then the form while the request is not sent: the region is the same node before and
+  // after, and the fragment adds no element around the two. The region comes first so the form stays its parent's last
+  // child: both parents space their children with space-y, which would put a margin under a form followed by a sibling.
   return (
-    <form onSubmit={handleSubmit} className="space-y-2.5">
-      <div className={compact ? 'flex gap-2' : 'space-y-2'}>
-        <div className={compact ? 'flex-1 min-w-0' : undefined}>
-          <label htmlFor={`${id}-name`} className={LABEL}>Name</label>
-          <input
-            id={`${id}-name`}
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
-            autoComplete="name"
-            required
-            className="w-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
-          />
-        </div>
-        <div className={compact ? 'flex-1 min-w-0' : undefined}>
-          <label htmlFor={`${id}-email`} className={LABEL}>Email address</label>
-          <input
-            id={`${id}-email`}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your@email.com"
-            autoComplete="email"
-            required
-            className="w-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
-          />
-        </div>
-      </div>
-      <div>
-        <label htmlFor={`${id}-message`} className={LABEL}>Message (optional)</label>
-        <textarea
-          id={`${id}-message`}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="Why you'd like access (optional)"
-          rows={2}
-          className="w-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none leading-relaxed"
-        />
-      </div>
-      {error && (
-        <div role="alert" className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
-          <CircleAlert size={10} className="shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-      <button
-        type="submit"
-        disabled={!name.trim() || !email.trim() || status === 'sending'}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-white bg-[var(--color-accent-solid)] hover:bg-[var(--color-accent-solid-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    <>
+      <div
+        role="status"
+        className={sent ? 'flex items-center gap-2 py-3 px-3 rounded-lg bg-[var(--color-bull)]/10 border border-[var(--color-bull)]/20' : 'sr-only'}
       >
-        {status === 'sending' ? (
-          <><LoaderCircle size={12} className="animate-spin" /> Sending...</>
-        ) : (
-          <><Send size={12} /> Request Access</>
+        {sent && (
+          <>
+            <CircleCheckBig size={14} className="text-[var(--color-bull)] shrink-0" />
+            <span className="text-xs text-[var(--color-bull)]">
+              Request sent — you'll hear back soon.
+            </span>
+          </>
         )}
-      </button>
-    </form>
+      </div>
+      {!sent && (
+        <form onSubmit={handleSubmit} className="space-y-2.5">
+          <div className={compact ? 'flex gap-2' : 'space-y-2'}>
+            <div className={compact ? 'flex-1 min-w-0' : undefined}>
+              <label htmlFor={`${id}-name`} className={LABEL}>Name</label>
+              <input
+                id={`${id}-name`}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                autoComplete="name"
+                required
+                className="w-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              />
+            </div>
+            <div className={compact ? 'flex-1 min-w-0' : undefined}>
+              <label htmlFor={`${id}-email`} className={LABEL}>Email address</label>
+              <input
+                id={`${id}-email`}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                autoComplete="email"
+                required
+                className="w-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors"
+              />
+            </div>
+          </div>
+          <div>
+            <label htmlFor={`${id}-message`} className={LABEL}>Message (optional)</label>
+            <textarea
+              id={`${id}-message`}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Why you'd like access (optional)"
+              rows={2}
+              className="w-full bg-[var(--color-surface-2)] text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none leading-relaxed"
+            />
+          </div>
+          {error && (
+            <div role="alert" className="flex items-center gap-1.5 text-[11px] text-[var(--color-bear)]">
+              <CircleAlert size={10} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={!name.trim() || !email.trim() || status === 'sending'}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-white bg-[var(--color-accent-solid)] hover:bg-[var(--color-accent-solid-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {status === 'sending' ? (
+              <><LoaderCircle size={12} className="animate-spin" /> Sending...</>
+            ) : (
+              <><Send size={12} /> Request Access</>
+            )}
+          </button>
+        </form>
+      )}
+    </>
   );
 }

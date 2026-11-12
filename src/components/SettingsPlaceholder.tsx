@@ -41,7 +41,7 @@ export default function SettingsPlaceholder({ onClose, failure }: SettingsPlaceh
       onDismiss={onClose}
       backdropClassName="backdrop:bg-black/60 backdrop:backdrop-blur-sm"
     >
-      <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl">
+      <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto scroll-pt-32 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl">
         <div className="sticky top-0 z-10 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface)]">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="flex items-center gap-2.5">
