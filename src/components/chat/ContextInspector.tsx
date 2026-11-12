@@ -4,7 +4,8 @@
 // a composer keystroke or a streamed frame re-renders nothing here, a changed input (the strategic context included)
 // rebuilds the text at once, and the TIMESTAMP line moves with useNow's minute instead of on every render; the
 // clipboard gets the text shown. The Copied flash and its timer are the leaf's own: closing the inspector unmounts it,
-// which resets the label and clears the timer.
+// which resets the label and clears the timer. Copy is named by its own text and is at least 24 px tall, the smallest
+// target WCAG 2.2 allows.
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { useNow } from '../../hooks/useNow.js';
@@ -34,7 +35,7 @@ function ContextInspector({ buildContext }: ContextInspectorProps) {
             clearTimeout(copyTimer.current);
             copyTimer.current = setTimeout(() => setCopied(false), 1500);
           }}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 min-h-6 px-2 py-0.5 rounded text-[10px] font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
         >
           {copied ? <><Check size={10} className="text-[var(--color-bull)]" /> Copied</> : <><Copy size={10} /> Copy</>}
         </button>

@@ -101,7 +101,9 @@ describe('CollapsibleSection', () => {
 
   it('puts the children straight under the section, beside the header, with noPadding', () => {
     renderSection({ noPadding: true });
-    expect(screen.getByText(BODY).parentElement).toBe(header().parentElement);
+    const region = screen.getByRole('region', { name: TITLE });
+    expect(screen.getByText(BODY).parentElement).toBe(region);
+    expect(region).not.toHaveClass('px-4');
   });
 
   it('writes the preference once per click under StrictMode (D12)', async () => {

@@ -138,10 +138,10 @@ function markupOf(ui) {
   return markup;
 }
 
-/** The Charts section: its toggle, then, while it is expanded, its content. */
-const chartsSection = () => screen.getByRole('button', { name: 'Charts' }).parentElement;
+/** The Charts section: its heading, which holds the toggle, then, while it is expanded, its content. */
+const chartsSection = () => screen.getByRole('heading', { name: 'Charts' }).parentElement;
 /** The expanded section's content: the panel, its skeleton or the failure card, in the section's frame. */
-const chartsContent = () => chartsSection().children[1];
+const chartsContent = () => screen.getByRole('region', { name: 'Charts' }).firstElementChild;
 
 /** The dashboard around the Charts section, which the section's loading or failing leaves as it is. */
 function expectTheRestOfTheDashboard() {

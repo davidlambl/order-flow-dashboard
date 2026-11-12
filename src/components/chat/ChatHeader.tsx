@@ -3,6 +3,10 @@
 // inspector, the strategic-context editor, Clear (only while there is a history to clear), Settings and Close. The
 // label's parts stay direct text children of one <p>: App.test.jsx finds 'Default · AVGO context' by that element's
 // own text, which a <span> around the model name or the ticker would split.
+//
+// The inspector's button shows or hides a view, so its name stays the same and aria-pressed says whether the view is
+// shown; the other buttons name the action they take and are not toggles. A tooltip says what the button's name says,
+// so a speech-input user can say what a mouse user reads.
 import { FileText, Pencil, Settings, Sparkles, Trash, X } from 'lucide-react';
 
 interface ChatHeaderProps {
@@ -10,7 +14,7 @@ interface ChatHeaderProps {
   modelName: string;
   /** The ticker of the market data the chat belongs to; '—' until the first data lands. */
   ticker: string | undefined;
-  /** The inspector shows in place of the messages: its button stays lit. */
+  /** The inspector shows in place of the messages: its button stays lit and pressed. */
   showContext: boolean;
   onToggleContext: () => void;
   onEditContext: () => void;
@@ -47,7 +51,8 @@ export default function ChatHeader({
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]'
           }`}
           aria-label="Inspect model context"
-          title="View data sent to model"
+          aria-pressed={showContext}
+          title="Inspect model context"
         >
           <FileText size={14} />
         </button>
