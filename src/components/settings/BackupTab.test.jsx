@@ -48,7 +48,7 @@ function renderSettings({ auth } = {}) {
 /** Wait for the AI tab's model list (the dialog opens there), then show the Backup tab. */
 async function openBackup(user) {
   await screen.findByRole('combobox');
-  await user.click(screen.getByRole('button', { name: 'Backup' }));
+  await user.click(screen.getByRole('tab', { name: 'Backup' }));
 }
 
 /** The editor's textarea (a portal to document.body), or null while the editor is closed. */

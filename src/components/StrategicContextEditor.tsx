@@ -2,9 +2,11 @@
 // Full-screen modal editor for the Strategic Context document, which the chat and Settings' Backup tab open. It
 // renders only while open, and the dialog itself (StrategicContextDialog.tsx: the text, its autosave, the closes that
 // save first) is loaded on demand, on the first opening or before it in the idle preload. Until the dialog is in, and
-// if it cannot load, the editor is still a modal over whatever opened it: a backdrop at the dialog's z-index with a
-// spinner, or the failure card, whose Try again imports the dialog again. The boundary's default card would render
-// where the boundary sits, in the opener's layout, so the card is put in the modal through `failed`.
+// if it cannot load, the editor is still a modal dialog over whatever opened it, named "Strategic Context" and holding
+// focus itself: a spinner over the backdrop, or the failure card, whose Try again imports the dialog again. Once the
+// dialog is in, this one closes and the loaded one opens in the same commit, remembering the same opener. The
+// boundary's default card would render where the boundary sits, in the opener's layout, so the card is put in the
+// modal through `failed`.
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -12,6 +14,7 @@ import { LoaderCircle } from 'lucide-react';
 import { lazyWithPreload } from '../lib/lazyWithPreload.js';
 import ChunkBoundary from './ChunkBoundary.js';
 import ChunkFailureCard from './ChunkFailureCard.js';
+import ModalDialog from './ModalDialog.js';
 
 const StrategicContextDialog = lazyWithPreload(() => import('./StrategicContextDialog.js'), { idle: true });
 
@@ -21,8 +24,9 @@ interface StrategicContextEditorProps {
 }
 
 /**
- * The modal around what stands in for the dialog: the backdrop and Escape close the editor alone, Escape in the capture
- * phase and stopped, as the dialog stops it, so the Settings dialog's window listener under it never sees the key.
+ * The modal around what stands in for the dialog: a press outside and Escape close the editor alone, Escape in the
+ * capture phase and stopped, as the dialog stops it, so the Settings dialog's window listener under it never sees the
+ * key.
  */
 function EditorModal({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   useEffect(() => {
@@ -34,10 +38,13 @@ function EditorModal({ onClose, children }: { onClose: () => void; children: Rea
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => onClose()} />
+    <ModalDialog
+      label="Strategic Context"
+      onDismiss={onClose}
+      backdropClassName="backdrop:bg-black/70 backdrop:backdrop-blur-sm"
+    >
       {children}
-    </div>,
+    </ModalDialog>,
     document.body,
   );
 }

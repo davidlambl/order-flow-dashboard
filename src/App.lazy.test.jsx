@@ -431,7 +431,8 @@ describe('App: the parts it loads on demand', () => {
       const error = vi.spyOn(console, 'error');
       const client = renderConflict();
       const layer = await syncDialog();
-      expect(layer).toHaveAttribute('aria-modal', 'true');
+      expect(layer).toBeInstanceOf(HTMLDialogElement);
+      expect(layer.open).toBe(true);
       expect(layer).toHaveAttribute('aria-busy', 'true');
       expect(layer).toHaveFocus();
       expect(layer.querySelector('.animate-spin')).not.toBeNull();
@@ -459,7 +460,8 @@ describe('App: the parts it loads on demand', () => {
 
       await sync.reject(new TypeError(OFFLINE));
       const layer = screen.getByRole('dialog', { name: 'Sync your data' });
-      expect(layer).toHaveAttribute('aria-modal', 'true');
+      expect(layer).toBeInstanceOf(HTMLDialogElement);
+      expect(layer.open).toBe(true);
       expect(layer).not.toHaveAttribute('aria-busy');
       expect(placement(layer)).toEqual(placement(loading));
       expect(layer).toHaveFocus();

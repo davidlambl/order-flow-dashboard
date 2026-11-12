@@ -167,7 +167,7 @@ const after = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms); }
 /** Each distinct warning logged, by its first argument. */
 const warningsOf = (warn) => [...new Set(warn.mock.calls.map(([message]) => message))].sort();
 /** The open Settings dialog. */
-const settingsDialog = () => screen.getByRole('heading', { name: 'Settings' }).closest('div.fixed');
+const settingsDialog = () => screen.getByRole('dialog', { name: 'Settings' });
 
 /** Holds the client's session check until the returned release is called: a check still running. */
 function holdSessionCheck(client) {
@@ -327,7 +327,7 @@ describe('App: the session, the per-account backend and the sign-out', () => {
       setClient();
       renderApp();
       fireEvent.click(await screen.findByLabelText('Open settings', {}, { timeout: 5_000 }));
-      fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Account' }));
+      fireEvent.click(within(settingsDialog()).getByRole('tab', { name: 'Account' }));
       fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Sign in' }));
       expect(screen.getByPlaceholderText('you@example.com')).toBeInTheDocument();
       expect(localStorage.getItem('auth_skipped')).toBeNull();
@@ -345,7 +345,7 @@ describe('App: the session, the per-account backend and the sign-out', () => {
       serveFunctions();
       renderApp();
       fireEvent.click(screen.getByLabelText('Open settings'));
-      fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Account' }));
+      fireEvent.click(within(settingsDialog()).getByRole('tab', { name: 'Account' }));
       expect(screen.getByText('Not signed in — data is stored locally only.')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
       await settled();
@@ -683,7 +683,7 @@ describe('App: the session, the per-account backend and the sign-out', () => {
       await hydrated(client);
       await settled();
       fireEvent.click(screen.getByLabelText('Open settings'));
-      fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Backup' }));
+      fireEvent.click(within(settingsDialog()).getByRole('tab', { name: 'Backup' }));
       fireEvent.click(within(settingsDialog()).getByRole('button', { name: /Add strategic context/ }));
       fireEvent.change(await screen.findByPlaceholderText(/^Paste your strategic context here/), { target: { value: "A's private thesis" } });
       expect(localStorage.getItem('strategic_context')).toBeNull(); // still inside the editor's autosave

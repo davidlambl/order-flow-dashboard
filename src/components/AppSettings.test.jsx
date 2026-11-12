@@ -72,10 +72,10 @@ async function open(ui) {
 
 const TABS = ['AI', 'Data', 'Account', 'Backup'];
 
-const tab = (name) => screen.getByRole('button', { name });
+const tab = (name) => screen.getByRole('tab', { name });
 
 /** The tab buttons' labels, in document order. */
-const tabBar = () => screen.getAllByRole('button')
+const tabBar = () => screen.getAllByRole('tab')
   .map((button) => button.textContent)
   .filter((label) => TABS.includes(label));
 
@@ -153,7 +153,12 @@ describe('AppSettings', () => {
 
   it.each([
     ['Escape', () => fireEvent.keyDown(window, { key: 'Escape' })],
-    ['the backdrop', () => fireEvent.click(document.querySelector('.backdrop-blur-sm'))],
+    ['the backdrop', () => {
+      const dialog = screen.getByRole('dialog', { name: 'Settings' });
+      fireEvent.pointerDown(dialog);
+      fireEvent.pointerUp(dialog);
+      fireEvent.click(dialog);
+    }],
     ['"Close settings"', () => fireEvent.click(screen.getByLabelText('Close settings'))],
   ])('Pin: %s closes it, and a pending key edit is in the store once it has closed', async (_, close) => {
     serveModels();
