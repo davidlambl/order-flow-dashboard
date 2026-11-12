@@ -335,7 +335,7 @@ export default function App() {
             <button
               ref={fabRef}
               onClick={() => setChatOpen(true)}
-              className="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--color-accent)] text-white text-sm font-medium shadow-lg hover:bg-[var(--color-accent-hover)] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] z-50"
+              className="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--color-accent-solid)] text-white text-sm font-medium shadow-lg hover:bg-[var(--color-accent-solid-hover)] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] z-50"
               aria-label="Open AI Co-Pilot"
             >
               <Sparkles size={16} />

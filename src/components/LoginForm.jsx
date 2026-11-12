@@ -111,7 +111,7 @@ export default function LoginForm({ onSkip, notice }) {
             <button
               type="submit"
               disabled={status === 'sending' || !email.trim()}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-md transition-colors"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-md transition-colors"
             >
               {status === 'sending' ? 'Sending...' : 'Send magic link'}
             </button>
@@ -120,7 +120,7 @@ export default function LoginForm({ onSkip, notice }) {
 
         <button
           onClick={onSkip}
-          className="w-full min-h-6 text-sm text-gray-500 hover:text-gray-400 transition-colors"
+          className="w-full min-h-6 text-sm text-gray-400 hover:text-gray-300 transition-colors"
         >
           Continue without signing in
         </button>

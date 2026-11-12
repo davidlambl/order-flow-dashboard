@@ -81,7 +81,7 @@ export default function ChatComposer({ ref, value, onChange, onSend, sending, on
         <button
           type="submit"
           disabled={!value.trim()}
-          className="p-2 rounded-lg bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+          className="p-2 rounded-lg bg-[var(--color-accent-solid)] text-white hover:bg-[var(--color-accent-solid-hover)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
           aria-label="Send message"
         >
           <Send size={16} />

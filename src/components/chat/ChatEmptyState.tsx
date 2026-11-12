@@ -38,7 +38,7 @@ export default function ChatEmptyState({ ticker, onSuggest }: ChatEmptyStateProp
           </button>
         ))}
       </div>
-      <p className="text-[10px] text-[var(--color-text-muted)]/60 mt-2">
+      <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
         Chat history is saved locally and persists until cleared.
       </p>
     </div>

@@ -118,7 +118,7 @@ export default function RequestAccessForm({ compact }) {
       <button
         type="submit"
         disabled={!name.trim() || !email.trim() || status === 'sending'}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-white bg-[var(--color-accent-solid)] hover:bg-[var(--color-accent-solid-hover)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {status === 'sending' ? (
           <><LoaderCircle size={12} className="animate-spin" /> Sending...</>

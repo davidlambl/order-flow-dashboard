@@ -39,7 +39,7 @@ function CustomTooltip({ active, payload }) {
 
 function OffChartHint() {
   return (
-    <span className="text-[10px] opacity-70" title="Outside the strike range shown">
+    <span className="text-[10px]" title="Outside the strike range shown">
       (off-chart)
     </span>
   );
@@ -141,7 +141,7 @@ export default function GexChart({ data, loading, spotPrice, costBasis, technica
               onClick={() => setShowMAs((v) => !v)}
               aria-pressed={showMAs}
               className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors ${
-                showMAs ? 'bg-[var(--color-purple-bg)] text-[var(--color-purple)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+                showMAs ? 'bg-[var(--color-purple-bg)] text-[var(--color-purple-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
               }`}
               title={showMAs ? 'Hide moving averages' : 'Show moving averages'}
             >

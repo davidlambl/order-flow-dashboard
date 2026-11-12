@@ -95,7 +95,7 @@ export default function EarningsCard({ earnings, loading, now }: EarningsCardPro
         <div className={`text-[10px] font-medium px-2 py-1 rounded text-center ${
           earnings.surprise >= 0
             ? 'text-[var(--color-bull)] bg-[var(--color-bull)]/10'
-            : 'text-[var(--color-bear)] bg-[var(--color-bear)]/10'
+            : 'text-[var(--color-bear-text)] bg-[var(--color-bear)]/10'
         }`}>
           {earnings.surprise >= 0 ? '+' : '-'}${Math.abs(earnings.surprise).toFixed(2)} {earnings.surprise >= 0 ? 'beat' : 'miss'}
         </div>

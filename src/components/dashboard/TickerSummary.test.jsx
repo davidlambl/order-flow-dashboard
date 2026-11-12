@@ -36,7 +36,7 @@ describe('TickerSummary', () => {
   it('shows the ticker, IV30 to one decimal and the contract count over a loaded payload, and no badge', () => {
     renderRow({ data: payload({ iv30: 27.06 }) });
     expect(screen.getByText('AVGO')).toHaveClass('font-mono', 'font-bold');
-    expect(screen.getByText('IV30: 27.1%')).toHaveClass('bg-[var(--color-purple-bg)]', 'text-[var(--color-purple)]');
+    expect(screen.getByText('IV30: 27.1%')).toHaveClass('bg-[var(--color-purple-bg)]', 'text-[var(--color-purple-text)]');
     expect(screen.getByText('420 contracts analyzed')).toHaveClass('hidden', 'sm:inline'); // not at a phone's width
     expect(screen.queryByText('DEMO DATA')).toBeNull();
     expect(screen.queryByText('ERROR')).toBeNull();
@@ -85,7 +85,7 @@ describe('TickerSummary', () => {
     const { rerender } = renderRow({ error: 'Market data unavailable (502)' });
     const badge = screen.getByText('ERROR');
     expect(badge).toHaveAttribute('title', 'Market data unavailable (502)');
-    expect(badge).toHaveClass('bg-[var(--color-bear-bg)]', 'text-[var(--color-bear)]');
+    expect(badge).toHaveClass('bg-[var(--color-bear-bg)]', 'text-[var(--color-bear-text)]');
     expect(screen.queryByText('DEMO DATA')).toBeNull();
     expect(screen.getByText('IV30: 31.4%')).toBeInTheDocument();
     expect(screen.getByText('420 contracts analyzed')).toBeInTheDocument();

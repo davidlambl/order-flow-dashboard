@@ -24,6 +24,10 @@
      colour's own tints up to 20%, where the base colours fall to 3.1 to 3.4. Fills, borders, icons and focus rings
      keep the base colour. */
   --color-accent-text: #60a5fa;
+  /* Fills under white text, a button's label: white is 3.67:1 on --color-accent, 5.17:1 on this and 6.70:1 on its
+     hover. The logo tile and other fills that carry an icon alone keep --color-accent (3:1 is asked of those). */
+  --color-accent-solid: #2563eb;
+  --color-accent-solid-hover: #1d4ed8;
 
   --color-bull: #22c55e;
   --color-bull-bg: rgba(34, 197, 94, 0.1);

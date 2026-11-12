@@ -75,7 +75,7 @@ export default function SyncChoice({ report, onChoose, busy }) {
               disabled={busy}
               className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 choice.recommended
-                  ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]'
+                  ? 'bg-[var(--color-accent-solid)] border-[var(--color-accent-solid)] text-white hover:bg-[var(--color-accent-solid-hover)]'
                   : 'bg-[var(--color-surface-2)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]'
               }`}
             >
@@ -85,7 +85,7 @@ export default function SyncChoice({ report, onChoose, busy }) {
                   <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/15">Recommended</span>
                 )}
               </span>
-              <span className={`block mt-0.5 text-[11px] ${choice.recommended ? 'text-white/80' : 'text-[var(--color-text-secondary)]'}`}>
+              <span className={`block mt-0.5 text-[11px] ${choice.recommended ? 'text-white' : 'text-[var(--color-text-secondary)]'}`}>
                 {choice.description}
               </span>
             </button>

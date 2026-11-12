@@ -56,7 +56,7 @@ export default function TokenActivationForm({ label = 'Access token', placeholde
           <button
             type="submit"
             disabled={!tokenInput.trim() || status === 'validating'}
-            className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-[var(--color-accent-solid)] hover:bg-[var(--color-accent-solid-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
           >
             {/* The icons are hidden from the tree, so each stands with a name. */}
             {status === 'validating' ? (

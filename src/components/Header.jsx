@@ -111,7 +111,7 @@ function TickerSearch({ ticker, setTicker }) {
         <p
           id={hintId}
           role="alert"
-          className="absolute top-full z-10 mt-1 mr-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-[11px] text-[var(--color-bear)] shadow-lg"
+          className="absolute top-full z-10 mt-1 mr-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-[11px] text-[var(--color-bear-text)] shadow-lg"
         >
           {TICKER_HINT}
         </p>
@@ -281,7 +281,7 @@ export default function Header({ onOpenSettings }) {
               <span
                 className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] font-semibold border"
                 style={{
-                  color: tokenTier === 'pro' ? 'var(--color-accent)' : 'var(--color-purple)',
+                  color: tokenTier === 'pro' ? 'var(--color-accent-text)' : 'var(--color-purple-text)',
                   backgroundColor: tokenTier === 'pro' ? 'rgba(59,130,246,0.1)' : 'var(--color-purple-bg)',
                   borderColor: tokenTier === 'pro' ? 'rgba(59,130,246,0.2)' : 'rgba(168,85,247,0.2)',
                 }}

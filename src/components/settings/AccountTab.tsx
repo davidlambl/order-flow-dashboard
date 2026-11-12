@@ -47,7 +47,7 @@ export default function AccountTab() {
               <button
                 type="button"
                 onClick={() => signIn()}
-                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
+                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent-text)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
               >
                 Sign in
               </button>
@@ -67,8 +67,8 @@ export default function AccountTab() {
               <ShieldCheck size={16} className="text-[var(--color-bull)]" />
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
                 tier === 'pro'
-                  ? 'text-[var(--color-accent)] bg-[var(--color-accent)]/10 border-[var(--color-accent)]/20'
-                  : 'text-[var(--color-purple)] bg-[var(--color-purple-bg)] border-[var(--color-purple)]/20'
+                  ? 'text-[var(--color-accent-text)] bg-[var(--color-accent)]/10 border-[var(--color-accent)]/20'
+                  : 'text-[var(--color-purple-text)] bg-[var(--color-purple-bg)] border-[var(--color-purple)]/20'
               }`}>
                 {tier === 'pro' ? 'PRO' : 'TRIAL'}
               </span>
@@ -138,7 +138,7 @@ export default function AccountTab() {
               </div>
               <button
                 onClick={() => setShowRequest(true)}
-                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
+                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent-text)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
               >
                 Request
               </button>

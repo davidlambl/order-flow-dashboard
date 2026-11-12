@@ -42,7 +42,7 @@ export default class ErrorBoundary extends Component {
             )}
             <button
               onClick={this.handleReload}
-              className="px-5 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
+              className="px-5 py-2.5 rounded-lg bg-[var(--color-accent-solid)] hover:bg-[var(--color-accent-solid-hover)] text-white font-medium transition-colors"
             >
               Reload Dashboard
             </button>

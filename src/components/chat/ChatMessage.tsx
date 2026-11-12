@@ -107,7 +107,7 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
             isUser
               ? 'bg-[var(--color-accent)]/10 text-[var(--color-text-primary)] border border-[var(--color-accent)]/20'
               : isError
-              ? 'bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20'
+              ? 'bg-[var(--color-bear-bg)] text-[var(--color-bear-text)] border border-[var(--color-bear)]/20'
               : 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)]'
           }`}
         >
