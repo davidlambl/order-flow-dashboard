@@ -674,6 +674,62 @@ muted-text contrast ≥ 4.5:1; `prefers-reduced-motion`; error/retry surfaces fo
 Header wrapping; settings tabs scroll; remember last ticker; ticker input validation; PositionAnalysis
 inputs stay visible while loading.
 
+**Built in #94 (Phase 6, PR A, 2026-11-12).** Of the list above it built everything but the error and retry surfaces,
+the remembered ticker and the position inputs during a load:
+- The chat is one element at every width, never remounted: from `md` up the complementary landmark beside `main`;
+  below it, while open, a modal dialog over the whole viewport with `main` and the header inert, which Escape closes,
+  focus going back to the chat button. It is a `div`, since an `aside` may not take the dialog role. The resize handle
+  is a focusable separator whose value is the width, moved by pointer events with capture (a mouse, a finger, a pen)
+  or by the arrow keys, Home and End, and stored once per drag or key release, since the width syncs.
+- Settings, the strategic context editor, the sync choice and the stand-ins shown while their chunks load each draw
+  their panel in `ModalDialog`, the native `<dialog>` opened with `showModal()`. Settings' tab bar is a tab list driven
+  by the arrow keys, Home and End, in a row that scrolls sideways where it does not fit.
+- Every form field has a label that is not its placeholder, and a refused entry is an alert that describes its field.
+  The message actions show at rest. What only a colour, a tooltip or a drawing said is in words too: the KPI cards'
+  readings, news sentiment, the analysts' counts, spot's place in the price-target range, the earnings date, a
+  one-sentence summary of each chart. The sections' and the chat's titles are `h2` headings, an open section's content
+  a region named by its title; the page keeps one `h1` at every width, and the sign-in screen is a `main` under its
+  own; the data source is a status in words; the auto-refresh button's name contains the text it shows. The controls
+  the baseline found under 24 px were padded to reach it.
+- Muted text went from `#5a6475` to `#8590a1` and secondary from `#8b95a5` to `#a3adbb`, 4.5:1 or more on all four
+  backgrounds; three `-text` tokens carry small text in the accent, purple and bear colours, and white labels sit on
+  `--color-accent-solid` (`#2563eb`, 5.17:1). A `prefers-reduced-motion` rule stops the decoration; a spinner keeps
+  turning.
+- The header wraps instead of overflowing, and its search refuses on submit what the functions would refuse
+  (`src/lib/ticker.ts`, held to `netlify/functions/lib/ticker.ts` by a node test). No file under `netlify/` changed.
+
+Measured with axe-core 4.14 in Chromium, per screen state, on the dev server with mocked functions and a test token,
+before this PR (`e048bdf`) and on its branch (`7431d03`): low-contrast text went from 25 nodes on the dashboard, 27
+with the chat open, 32 to 36 on the four Settings tabs, 14, 7 and 13 at 375 px (dashboard, chat open, Settings), 19 on
+the locked dashboard and on the chat's lock screen and 1 on the sign-in screen to none in any of the thirteen states
+measured, the context editor among them. The other findings from before are gone: `select-name` (critical) on the AI
+tab, `region` on every Settings tab, `heading-order` on the dashboard's desktop states, `page-has-heading-one` at
+375 px (the page's only `h1` was `display: none` there), `landmark-one-main`, `page-has-heading-one` and `region` on
+the sign-in screen, and `label-content-name-mismatch` on the auto-refresh button reading "Paused". One is left, by
+design: `region` on the resize handle while the chat is open, a named, focusable separator between `main` and the
+chat's landmark, outside both, which axe would accept from a button and not from a separator. With real key presses,
+Tab stays inside Settings, the editor and the phone's chat, Escape gives focus back to what opened each, closing the
+chat focuses its button instead of `body`, and the handle steps by key. At 375 by 812 px the open chat covers the
+viewport and the main content keeps its 375 px; before, the chat squeezed it to 32 px and ran past the screen's right
+edge. A reply went on streaming while the window crossed 768 px both ways, the chat's node unchanged; the sync choice
+stayed open through Escape presses and clicks outside its panel, and nothing was written until a choice was made. Not
+seen in a browser: a slow Settings chunk, Mobile Safari, a finger on the handle, a screen reader's speech. The entry
+chunk grew from 160.69 to 167.88 kB (49.10 to 51.58 kB gzip); startup JavaScript is 636.39 of its 700 kB.
+
+Where this overruled the sketch:
+- Lighthouse's accessibility score was already 94 (desktop) and 96 (phone) on `main`, before any of this: it audits
+  the first screen, and nothing behind a click. "≥ 90" stays as a floor; the proof is the per-state measurement above.
+- Dialogs are the platform's `<dialog>`, not `role="dialog"` on the old `div`s with a focus-trap hook: the browser
+  supplies the focus trap, the inert page, the top layer (the editor over Settings) and the focus return. jsdom has
+  none of it, so the dom tests check roles, names and where focus goes, and a browser the rest.
+- The phone chat is the sidebar's element restyled, not an overlay of its own: a second element, or a remount at the
+  breakpoint, would cut a streaming reply. Below `md` the page behind it is inert while it is open, as behind any
+  modal dialog, and whole again once it closes.
+
+Left to the phase's next two pull requests: the error and retry surfaces for every data source, the chat's Retry and
+the position inputs that stay while the panel loads; then the remembered ticker and, as settings, the refresh interval
+and the staleness cut-offs.
+
 ### Phase 7 — New-technology track: WebGL, Python quant service, ops console (L)
 Reframed (owner decision, 2026-09-25) to build skills the current stack doesn't exercise: WebGL-based UI,
 Python numeric/algorithmic backend, real data pipelines, and human-in-the-loop operations tooling.

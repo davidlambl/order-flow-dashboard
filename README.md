@@ -95,6 +95,21 @@ earnings (server key only).
 - Export / import (Settings → Backup): JSON without API keys; an import replaces this device's data (and
   the account's when signed in) and keeps the device's API keys.
 
+**Keyboard, screen readers and phones**
+
+- Settings, the strategic context editor and SyncChoice are modal dialogs (the browser's `<dialog>`): focus
+  moves into each as it opens and the page behind it cannot be reached. Escape closes Settings and the editor,
+  and focus goes back to the button that opened them. Settings' tabs follow the arrow keys, Home and End.
+- Below 768 px the open chat covers the screen, and Escape closes it. From 768 px up it is a sidebar whose edge
+  can be dragged with a mouse, a finger or a pen, or moved with the arrow keys once focused.
+- Every form field has a label, and a refused entry is announced with the field it is about. What a colour, a
+  tooltip or a chart shows is also put into words for a screen reader: the KPI cards' readings, news
+  sentiment, a one-sentence summary of each chart.
+- The ticker field checks an entry against the functions' own rule (1 to 10 letters or digits, `.` or `-`
+  allowed after the first, as in BRK.B) and sends none they would refuse.
+- Muted and secondary text keep a contrast of 4.5:1 or more on every background, and a system set to reduce
+  motion stops the decorative animations.
+
 ## Key handling and privacy
 
 - **Your keys** (Tradier, Finnhub, Anthropic, OpenAI, Gemini) live only in this browser's localStorage
@@ -228,7 +243,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 ├── main.jsx                Entry: StrictMode, ErrorBoundary, App
 ├── App.tsx                 The dashboard shell: the screens, the layout, MarketContext and AuthContext, over the
 │                           auth, position-draft and sidebar hooks
-├── index.css               Tailwind theme
+├── index.css               Tailwind theme: the colour tokens, the reduced-motion rule
 ├── vite-env.d.ts           import.meta.env typings (VITE_SUPABASE_*)
 ├── components/
 │   ├── AppSettings.tsx     Settings: renders settings/SettingsDialog while open, loaded on demand
@@ -242,6 +257,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── Header.jsx          Search, price, refresh, badges, sign-out
 │   ├── KPICards.jsx        The four KPI cards
 │   ├── LoginForm.jsx       Magic-link sign-in, skip
+│   ├── ModalDialog.tsx     The modal dialog (<dialog>, showModal()) Settings, the context editor and SyncChoice
+│   │                       draw in, with the stand-ins shown while their chunks load
 │   ├── PositionAnalysis.tsx  Position, P&L, recommendation: the shell over position/* and usePositionSignals
 │   ├── PremiumGate.tsx     Token lock screen, mounted only while locked
 │   ├── RequestAccessForm.jsx  Netlify Forms access request
@@ -276,11 +293,12 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── useLiveQuote.ts     Live quote, 1-minute refresh
 │   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
 │   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
+│   ├── useMediaQuery.ts    Whether a media query matches, as it changes (App's md breakpoint for the chat)
 │   ├── useNow.js           Ticking clock for render code
 │   ├── usePositionDraft.ts The position inputs' draft and its debounced writer: flush, settle, store-changed
 │   ├── usePositionSignals.ts  The position panel's signals from the market context and the draft
 │   ├── usePremiumStatus.ts Access-token status on auth-changed
-│   ├── useResizableSidebar.ts  The chat sidebar's stored width and its drag
+│   ├── useResizableSidebar.ts  The chat sidebar's stored width and its resize handle: a pointer's drag, the arrow keys
 │   ├── useStoreValue.ts    useSyncExternalStore readers of the store: values, objects, preferences
 │   ├── useSupabaseAuth.ts  Sign-in session, the per-account storage backend, the sync conflict, sign-out
 │   ├── useTickerContext.ts Research context, 15-minute cache
@@ -309,10 +327,14 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── storeEvents.ts      store-changed subscriptions, scoped versions, savePreference
 │   ├── supabase.ts         Browser Supabase client, typed with types/supabase.ts
 │   ├── SupabaseBackend.js  Cloud sync, conflicts, tombstones
-│   └── syncOutbox.js       Persistent write queue
+│   ├── syncOutbox.js       Persistent write queue
+│   └── ticker.ts           The functions' ticker rule for the header's search (a node test holds the two alike)
 └── test/                   setup.js (dom setup: jest-dom, cleanup, MSW server, synchronous TanStack notifications,
-                            cache reset, every lazily loaded component preloaded), contexts.jsx (the two contexts
-                            for component tests), lazy.js (the opt-out and the import gate for tests of a lazy part)
+                            cache reset, every lazily loaded component preloaded, the stand-ins below installed),
+                            contexts.jsx (the two contexts for component tests), lazy.js (the opt-out and the import
+                            gate for tests of a lazy part), a11y.js (axe-core and the label check),
+                            standins.js (<dialog> and pointer capture for jsdom), viewport.js (matchMedia at a
+                            desktop or phone width)
 test/helpers/               fakeSupabase.js (recording fake client, its auth timed like supabase-js), fetch.js
                             (recording fetch), functions.js (function-test
                             harness), globals.js (browser stand-ins for node tests)
@@ -351,6 +373,8 @@ tsconfig.json               Browser type-check program (src/, shared/, types/); 
 - Vitest's `node` project runs the function tests, `shared/*.test.js`, `scripts/**/*.test.js` and `src/**/*.node.test.js` (pure
   `src/lib` modules under Node with the stand-ins in `test/helpers/`). The `dom` project runs the other
   `src/**/*.test.{js,jsx}` files under jsdom with Testing Library and an MSW server (`src/test/setup.js`).
+  Accessibility tests run axe-core and a label check over each state they render (`src/test/a11y.js`). jsdom has
+  no layout, colours or focus trap, so contrast, target sizes and the dialogs' focus trap are beyond them.
 - CI (`.github/workflows/ci.yml`, pushes to `main` and pull requests) runs `npm ci`, `npm run lint`,
   `npm run typecheck`, `npm run test:coverage`, the build and the bundle budget on Node 22 and 24 (`fail-fast: false`), plus a separate
   `npm audit --omit=dev --audit-level=high` job. Dependabot opens weekly npm and GitHub Actions updates.

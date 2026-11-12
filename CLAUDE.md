@@ -71,6 +71,35 @@ should:
   opts out with a top-level `skipLazyPreload()` and holds the import with `importGate()` (`src/test/lazy.js`, whose
   header has the recipe and its three traps: await one import at the end of `beforeEach` when the code starts two at
   once; answer every import a test leaves held; wait for an import to arrive before settling it inside `act`).
+  The setup also installs what jsdom 30 lacks, each only where the environment has none (`src/test/standins.test.jsx`
+  fails once a jsdom brings its own, so dropping one is a decision). `src/test/standins.js`: `<dialog>`'s `showModal()`,
+  `show()` and `close()` (`showModal()` throws on a dialog already open, as older engines do: open with
+  `if (!dialog.open)`; `close` fires a microtask later: `await act(async () => {})` before asserting on it); pointer
+  capture (one element per pointer id, nothing retargeted: a test fires the later events on the capturing element);
+  and `requestDialogClose(dialog, { cancelable? })`, which stands for Escape (`cancelable: false` is Chromium's second
+  Escape, whose `cancel` no `preventDefault()` stops). Not emulated, so never asserted: the top layer, `::backdrop`,
+  the inert page and the focus trap (Tab is not simulated). `src/test/viewport.js`: `matchMedia` over an emulated
+  width, a desktop (`DESKTOP_WIDTH`, 1280 px) that the setup restores after every test, dropping every listener;
+  `setViewportWidth(px)` (`PHONE_WIDTH` is 375), inside `act()` once a component listens, fires `change` on each list
+  whose answer flipped. It answers `(min-width: N)` and `(max-width: N)` in px, rem or em, joined by `and`, and nothing
+  else (a range such as `(width >= 48rem)` is false); `window.innerWidth` stays 1024 and no `resize` fires.
+  Accessibility is asserted with `src/test/a11y.js`. `expectNoAxeViolations(container, { bestPractices?, disable? })`
+  runs axe-core's WCAG 2.0, 2.1 and 2.2 A and AA rules (its best-practice rules on request: heading order, landmarks,
+  regions) and fails with each rule and node; `expectLabelledControls(container)` fails unless every input, select and
+  textarea has a label that is not its placeholder (a `<label>`, `aria-labelledby` or `aria-label` with text), since
+  axe's own `label` rule accepts a placeholder. Six rules are off at every call, jsdom having no layout, no computed
+  colours and no canvas: `color-contrast`, `label-content-name-mismatch`, `target-size`, `link-in-text-block`,
+  `scrollable-region-focusable`, `skip-link`. A clean run says nothing about them: a test that needs one asserts the
+  property itself. One axe call per rendered state, not per test. The container must be attached, and it decides what
+  is judged: Testing Library's `container` for a component; `baseElement` for a dialog, a portal or a whole page (axe
+  judges `region` from `document.body` only); `document.documentElement` for the page rules (`page-has-heading-one`,
+  `landmark-one-main`), with `document-title` and `html-has-lang` in `disable`, which jsdom's blank page fails. A rule
+  a call disables has its reason in a comment beside it. The call refuses fake timers that do not advance by
+  themselves (axe waits on `setTimeout`): `vi.useFakeTimers({ shouldAdvanceTime: true })` works. Tailwind's classes
+  hide nothing under jsdom, which loads no stylesheet: `hidden`, `sr-only`, `md:…` and the opacity classes leave an
+  element in axe's tree and in a role query's. Only the `hidden` attribute, `aria-hidden`, an inline style, a closed
+  `<dialog>` and, for axe alone, `inert` hide anything (Testing Library's queries and jsdom's `focus()` ignore
+  `inert`); `expectLabelledControls` checks a hidden control too.
   `npm run test:watch`, `npm run test:coverage` (CI), `npm run check` = lint + typecheck + test + build + check:bundle,
   each blocking.
   Function tests live in `__tests__/` because Netlify deploys every top-level file of `netlify/functions/`. `vi.mock`
@@ -94,7 +123,11 @@ should:
   `PrefName`/`PreferenceValues` preferences, `SupabaseBackend.js` cloud sync with an injectable client, `syncOutbox.js`
   its persistent write queue, `supabase.ts` the typed, Node-safe client factory, `session.js` the one sign-out plus the
   `local_data_owner` and `auth_skipped` device flags, `debouncedSaver.js` baseline-compared debounce behind
-  `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`, `lazyWithPreload.ts` (code-split components: see Conventions),
+  `useAutoSave`, `deepEqual.js`, `api.ts` fetchers incl. SSE streaming, `sse.ts` stream framing/events, `recommend.ts`,
+  `ticker.ts` (`TICKER_RE` and `parseTicker`, the functions' ticker rule, which Header's search applies on submit: a
+  copy, since app code in `src/` never imports `netlify/`; `ticker.node.test.js` imports
+  `netlify/functions/lib/ticker.ts` and fails when the two patterns or the two `parseTicker`s differ),
+  `lazyWithPreload.ts` (code-split components: see Conventions),
   `format.ts` (numbers and dates, incl. `timeAgo` / `daysUntil` on a caller's `now`), `mockData.ts` (a complete `MarketData`), `staleness.js`, `retry.js`, `gexChartHelpers.js`, `auth.ts` JWT
   client side with `describeToken` and `subscribeAuth`, `storeEvents.ts` the subscription side of `store-changed` (one
   permanent window listener, versions scoped by the event's detail, `savePreference` for UI writes), `queryClient.ts`
@@ -144,7 +177,14 @@ should:
   `usePositionDraft(ticker)` → `{ costBasis, shares, update, flush, settle }` (the position's one writer: the 300 ms
   saver, the edit, the `subscribeStore` listener keyed on this ticker's position, the pagehide and unmount flushes;
   `flush` and `settle` are stable, and `settle` goes in the same handler as the ticker change);
-  `useResizableSidebar()` → `{ width, isResizing, onResizeStart }` (the chat sidebar's stored width and its drag).
+  `useResizableSidebar()` → `{ width, isResizing, handleProps }` (the chat sidebar's stored width, and the handlers and
+  value App spreads on the resize handle, a separator: a drag by pointer events with pointer capture, so a mouse, a
+  finger and a pen take one path, the primary button only and one drag at a time, listening on document so that its
+  release still arrives if the handle goes away mid-drag; ArrowLeft and ArrowRight 16 px, Home and End the 280 and
+  640 px bounds; `aria-valuenow` the width shown. The width is stored once through `savePreference`: on the pointerup
+  (a pointercancel stores nothing), or on a key's release or a blur, since `sidebarWidth` syncs and a held key would
+  queue a cloud write per repeat; `isResizing` is a drag alone); `useMediaQuery(query)` → whether a media query
+  matches, followed as it changes (`useSyncExternalStore` over `matchMedia`; false where there is none).
 - `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
   provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
   ChatBot, TickerResearch, the Settings tabs (AccountTab, BackupTab, DataTab) and PremiumGate read them instead of App's
@@ -156,6 +196,28 @@ should:
   every hook result (a hook's return object in a dependency list would give the contexts a new value per render; the
   `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
   with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
+  The chat is ONE element at every width and never remounts, since a remount would cut a streaming reply: a `div` (an
+  `aside` may not take the dialog role) that is the complementary landmark "AI Co-Pilot" from `md` up, with the
+  resize handle before it, and below `md`, while open, a modal dialog fixed over the viewport with `main` and a wrapper
+  around `Header` `inert` and no handle; closed below `md`, it is `hidden`. The layout follows
+  `useMediaQuery('(min-width: 48rem)')`, Tailwind's `md` (the stylesheet writes `(width >= 48rem)`, a range the test
+  stand-in does not parse). Escape closes the chat only while it covers the page, heard on the chat element itself:
+  Settings renders outside it, and the context editor stops its own Escape in the capture phase. Closing it with focus
+  inside moves focus to "Open AI Co-Pilot", which mounts in the same commit. The account-keyed root is never inert:
+  Settings and the sync choice render in it, and an inert ancestor would leave even a top-layer dialog dead.
+  Every dialog but the chat draws its panel in `ModalDialog.tsx`: `settings/SettingsDialog.tsx` and its stand-in
+  `SettingsPlaceholder.tsx`, `StrategicContextDialog.tsx` and its stand-in (`StrategicContextEditor.tsx`'s
+  `EditorModal`), `SyncChoice.jsx` and `dashboard/SyncChoiceLayer.tsx`. It is the platform's `<dialog>`, opened with
+  `showModal()` in a layout effect and closed in its cleanup while still in the document (one removed while open leaves
+  focus on body), so the browser supplies the focus trap, the inert page, the top layer (the editor over Settings) and
+  the focus return. It is named by `labelledBy` or `label`; `initialFocus` (a ref) takes focus as it opens, else the
+  dialog itself (`tabIndex={-1}`: a stand-in holding a spinner has nothing else). The dim is its `::backdrop`
+  (`backdropClassName`, Tailwind's `backdrop:` variant), so a press outside the panel lands on the dialog element, and
+  dismisses only when its down, up and click all do. The browser's `cancel` is always prevented and React alone closes:
+  with `onDismiss`, a press outside or a close request calls it; without (`SyncChoice` and `SyncChoiceLayer`),
+  `closedby="none"`, and a dialog the browser closes anyway opens again. Escape stays with each dialog's window listener
+  (bubble phase: `SettingsDialog`, `SettingsPlaceholder`; capture phase, stopped: `StrategicContextDialog` and
+  `StrategicContextEditor`'s `EditorModal`), which prevents the keydown, so the browser raises no `cancel` for it.
   App loads three parts on demand (Phase 5 (e)): `dashboard/ChartsPanel.tsx` (the grid with GexChart and FlowChart, and
   recharts with it) inside the Charts section, so only while that section is expanded (it is by default), with `dashboard/ChartsSkeleton.tsx`
   in its place meanwhile; `LoginForm` (its fallback is the session check's spinner) and `SyncChoice` (its fallback and
@@ -163,12 +225,20 @@ should:
   an effect only when `configured`. The idle preload starts from an effect once `screen === 'app'`.
   `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
-  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `AppSettings.tsx` renders
+  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `CollapsibleSection.jsx` (the Position,
+  Research and Charts sections) is the accordion pattern: an `h2` holding the toggle (`aria-expanded`, and
+  `aria-controls` while open), and the open content a `region` labelled by the title's own element, not by the toggle,
+  whose name also carries the badge (Research's "Loading..."); collapsed, the content is not rendered, so the toggle
+  controls nothing. `AppSettings.tsx` renders
   `settings/SettingsDialog.tsx` only while open (loaded on demand, `SettingsPlaceholder.tsx` standing in for the
   dialog's frame while its chunk loads or after it failed), and the dialog mounts ONE tab at a time
   (`settings/{AITab,DataTab,AccountTab,BackupTab}.tsx`, with `SecretInput` and `DataSourceBanner` as leaves): a tab's
   state is born fresh on every switch and its autosaves flush in its unmount cleanup, which is what keeps Sign out safe
-  without a hand flush. `TokenActivationForm.tsx` is the activation leaf shared with `PremiumGate.tsx` (its lock screen
+  without a hand flush. Its tab bar is a `tablist`: the selected tab alone is in the tab order and takes focus as the
+  dialog opens; Left and Right select the neighbour, wrapping, Home and End the first and the last, focus following;
+  every tab's `aria-controls` names the one `tabpanel`, which the selected tab labels. A key switch unmounts the tab it
+  leaves, so its autosave flushes as on a click. The row scrolls sideways where it does not fit.
+  `TokenActivationForm.tsx` is the activation leaf shared with `PremiumGate.tsx` (its lock screen
   mounts only while locked) and with the chat's `ChatLockScreen`; `StrategicContextEditor.tsx` mounts its editor only while open: the dialog itself is
   `StrategicContextDialog.tsx`, loaded on demand, and saves through `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
   ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
@@ -270,12 +340,41 @@ should:
   `ChunkLoadError` (its `fallback` while pending; `ChunkFailureCard` with Try again and Reload, or the caller's `failed`
   UI) and rethrows anything else to the root `ErrorBoundary`. A part that lays out the whole screen or a modal itself
   passes `failed` with its own frame around `ChunkFailureCard` (a frame around the boundary would frame the loaded part
-  too). `{ idle: true }` parts (the markdown renderer, the Settings dialog, the context editor's dialog) load in
+  too). For a modal part the `fallback` and the `failed` frame are each a `ModalDialog` of their own
+  (`SettingsPlaceholder`, the editor's `EditorModal`, `SyncChoiceLayer`), so on a slow chunk the stand-in's dialog
+  closes and the loaded one opens in the same commit, remembering the same opener. `{ idle: true }` parts (the
+  markdown renderer, the Settings dialog, the context editor's dialog) load in
   `scheduleIdlePreload()`, which App starts once the dashboard shows (`requestIdleCallback`, a 2 s timeout where it is
   missing, nothing under `saveData`); the charts are never preloaded. The chat shell and its hooks, `useSupabaseAuth` and
   the Supabase client stay eager: a lazy `getSupabase()` would be its own change, since it alters the start-up
-  path of sign-in and sync. It is deferred (issue #37): a configured build already preloads the SDK beside the entry
+  path of sign-in and sync. It is deferred (issue #93): a configured build already preloads the SDK beside the entry
   chunk, so loading it on demand would put it behind the entry for a signed-in visitor.
+- Accessibility (Phase 6): what a later change keeps. A modal is a `ModalDialog`, never `<dialog open>` (the attribute
+  opens it non-modally: no top layer, no inert page, and a `showModal()` on it throws) nor a `div` with
+  `role="dialog"`; the phone chat is the one exception, since it is the sidebar's own element, and App makes the page
+  inert around it. A dialog closes before its node leaves the document (`ModalDialog` does, in its layout cleanup), and
+  its first focus is `initialFocus`, a ref, never `autoFocus`, which writes no attribute and focuses at mount, while the
+  dialog is still closed. Every input, select and textarea has a programmatic label that is not its placeholder: a
+  visible `<label htmlFor>` where the layout has room, an `sr-only` one where an icon and a placeholder are the design,
+  ids from `useId()` (the token form shows up to three times on one screen). An error is an `alert`, and one about a
+  field describes it and marks it `aria-invalid` until the next edit. One pattern per toggle: a fixed name with
+  `aria-pressed` (`aria-expanded` for a section), or a name that states the action and no `aria-pressed` (the
+  auto-refresh button). A control's name contains the text it shows (WCAG 2.5.3). Nothing is conveyed by a colour, a
+  hover or a drawing alone: a reading has its words, visible or `sr-only` beside it (the KPI cards, news sentiment,
+  each chart's one-sentence summary), and controls show at rest (the message actions at 75% opacity). What a class
+  hides below a breakpoint and a screen reader needs is `sr-only` there, not `display: none` (the header's one `h1`);
+  headings run from that `h1` to an `h2` per section, for the chat and for each dialog's title, and `h3` below.
+  Colour: secondary and muted text use `--color-text-secondary` and `--color-text-muted`, 4.5:1 or more on all four
+  backgrounds; small text in the accent, purple or bear colour on a raised surface or on its own tint uses
+  `--color-accent-text`, `--color-purple-text` or `--color-bear-text`; white text sits on `--color-accent-solid`
+  (hover: `--color-accent-solid-hover`); fills, borders and icons keep the base colours. A new colour under 4.5:1 for
+  text (3:1 for an icon or large text) is a bug. Motion: the `prefers-reduced-motion` block at the end of
+  `src/index.css` stops every decorative animation and hover scaling and ends every transition at once; a spinner
+  (`animate-spin`) keeps turning, the only sign of progress where it shows. A new animation class is added to that
+  block. A button, a link or a field is at least 24 by 24 CSS px (WCAG 2.5.8), reached with padding (`min-h-6`,
+  `size-6`), the icon keeping its size. Proof: one `expectNoAxeViolations` and one `expectLabelledControls` per
+  rendered state in the dom tests; contrast, target size, the focus trap, the inert page and touch only in a real
+  browser, since jsdom shows none of them.
 - `generateMockData` is random — memoize/stub in tests.
 - TypeScript (Phase 5, incremental): new and converted modules are `.ts`/`.tsx`; relative specifiers keep the `.js`
   extension, except that a not-yet-converted `.jsx` module is imported by its real `.jsx` extension (Vite maps `.js`
