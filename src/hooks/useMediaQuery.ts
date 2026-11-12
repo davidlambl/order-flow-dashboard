@@ -1,8 +1,9 @@
 // src/hooks/useMediaQuery.ts
 // Whether a CSS media query matches, followed as it changes: useSyncExternalStore over window.matchMedia, so a render
-// never sees a stale answer and a change re-renders at once. App asks for Tailwind's `md` with the query the
-// stylesheet's `md:` variant compiles to, so the layout the JavaScript chooses and the one the CSS draws switch at the
-// same width. Where matchMedia is missing it answers false and listens to nothing.
+// never sees a stale answer and a change re-renders at once. App asks for Tailwind's `md` as `(min-width: 48rem)`,
+// which is equivalent to the `(width >= 48rem)` the stylesheet's `md:` variant compiles to, so the layout the
+// JavaScript chooses and the one the CSS draws switch at the same width; it is written as `min-width` because that is
+// the form the tests' matchMedia stand-in parses. Where matchMedia is missing it answers false and listens to nothing.
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 

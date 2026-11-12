@@ -90,8 +90,11 @@ const renderApp = () => render(
 /** Every TanStack request has been answered and applied, so no query result lands outside act() after this. */
 const settled = () => waitFor(() => { expect(queryClient.isFetching()).toBe(0); }, { timeout: 5_000 });
 
-/** The chat sidebar. */
-const aside = () => screen.getByRole('complementary');
+/**
+ * The chat sidebar: the last child of the row it shares with main. Not by its role: closed, it is no landmark
+ * (App.sidebar.landmark.test.jsx), and these pins read its width closed as well as open.
+ */
+const aside = () => screen.getByRole('main').parentElement.lastElementChild;
 /** What comes right before the aside: the resize handle while the chat is open, the dashboard's main otherwise. */
 const beforeAside = () => aside().previousElementSibling;
 const openChat = () => fireEvent.click(screen.getByLabelText('Open AI Co-Pilot'));

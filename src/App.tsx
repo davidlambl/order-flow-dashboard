@@ -10,13 +10,13 @@
 // costs that part alone: the charts, and recharts with them, only while their section is expanded; the sign-in form
 // and the sync choice, which exist only on a build with cloud sign-in and load while the session is checked. Once the
 // dashboard shows, the idle preload loads what it may open next, never the charts.
-// The chat is ONE element, always mounted and restyled at Tailwind's `md` (useMediaQuery, with the query the CSS
-// uses): from md up a sidebar beside `main`, the complementary landmark, with the resize handle on its left edge; below
-// md, while open, a modal dialog over the whole page, with `main` and the header inert. ChatBot never remounts across
-// the breakpoint, so a reply keeps streaming (ChatBot.tsx's header). Settings and the sync choice render beside it, in
-// the account-keyed root, which is never inert: an inert ancestor would leave even a dialog in the top layer dead.
+// The chat is ONE element, always mounted and restyled at Tailwind's `md` (useMediaQuery, with a query equivalent to
+// the CSS's): from md up a sidebar beside `main`, the complementary landmark while open, with the resize handle on its
+// left edge; below md, while open, a modal dialog over the whole page, with `main` and the header inert, which Escape
+// closes. ChatBot never remounts across the breakpoint, so a reply keeps streaming (ChatBot.tsx's header). Settings
+// and the sync choice render beside it, in the account-keyed root, which is never inert: an inert ancestor would leave
+// even a dialog in the top layer dead.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Sparkles, Target, ChartNoAxesColumn } from 'lucide-react';
 import Header from './components/Header.jsx';
 import KPICards from './components/KPICards.jsx';
@@ -53,7 +53,11 @@ import { getPreference, subscribeCrossTab } from './lib/store.js';
 // render costs React a passive effect to re-check it.
 const readHasFinnhubKey = () => Boolean(getPreference('data_finnhub_key'));
 
-/** Tailwind's `md` breakpoint, as its `md:` variant compiles it: the sidebar layout from here up. */
+/**
+ * Tailwind's `md` breakpoint: the sidebar layout from here up. The stylesheet's `md:` variant compiles to
+ * `@media (width >= 48rem)`; this is the equivalent `min-width` form, the one the tests' matchMedia stand-in parses
+ * (src/test/viewport.js). The two would part if `--breakpoint-md` were ever themed.
+ */
 const MD_UP = '(min-width: 48rem)';
 /** The chat's accessible name: its landmark's from md up, its dialog's below. */
 const CHAT_NAME = 'AI Co-Pilot';
@@ -151,14 +155,17 @@ export default function App() {
   const chatId = useId();
   const chatRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
-  // Set when the chat closes with focus inside it: the close takes what held focus off the page, and the chat toggle
-  // that the same commit mounts takes focus instead of the body. Focus anywhere else stays where it is.
+  // Set when the chat closes with focus inside it, or on the body while it covered the page (a disabled composer, an
+  // unmounted button or a narrowed window leaves focus there): the close takes what held focus off the page, or left
+  // it nowhere, and the chat toggle that the same commit mounts takes focus instead. Focus anywhere else stays where
+  // it is, and from md up focus on the body stays there too.
   const refocusToggleRef = useRef(false);
 
   const closeChat = useCallback(() => {
-    refocusToggleRef.current = chatRef.current?.contains(document.activeElement) ?? false;
+    const active = document.activeElement;
+    refocusToggleRef.current = (chatRef.current?.contains(active) ?? false) || (chatCovers && active === document.body);
     setChatOpen(false);
-  }, []);
+  }, [chatCovers]);
 
   useLayoutEffect(() => {
     if (chatOpen || !refocusToggleRef.current) return;
@@ -166,14 +173,26 @@ export default function App() {
     fabRef.current?.focus();
   }, [chatOpen]);
 
-  // Escape closes the chat while it covers the page, heard on the chat itself: a key pressed in Settings (rendered
-  // outside the chat, though opened from its header) never reaches it, and the context editor stops its own Escape in
-  // the capture phase, before anything here hears it. A key that composes text, or that something inside the chat
-  // has handled already, is left alone. The sidebar ignores Escape, as it always has.
-  const closeChatOnEscape = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!chatCovers || e.key !== 'Escape' || e.defaultPrevented || e.nativeEvent.isComposing) return;
-    e.preventDefault();
-    closeChat();
+  // Escape closes the chat while it covers the page, when the key comes from inside the chat or from the body, where
+  // focus often is while the chat covers the page. Heard on document, in the bubble phase, while the chat covers the
+  // page: React runs the chat's own handlers at its root, below document, so a key one of them handled already, like
+  // a key that composes text, arrives prevented and is left alone. A key from anywhere else is not the chat's. While
+  // a <dialog> is open (Settings, the context editor) the key is that dialog's wherever focus is: Settings hears
+  // Escape on window, after document, so one Escape on the body would otherwise close the chat and Settings both. The
+  // sidebar ignores Escape, as it always has.
+  useEffect(() => {
+    if (!chatCovers) return undefined;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+      if (document.querySelector('dialog[open]')) return;
+      const { target } = e;
+      const fromChat = target instanceof Node && (chatRef.current?.contains(target) ?? false);
+      if (!fromChat && target !== document.body) return;
+      e.preventDefault();
+      closeChat();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, [chatCovers, closeChat]);
 
   const handleTickerChange = useCallback((newTicker: string) => {
@@ -284,7 +303,10 @@ export default function App() {
 
             {/* The resize handle, from md up while the chat is open: a separator on the sidebar's left edge that a
                 pointer drags (touch-action none, so a finger's drag is not taken for a scroll) and the arrow keys
-                step; its value is the sidebar's width. */}
+                step; its value is the sidebar's width, in pixels and in words. The box is 5 px wide, its 1 px line
+                centred; a transparent ::before, stacked above the chat, widens what a pointer can press by 12 px to
+                the right only, over the chat's own left padding, where nothing the chat draws is interactive (to the
+                left is main's scrollbar). A pseudo-element is hit-tested as its element, touch-action included. */}
             {chatOpen && wide && (
               <div
                 role="separator"
@@ -293,7 +315,7 @@ export default function App() {
                 aria-controls={chatId}
                 tabIndex={0}
                 {...handleProps}
-                className="relative shrink-0 cursor-col-resize group"
+                className="relative z-10 shrink-0 cursor-col-resize group before:absolute before:inset-y-0 before:left-0 before:-right-3 before:content-['']"
                 style={{ width: 5, touchAction: 'none' }}
               >
                 <div className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
@@ -302,19 +324,20 @@ export default function App() {
               </div>
             )}
 
-            {/* The chat, one element at every width (the header says why). From md up: the sidebar, a complementary
-                landmark as wide as the store says. Below md: open, a modal dialog fixed over the whole viewport (the
-                page's 100dvh included), above the page (the header's ticker message at z-10, the chat toggle at z-50)
-                and below Settings, the context editor and the sync choice; closed, hidden, so that no empty dialog
-                stays in the accessibility tree. Not an <aside>, which may not take the dialog role. */}
+            {/* The chat, one element at every width (the header says why). From md up: the sidebar, as wide as the
+                store says; open, the complementary landmark; closed, a 0 px element with nothing in it and neither
+                role nor name, so that no empty landmark stays in a screen reader's list. Below md: open, a modal
+                dialog fixed over the whole viewport (the page's 100dvh included), above the page (the header's ticker
+                message at z-10, the chat toggle at z-50) and below Settings, the context editor and the sync choice,
+                closed by Escape through the document listener above; closed, hidden, so that no empty dialog stays in
+                the accessibility tree. Not an <aside>, which may not take the dialog role. */}
             <div
               ref={chatRef}
               id={chatId}
-              role={wide ? 'complementary' : 'dialog'}
+              role={wide ? (chatOpen ? 'complementary' : undefined) : 'dialog'}
               aria-modal={wide ? undefined : true}
-              aria-label={CHAT_NAME}
+              aria-label={wide && !chatOpen ? undefined : CHAT_NAME}
               hidden={!wide && !chatOpen}
-              onKeyDown={closeChatOnEscape}
               className={wide
                 ? `overflow-hidden shrink-0 ${isResizing ? '' : 'transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'}`
                 : 'fixed inset-0 z-[60] overflow-hidden'}

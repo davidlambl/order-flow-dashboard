@@ -9,7 +9,9 @@
 //   button, a finger, a pen's tip) starts a drag, and only one at a time. The drag listens on document, where the
 //   captured events bubble and where the release still arrives if the handle goes away mid-drag (a window narrowed
 //   under md, where App shows no handle); an unmount mid-drag removes those listeners and the body's drag styles, and
-//   stores nothing.
+//   stores nothing. A move that leaves the width where it is (a vertical move, a move past a bound, a sub-pixel move
+//   rounded away) keeps the same state, so React skips the render: App and every child it does not memoise would
+//   otherwise render once per pointermove.
 // - The keys: the handle sits on the sidebar's left edge, so ArrowLeft widens it by 16 px and ArrowRight narrows it;
 //   Home and End go to the bounds. The width follows each key at once and is stored once, when a key is released or
 //   the handle loses focus: sidebarWidth syncs, and storing on every repeat of a held key would queue a cloud write per
@@ -65,6 +67,8 @@ export interface SidebarHandleProps {
   onBlur: () => void;
   /** The width shown, and its bounds: the separator's value. */
   'aria-valuenow': number;
+  /** The width shown in words ("384 pixels"), so a screen reader does not read a bare number. */
+  'aria-valuetext': string;
   'aria-valuemin': number;
   'aria-valuemax': number;
 }
@@ -106,7 +110,10 @@ export function useResizableSidebar(): ResizableSidebar {
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
       w = clampWidth(Math.round(startW + startX - ev.clientX)); // the aside is on the right: leftwards widens it
-      setUnstored({ width: w, by: 'pointer' });
+      // This move's width, not `w` itself: React may run the updater later, after more moves have changed `w`. The
+      // same state back when the width is unchanged lets React skip the render.
+      const next = w;
+      setUnstored((shown) => (shown?.by === 'pointer' && shown.width === next ? shown : { width: next, by: 'pointer' }));
     };
     // The pointerup stores the dragged width, then hands the aside back to the store. The order is defensive: React
     // batches the two updates into one render whichever comes first, and that one render is what keeps the width
@@ -168,6 +175,7 @@ export function useResizableSidebar(): ResizableSidebar {
       onKeyUp: storeKeyedWidth,
       onBlur: storeKeyedWidth,
       'aria-valuenow': width,
+      'aria-valuetext': `${width} pixels`,
       'aria-valuemin': SIDEBAR_MIN,
       'aria-valuemax': SIDEBAR_MAX,
     },
