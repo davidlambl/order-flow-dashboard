@@ -1,5 +1,5 @@
 // src/test/a11y.test.jsx — the two assertions of src/test/a11y.js on inline fixtures, never on real components (each
-// later unit tests its own). expectNoAxeViolations: a select with no name fails with its rule, impact, help, node
+// component's own test file checks it). expectNoAxeViolations: a select with no name fails with its rule, impact, help, node
 // count, selector, first reason and HTML (clipped at 160 characters); the same select with a label passes; skipped
 // heading levels fail only with bestPractices; low contrast passes because the rule is off under jsdom (the comment
 // there says why that is not a pass); disable skips a rule; a focusable button inside aria-hidden fails, which axe

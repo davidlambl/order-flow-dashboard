@@ -75,9 +75,9 @@ export interface SidebarHandleProps {
 
 /** What useResizableSidebar returns. */
 export interface ResizableSidebar {
-  /** The aside's width in px: the dragged or keyed width while it is unstored, else the stored one, else the default. */
+  /** The sidebar's width in px: the dragged or keyed width while it is unstored, else the stored one, else the default. */
   width: number;
-  /** A drag is under way: App drops the aside's transition and lights the handle. The keys leave the transition on. */
+  /** A drag is under way: App drops the sidebar's transition and lights the handle. The keys leave the transition on. */
   isResizing: boolean;
   /** The handle's event handlers and value. */
   handleProps: SidebarHandleProps;
@@ -109,13 +109,13 @@ export function useResizableSidebar(): ResizableSidebar {
     // Another pointer's events (a second finger) are not this drag's.
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
-      w = clampWidth(Math.round(startW + startX - ev.clientX)); // the aside is on the right: leftwards widens it
+      w = clampWidth(Math.round(startW + startX - ev.clientX)); // the sidebar is on the right: leftwards widens it
       // This move's width, not `w` itself: React may run the updater later, after more moves have changed `w`. The
       // same state back when the width is unchanged lets React skip the render.
       const next = w;
       setUnstored((shown) => (shown?.by === 'pointer' && shown.width === next ? shown : { width: next, by: 'pointer' }));
     };
-    // The pointerup stores the dragged width, then hands the aside back to the store. The order is defensive: React
+    // The pointerup stores the dragged width, then hands the sidebar back to the store. The order is defensive: React
     // batches the two updates into one render whichever comes first, and that one render is what keeps the width
     // from moving.
     const onUp = (ev: PointerEvent) => {

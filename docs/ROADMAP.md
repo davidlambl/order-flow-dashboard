@@ -692,9 +692,9 @@ the remembered ticker and the position inputs during a load:
   The message actions show at rest. What only a colour, a tooltip or a drawing said is in words too: the KPI cards'
   readings, news sentiment, the analysts' counts, spot's place in the price-target range, the earnings date, a
   one-sentence summary of each chart. The sections' and the chat's titles are `h2` headings, an open section's content
-  a region named by its title; the page keeps one `h1` at every width, and the sign-in screen is a `main` under its
-  own; the data source is a status in words; the auto-refresh button's name contains the text it shows. The controls
-  the baseline found under 24 px were padded to reach it.
+  a region named by its title; the page keeps one `h1` at every width, and the sign-in screen is a `main` with an `h1`
+  of its own; the data source is a status in words; the auto-refresh button's name contains the text it shows. The
+  controls the baseline found under 24 px were padded to reach it.
 - Muted text went from `#5a6475` to `#8590a1` and secondary from `#8b95a5` to `#a3adbb`, 4.5:1 or more on all four
   backgrounds; three `-text` tokens carry small text in the accent, purple and bear colours, and white labels sit on
   `--color-accent-solid` (`#2563eb`, 5.17:1). A `prefers-reduced-motion` rule stops the decoration; a spinner keeps
