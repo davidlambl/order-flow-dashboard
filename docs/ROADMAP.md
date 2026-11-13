@@ -703,8 +703,8 @@ the remembered ticker and the position inputs during a load:
   (`src/lib/ticker.ts`, held to `netlify/functions/lib/ticker.ts` by a node test). No file under `netlify/` changed.
 
 Measured with axe-core 4.14 in Chromium, per screen state, on the dev server with mocked functions and a test token,
-before this PR (`e048bdf`) and on its branch (`7431d03`): low-contrast text went from 25 nodes on the dashboard, 27
-with the chat open, 32 to 36 on the four Settings tabs, 14, 7 and 13 at 375 px (dashboard, chat open, Settings), 19 on
+before this PR (`e048bdf`) and on its branch (`7431d03`, and again once it was finished): low-contrast text went from
+25 nodes on the dashboard, 27 with the chat open, 32 to 36 on the four Settings tabs, 14, 7 and 13 at 375 px (dashboard, chat open, Settings), 19 on
 the locked dashboard and on the chat's lock screen and 1 on the sign-in screen to none in any of the thirteen states
 measured, the context editor among them. The other findings from before are gone: `select-name` (critical) on the AI
 tab, `region` on every Settings tab, `heading-order` on the dashboard's desktop states, `page-has-heading-one` at
@@ -729,8 +729,8 @@ without the fix (the first two and the last were also seen fixed in a browser): 
 focus was on `body`, where it is after every send; a control focused by Shift+Tab scrolled under the Settings panel's
 sticky header at 200% zoom (WCAG 2.4.11); four results were announced by a status inserted together with its text; a
 drag rendered App on every pointer move, also those that changed no width; the handle was a 5 px touch target. The
-closed sidebar also stayed a named, empty landmark. The entry chunk grew from 160.69 to 168.43 kB (49.10 to 51.77 kB
-gzip); startup JavaScript is 636.94 of its 700 kB.
+closed sidebar also stayed a named, empty landmark. The entry chunk grew from 160.69 to 168.47 kB (49.10 to 51.79 kB
+gzip); startup JavaScript is 636.97 of its 700 kB.
 
 Where this overruled the sketch:
 - Lighthouse's accessibility score was already 94 (desktop) and 96 (phone) on `main`, before any of this: it audits
