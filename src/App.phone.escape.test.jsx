@@ -186,7 +186,7 @@ describe('App: Escape and the chat that covers the page, wherever focus is', () 
 
   // Green on the code before the document listener, where nothing heard an Escape on the body at all; red on the
   // listener without its `dialog[open]` check (the chat closed with Settings: two layers for one key).
-  it('on a phone, Escape on the body under Settings opened from the chat closes Settings alone', async () => {
+  it('Pin: on a phone, Escape on the body under Settings opened from the chat closes Settings alone', async () => {
     const error = vi.spyOn(console, 'error');
     setViewportWidth(PHONE_WIDTH);
     await renderLoaded({ unlocked: true });

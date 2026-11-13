@@ -19,8 +19,9 @@ interface SecretInputProps {
   /** A control in the input's row (the AI tab's Test button), which then shares the row with the input. */
   action?: ReactNode;
   /**
-   * Lines between the input and the hint (the AI tab's test result), which describe the input before the hint does;
-   * null or absent while there are none, since an empty node would still be referenced as part of the description.
+   * Lines between the input and the hint (the AI tab's test result), which describe the input before the hint does.
+   * Null or absent, the input is described by the hint alone. The AI tab always passes its status region, empty until
+   * Test has a result: the description then names an empty element, which adds nothing to it.
    */
   status?: ReactNode;
   /** The key was refused (the AI tab's failed test): the input is marked invalid while the parent says so. */

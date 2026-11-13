@@ -687,7 +687,8 @@ the remembered ticker and the position inputs during a load:
   their panel in `ModalDialog`, the native `<dialog>` opened with `showModal()`. Settings' tab bar is a tab list driven
   by the arrow keys, Home and End, in a row that scrolls sideways where it does not fit.
 - Every form field has a label that is not its placeholder, and a refused entry is an alert that describes its field.
-  A result said as a status (a valid key, an import, a sent request) fills a region that was already there, empty.
+  A result said as a status (a valid key, an import, a sent access request, a sent sign-in link) fills a region that
+  was already there, empty.
   The message actions show at rest. What only a colour, a tooltip or a drawing said is in words too: the KPI cards'
   readings, news sentiment, the analysts' counts, spot's place in the price-target range, the earnings date, a
   one-sentence summary of each chart. The sections' and the chat's titles are `h2` headings, an open section's content
@@ -723,12 +724,13 @@ composer just above the on-screen keyboard, and Settings and the editor open as 
 which only the unit tests' stand-in has exercised. Not seen in a browser: a real finger (a tap, the handle on a
 tablet), that Safari path, a screen reader's speech.
 
-A whole-PR adversarial review found no blocker and five defects, fixed on the branch and seen fixed in a browser:
-on a phone Escape did nothing while focus was on `body`, where it is after every send; a control focused by Shift+Tab
-scrolled under the Settings panel's sticky header at 200% zoom (WCAG 2.4.11); three results were announced by a
-status inserted together with its text; a drag rendered App on every pointer move, also those that changed no width;
-the handle was a 5 px touch target. The closed sidebar also stayed a named, empty landmark. The entry chunk grew
-from 160.69 to 168.43 kB (49.10 to 51.77 kB gzip); startup JavaScript is 636.94 of its 700 kB.
+A whole-PR adversarial review found no blocker and five defects, each fixed on the branch with a test that fails
+without the fix (the first two and the last were also seen fixed in a browser): on a phone Escape did nothing while
+focus was on `body`, where it is after every send; a control focused by Shift+Tab scrolled under the Settings panel's
+sticky header at 200% zoom (WCAG 2.4.11); four results were announced by a status inserted together with its text; a
+drag rendered App on every pointer move, also those that changed no width; the handle was a 5 px touch target. The
+closed sidebar also stayed a named, empty landmark. The entry chunk grew from 160.69 to 168.43 kB (49.10 to 51.77 kB
+gzip); startup JavaScript is 636.94 of its 700 kB.
 
 Where this overruled the sketch:
 - Lighthouse's accessibility score was already 94 (desktop) and 96 (phone) on `main`, before any of this: it audits

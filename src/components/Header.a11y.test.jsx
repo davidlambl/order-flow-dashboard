@@ -38,7 +38,7 @@ const SANDBOX = { ...CBOE, provider: 'tradier-sandbox', delay: 'sandbox (delayed
 const MOCK = { ...CBOE, provider: 'mock', delay: 'simulated' };
 
 /** The validation line, as written in Header.jsx. */
-const TICKER_HINT = 'Use 1 to 10 letters or digits, like BRK.B or RDS-A.';
+const TICKER_HINT = 'Use 1 to 10 letters or digits; a dot or a dash may follow the first, as in BRK.B or RDS-A.';
 
 /** The ticker field; re-queried after every change, since a new ticker mounts a new field. */
 const field = () => screen.getByRole('textbox', { name: 'Stock ticker symbol' });

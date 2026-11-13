@@ -22,7 +22,7 @@ const FALLBACK_REASON_TEXT = {
 };
 
 // The line under the search when it refuses an entry: what a ticker looks like (src/lib/ticker.ts, the server's rule).
-const TICKER_HINT = 'Use 1 to 10 letters or digits, like BRK.B or RDS-A.';
+const TICKER_HINT = 'Use 1 to 10 letters or digits; a dot or a dash may follow the first, as in BRK.B or RDS-A.';
 
 /**
  * An earnings date ('YYYY-MM-DD') as a screen reader should say it, 'Thursday, October 15': a fixed date on the local
