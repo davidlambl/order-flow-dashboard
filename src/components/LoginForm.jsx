@@ -2,7 +2,10 @@
 // Passwordless magic link login via Supabase Auth. It lays out the whole screen: one main landmark under the app's
 // name as its h1 (the dashboard's header has the same h1). The e-mail field has a visible label tied to it by an id
 // from useId; a refused send is an alert that describes the field and marks it invalid; the link sent is announced as a
-// status (its two lines, not the button beside them).
+// status (its two lines, not the button beside them). That status region is in the tree before its text: it mounts,
+// empty and visually hidden, as the link is requested, and the same node then holds the two lines, since a live region
+// announces a change inside it and one inserted together with its text is not read by every screen reader. Idle, the
+// screen has no status but the notice, when there is one.
 
 import { useId, useState } from 'react';
 import { Activity } from 'lucide-react';
@@ -22,6 +25,7 @@ export default function LoginForm({ onSkip, notice }) {
   const emailId = `${id}-email`;
   const errorId = `${id}-error`;
   const failed = status === 'error';
+  const sent = status === 'sent';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -64,22 +68,33 @@ export default function LoginForm({ onSkip, notice }) {
           </p>
         )}
 
-        {status === 'sent' ? (
-          <div className="bg-[#141926] border border-gray-700 rounded-lg p-6 text-center space-y-3">
-            <div role="status" className="space-y-3">
-              <p className="text-green-400 font-medium">Check your email</p>
-              <p className="text-gray-400 text-sm">
-                We sent a magic link to <span className="text-white">{email}</span>. Click it to sign in.
-              </p>
+        {/* The result's card, from the moment the link is requested: until the answer it is visually hidden (sr-only,
+            so it takes no room beside the form) and its status region is empty; sent, the same nodes are the card
+            and its two lines. A refusal takes it away again and the alert in the form speaks. */}
+        {(status === 'sending' || sent) && (
+          <div className={sent ? 'bg-[#141926] border border-gray-700 rounded-lg p-6 text-center space-y-3' : 'sr-only'}>
+            <div role="status" className={sent ? 'space-y-3' : undefined}>
+              {sent && (
+                <>
+                  <p className="text-green-400 font-medium">Check your email</p>
+                  <p className="text-gray-400 text-sm">
+                    We sent a magic link to <span className="text-white">{email}</span>. Click it to sign in.
+                  </p>
+                </>
+              )}
             </div>
-            <button
-              onClick={() => setStatus('idle')}
-              className="min-h-6 text-sm text-blue-400 hover:text-blue-300"
-            >
-              Try a different email
-            </button>
+            {sent && (
+              <button
+                onClick={() => setStatus('idle')}
+                className="min-h-6 text-sm text-blue-400 hover:text-blue-300"
+              >
+                Try a different email
+              </button>
+            )}
           </div>
-        ) : (
+        )}
+
+        {!sent && (
           <form onSubmit={handleSubmit} className="bg-[#141926] border border-gray-700 rounded-lg p-6 space-y-4">
             <p className="text-gray-400 text-sm text-center">
               Sign in to sync your data across devices

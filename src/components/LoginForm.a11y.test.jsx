@@ -86,7 +86,9 @@ describe('LoginForm', () => {
     render(<LoginForm onSkip={vi.fn()} />);
 
     await sendTo(user, 'trader@example.com');
-    const status = await screen.findByRole('status');
+    // The region is there, empty, from the moment the link is requested (LoginForm.status.test.jsx): wait for its text.
+    await screen.findByText('Check your email');
+    const status = screen.getByRole('status');
     expect(status).toHaveTextContent('Check your email');
     expect(status).toHaveTextContent('We sent a magic link to trader@example.com. Click it to sign in.');
     expect(status).not.toHaveTextContent('Try a different email');

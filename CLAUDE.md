@@ -369,8 +369,10 @@ should:
   ids from `useId()` (the token form shows up to three times on one screen). An error is an `alert`, and one about a
   field describes it and marks it `aria-invalid` until the next edit. A result announced as a `status` keeps its
   region in the tree from the component's first render, empty and `sr-only` alone, and fills that same node (the AI
-  tab's key test, the Backup tab's import, the access request): a live region announces a change inside it, and one
-  inserted together with its text is not read by every screen reader; an alert may be inserted with its text. A panel
+  tab's key test, the Backup tab's import, the access request; the sign-in link's region mounts as the link is
+  requested, the idle sign-in screen having no status but its notice): a live region announces a change inside it,
+  and one inserted together with its text is not read by every screen reader; an alert may be inserted with its text.
+  A loading line (a skeleton, a stand-in) and the chat's typing indicator still mount with their text. A panel
   that scrolls under a sticky header carries scroll padding above the header's height (`scroll-pt-32` on the Settings
   panel and its stand-in), so a control scrolled into view for focus is never under it. One pattern per toggle: a
   fixed name with `aria-pressed` (`aria-expanded` for a section), or a name that states the action and no
