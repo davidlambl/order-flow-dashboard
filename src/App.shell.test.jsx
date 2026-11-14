@@ -319,4 +319,45 @@ describe('App: the ticker row, the footer and the two context values', () => {
     await settled(); // the token turns research on: getTickerContext is answered
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
+
+  // ── What the contexts carry of a failure (the panels show it and offer to ask again) ──
+
+  it("the market value carries a failed research request's message, and the function that asks again", async () => {
+    serveFunctions();
+    let asked = 0;
+    server.use(http.get(`${FN}/getTickerContext`, () => {
+      asked += 1;
+      return HttpResponse.json({ error: 'Finnhub is not answering', code: 'UPSTREAM' }, { status: 502 });
+    }));
+    await renderLoaded();
+    // Research is off without a token or a key: no failure to carry, and the function is there all the same.
+    expect(seen.at(-1).market).toMatchObject({ contextError: null, quoteError: null });
+    expect(seen.at(-1).market.refreshContext).toEqual(expect.any(Function));
+
+    act(() => { setToken(proToken()); }); // research is on from here, and its one request fails
+    await waitFor(() => {
+      expect(seen.at(-1).market.contextError).toEqual(expect.stringContaining('Finnhub is not answering'));
+    }, { timeout: 5_000 });
+    await settled();
+    expect(seen.at(-1).market.tickerContext).toBeNull();
+    expect(asked).toBeGreaterThanOrEqual(1);
+
+    const before = asked;
+    act(() => { seen.at(-1).market.refreshContext(); });
+    await waitFor(() => { expect(asked).toBe(before + 1); }, { timeout: 5_000 });
+    await settled();
+  }, 15_000);
+
+  it("the market value carries a failed live quote's message", async () => {
+    serveFunctions();
+    server.use(http.get(`${FN}/getLiveQuote`, () => (
+      HttpResponse.json({ error: 'Yahoo is not answering', code: 'UPSTREAM' }, { status: 502 })
+    )));
+    renderApp();
+    await waitFor(() => {
+      expect(seen.at(-1)?.market.quoteError).toEqual(expect.stringContaining('Yahoo is not answering'));
+    }, { timeout: 5_000 });
+    await settled();
+    expect(seen.at(-1).market.liveQuote).toBeNull();
+  }, 15_000);
 });

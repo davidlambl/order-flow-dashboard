@@ -166,7 +166,7 @@ describe('App', () => {
    */
   const settled = () => waitFor(() => { expect(queryClient.isFetching()).toBe(0); }, { timeout: 5_000 });
 
-  /** PositionAnalysis' cost-basis input, which (behind the gate, with a token) replaces the skeletons once the data lands. */
+  /** PositionAnalysis' cost-basis input: the dashboard is up and the gate (with a token) open; the data may still load. */
   const costInput = () => screen.findByPlaceholderText('Avg cost', {}, { timeout: 5_000 });
 
   // The badge is Header's: a closed AppSettings renders null.
@@ -216,7 +216,7 @@ describe('App', () => {
     fireEvent.change(search, { target: { value: 'NVDA' } });
     fireEvent.submit(search.closest('form'));
     expect(JSON.parse(localStorage.getItem('position_AVGO'))).toEqual({ costBasis: 95, shares: null });
-    // NVDA loads behind the skeletons; its inputs then show its stored position, never AVGO's edit.
+    // While NVDA loads, and once it has, its inputs show its stored position, never AVGO's edit.
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Avg cost')).toHaveValue(80);
       expect(screen.getByPlaceholderText('Shares')).toHaveValue(2);

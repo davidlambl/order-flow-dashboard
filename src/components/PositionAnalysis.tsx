@@ -4,6 +4,10 @@
 // price has moved away from the options snapshot: the P&L and the call at both prices). A shell over the pure leaves
 // in components/position/: usePositionSignals derives what they show from the position and App's market context, and
 // the shell picks the mode's leaves and pairs each field's edit with the other field for App's onUpdate.
+// One tree, loading or not: during a foreground load (the first, a ticker switch, a manual Refresh) the inputs stay
+// where they are, the same DOM nodes, so focus, the caret and a value being typed survive the load; everything read
+// from the market data gives way to a skeleton block in its place, since the context may still hold the previous
+// ticker's or load's numbers. The blocks are aria-hidden decoration: the section's header says what is loading.
 
 import { usePositionSignals } from '../hooks/usePositionSignals.js';
 import type { Position } from '../lib/store.js';
@@ -35,24 +39,20 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate }: Positi
   const savedBasis =
     costBasis == null || String(costBasis).trim() === '' || !Number.isFinite(costBasisNum) ? null : costBasisNum;
 
-  if (loading) return (
-    <div className="space-y-3">
-      <div className="skeleton h-8 w-48" />
-      <div className="skeleton h-24 w-full" />
-      <div className="skeleton h-16 w-full" />
-    </div>
-  );
-
   return (
     <div>
       {/* Price Display */}
-      <PriceDisplay
-        spotPrice={spotPrice}
-        liveQuote={liveQuote}
-        optionsMarketOpen={optionsMarketOpen}
-        dataProvider={dataProvider}
-        now={now}
-      />
+      {loading ? (
+        <div aria-hidden="true" className="skeleton h-11 w-48" />
+      ) : (
+        <PriceDisplay
+          spotPrice={spotPrice}
+          liveQuote={liveQuote}
+          optionsMarketOpen={optionsMarketOpen}
+          dataProvider={dataProvider}
+          now={now}
+        />
+      )}
 
       {/* Header row: inputs + P&L + recommendation */}
       <div className="flex flex-wrap items-start justify-between gap-4 mt-4">
@@ -64,17 +64,23 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate }: Positi
           onSharesChange={(value) => onUpdate(savedBasis, value)}
         />
 
+        {/* Right while loading: the recommendation's place */}
+        {loading && <div aria-hidden="true" className="skeleton h-16 w-36" />}
+
         {/* Center: P&L (single mode) */}
-        {hasBasis && hasSpotPrice && !showDual && <PnLStat pnl={pnl} layout="block" />}
+        {!loading && hasBasis && hasSpotPrice && !showDual && <PnLStat pnl={pnl} layout="block" />}
 
         {/* Right: Recommendation (single) */}
-        {!showDual && (
+        {!loading && !showDual && (
           <RecommendationBadge rec={rec} isStale={isStale} lastUpdated={lastUpdated} hasWarning={isStale} now={now} />
         )}
       </div>
 
+      {/* Below while loading: the price levels' and the reasons' place */}
+      {loading && <div aria-hidden="true" className="skeleton h-16 w-full mt-3" />}
+
       {/* Dual mode: options market closed and the live price at least the gap threshold from the snapshot */}
-      {showDual && dualRec && (
+      {!loading && showDual && dualRec && (
         <DualRecommendationView
           dualRec={dualRec}
           pnl={pnl}
@@ -87,10 +93,10 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate }: Positi
       )}
 
       {/* Price levels chart */}
-      {!showDual && levels.length >= 2 && <PriceLevelBar levels={levels} />}
+      {!loading && !showDual && levels.length >= 2 && <PriceLevelBar levels={levels} />}
 
       {/* Reasons (single mode only) */}
-      {!showDual && rec && <ReasonList reasons={rec.reasons} columns />}
+      {!loading && !showDual && rec && <ReasonList reasons={rec.reasons} columns />}
     </div>
   );
 }

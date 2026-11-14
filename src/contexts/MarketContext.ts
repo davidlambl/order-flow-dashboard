@@ -38,10 +38,16 @@ export interface MarketValue {
   optionsMarketOpen: boolean;
   /** useLiveQuote's quote, or null until one lands. */
   liveQuote: LiveQuote | null;
+  /** useLiveQuote's error: the last failed quote request's message, null after a success. */
+  quoteError: string | null;
   /** useTickerContext's context: the ticker's research, null until it lands and while research is off. */
   tickerContext: TickerContext | null;
   /** useTickerContext's loading. */
   contextLoading: boolean;
+  /** useTickerContext's error: the last failed research request's message; null after a success and while research is off. */
+  contextError: string | null;
+  /** useTickerContext's refresh: fetches the research again, the current one staying shown meanwhile. */
+  refreshContext: () => void;
   /** 'mock' while usingMock, else data's provider, 'cboe' before anything loads (AppSettings' data-source banner). */
   dataSource: string;
 }

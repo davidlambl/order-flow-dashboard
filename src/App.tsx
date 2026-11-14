@@ -142,8 +142,9 @@ export default function App() {
   // Research data needs either an access token or the user's own Finnhub key.
   const hasFinnhubKey = useStoreValue(readHasFinnhubKey);
   const { data, loading, error, usingMock, refresh, autoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
-  const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
-  const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
+  const { context: tickerContext, loading: contextLoading, error: contextError, refresh: refreshContext } =
+    useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
+  const { quote: liveQuote, error: quoteError, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
   // The chat sidebar's width: the stored one, or the handle's while a drag or the arrow keys move it.
   const { width, isResizing, handleProps } = useResizableSidebar();
@@ -220,11 +221,12 @@ export default function App() {
   // exhaustive-deps rule), so a consumer sees a new value only when something in it changed.
   const market = useMemo<MarketValue>(() => ({
     ticker, setTicker: handleTickerChange, data, loading, error, usingMock, refresh: handleRefresh, autoRefresh,
-    toggleAutoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, tickerContext,
-    contextLoading, dataSource,
+    toggleAutoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, quoteError, tickerContext,
+    contextLoading, contextError, refreshContext, dataSource,
   }), [
     ticker, handleTickerChange, data, loading, error, usingMock, handleRefresh, autoRefresh, toggleAutoRefresh,
-    nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, tickerContext, contextLoading, dataSource,
+    nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, quoteError, tickerContext, contextLoading,
+    contextError, refreshContext, dataSource,
   ]);
   const auth = useMemo<AuthValue>(() => ({
     isPremium, tokenTier, daysLeft, signedIn, userEmail, signOut, signIn: configured ? handleSignIn : undefined,
@@ -263,7 +265,7 @@ export default function App() {
               style={{ overscrollBehavior: 'contain' }}
             >
               {/* Ticker badge */}
-              <TickerSummary ticker={ticker} data={data} loading={loading} usingMock={usingMock} error={error} />
+              <TickerSummary ticker={ticker} data={data} loading={loading} usingMock={usingMock} error={error} onRetry={handleRefresh} />
 
               {/* KPI Cards */}
               <KPICards kpis={data?.kpis} loading={loading} />
