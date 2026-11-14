@@ -106,10 +106,11 @@ const renderApp = () => render(
 /** Every TanStack request has been answered and applied, so no query result lands outside act() after this. */
 const settled = () => waitFor(() => { expect(queryClient.isFetching()).toBe(0); }, { timeout: 5_000 });
 
-/** PositionAnalysis' cost-basis input, which (behind the gate, with a token) replaces the skeletons once the data lands. */
+/** PositionAnalysis' cost-basis input: the dashboard is up and the gate (with a token) open; the data may still load. */
 const costInput = () => screen.findByPlaceholderText('Avg cost', {}, { timeout: 5_000 });
 
-// The two inputs as they are now: queried afresh after every step, since a ticker switch renders new ones.
+// The two inputs, queried at each step. They are the same nodes across a load and a ticker switch: the panel keeps
+// them while its data loads.
 const costField = () => screen.getByPlaceholderText('Avg cost');
 const sharesField = () => screen.getByPlaceholderText('Shares');
 

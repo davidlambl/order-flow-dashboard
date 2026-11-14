@@ -82,10 +82,10 @@ function expectSingleMode() {
 }
 
 describe('PositionAnalysis', () => {
-  it('shows three skeleton blocks and no inputs while loading', () => {
+  it('shows three skeleton blocks beside the two inputs while loading, and no P&L', () => {
     const { container } = renderPanel({ loading: true });
     expect(container.querySelectorAll('.skeleton')).toHaveLength(3);
-    expect(screen.queryAllByRole('spinbutton')).toHaveLength(0);
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(2);
     expect(screen.queryByText('Unrealized P&L')).not.toBeInTheDocument();
   });
 
