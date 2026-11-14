@@ -1,5 +1,5 @@
 // src/components/TickerResearch.test.jsx — the research panel: the header that collapses it and the choice it stores
-// (section_research), the Loading... badge and a refetch's skeleton rows, the Finnhub-key empty state, the news links
+// (section_research), the Loading... badge and a refetch's skeleton rows, the research-off state, the news links
 // and their ages, the earnings countdown and figures, the analyst ratings bar and price-target range, the market
 // overview's index strip and headlines, and which of the two halves show. Written against the one-file panel before
 // its decomposition into a shell over components/research/*.tsx, as the contract both must keep, so every test is a
@@ -72,7 +72,9 @@ const renderPanel = (options) => render(panel(options));
 
 const header = () => screen.getByRole('button', { name: /Research/ });
 
-const EMPTY = 'Add a Finnhub API key in Settings to see news, earnings, and analyst data.';
+/** Nothing to show while research is off: these tests hold neither an access token nor a Finnhub key. */
+const EMPTY = 'Research is off. Add a Finnhub API key in Settings, or activate an access token, to see news, earnings '
+  + 'and analyst data.';
 const CAPTIONS = ['News', 'Earnings', 'Analyst Consensus', 'Market Overview', 'Market Headlines'];
 
 /** The panel captions on screen, in document order. */
@@ -156,7 +158,7 @@ describe('TickerResearch', () => {
     expect(screen.getAllByRole('link')).toHaveLength(1);
   });
 
-  it('Pin: not loading, with nothing to show, it asks for a Finnhub key', () => {
+  it('Pin: not loading, with nothing to show and research off, it says how to turn research on', () => {
     const { rerender } = renderPanel();
     expect(screen.getByText(EMPTY)).toBeInTheDocument();
     expect(captions()).toEqual([]);
@@ -189,7 +191,7 @@ describe('TickerResearch', () => {
     expect(links.map(ageIn)).toEqual(['30m ago', '3h ago', '2d ago', null]);
 
     rerender(panel({ tickerContext: context({ earnings: upcoming }) }));
-    expect(screen.getByText('No recent news available. Add a Finnhub API key in Settings.')).toBeInTheDocument();
+    expect(screen.getByText('No recent news available.')).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 

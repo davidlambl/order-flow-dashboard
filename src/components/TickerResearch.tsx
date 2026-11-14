@@ -2,19 +2,36 @@
 // The research panel: the ticker's news, earnings and analyst consensus, then the market overview, in the collapsible
 // section whose open state is the section_research preference. A shell over the pure leaves in components/research/:
 // it reads the market context, decides which halves show, and owns the one clock.
+// Its states, told apart: research to show (loaded; partial when context.errors names sources; a failed refresh
+// over it) wins; with nothing to show, research that is off (no access token and no Finnhub key: App's own rule for
+// enabling useTickerContext, read the same way) says how to turn it on; a failed load is said in ResearchStatus's
+// region; a first load leaves the body empty under the header's badge; an answer with nothing in it says so.
+// ResearchStatus holds the one status region and Retry from the content's first render.
 
 import { Calendar, Globe, Newspaper, TrendingUp } from 'lucide-react';
 import CollapsibleSection from './CollapsibleSection.jsx';
 import { useMarket } from '../contexts/MarketContext.js';
+import { useAuth } from '../contexts/AuthContext.js';
 import { useNow } from '../hooks/useNow.js';
+import { usePreference } from '../hooks/useStoreValue.js';
 import NewsPanel from './research/NewsPanel.js';
 import EarningsCard from './research/EarningsCard.js';
 import AnalystPanel from './research/AnalystPanel.js';
 import MarketIndicesStrip from './research/MarketIndicesStrip.js';
 import MarketHeadlines from './research/MarketHeadlines.js';
+import ResearchStatus from './research/ResearchStatus.js';
+import type { ContextErrors } from '../../types/market.js';
+
+const NO_ERRORS: ContextErrors = {};
 
 export default function TickerResearch() {
-  const { tickerContext: context, contextLoading: loading, data } = useMarket();
+  const {
+    ticker, tickerContext: context, contextLoading: loading, contextError: error, refreshContext, data,
+  } = useMarket();
+  const { isPremium } = useAuth();
+  const [finnhubKey] = usePreference('data_finnhub_key');
+  // App enables useTickerContext on the same two facts (App.tsx: isPremium || hasFinnhubKey).
+  const researchOn = isPremium || Boolean(finnhubKey);
   const spotPrice = data?.spotPrice;
   // One clock for the "Nm ago" labels and the earnings countdown, passed down so the leaves stay pure: render never
   // reads the clock (react-hooks/purity), and the labels move while the page sits idle.
@@ -26,7 +43,10 @@ export default function TickerResearch() {
   const hasMarketData = context !== null && (
     context.marketQuotes !== null || context.marketNews.length > 0
   );
-  const showEmpty = !loading && !hasTickerData && !hasMarketData;
+  const hasResearch = hasTickerData || hasMarketData;
+  // A request in flight means research is on, whatever the two facts read: App never has one while it is off.
+  const showOff = !hasResearch && !researchOn && !loading;
+  const showEmpty = !hasResearch && researchOn && !loading && error === null;
 
   return (
     <CollapsibleSection
@@ -39,9 +59,21 @@ export default function TickerResearch() {
         </span>
       ) : null}
     >
-      {showEmpty ? (
+      <ResearchStatus
+        error={error}
+        shown={hasResearch}
+        errors={context?.errors ?? NO_ERRORS}
+        loading={loading}
+        onRetry={refreshContext}
+      />
+      {showOff ? (
         <p className="text-xs text-[var(--color-text-muted)] text-center py-4">
-          Add a Finnhub API key in Settings to see news, earnings, and analyst data.
+          Research is off. Add a Finnhub API key in Settings, or activate an access token, to see news, earnings and
+          analyst data.
+        </p>
+      ) : showEmpty ? (
+        <p className="text-xs text-[var(--color-text-muted)] text-center py-4">
+          No news, earnings or analyst data for {ticker} right now.
         </p>
       ) : (<>
         {hasTickerData && (
