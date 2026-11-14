@@ -22,6 +22,7 @@ import { http, HttpResponse } from 'msw';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { server } from './test/setup.js';
 import { importGate, skipLazyPreload } from './test/lazy.js';
+import { isOpenModal } from './test/standins.js';
 import App from './App.jsx';
 import ChunkBoundary from './components/ChunkBoundary.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -138,10 +139,10 @@ function markupOf(ui) {
   return markup;
 }
 
-/** The Charts section: its toggle, then, while it is expanded, its content. */
-const chartsSection = () => screen.getByRole('button', { name: 'Charts' }).parentElement;
+/** The Charts section: its heading, which holds the toggle, then, while it is expanded, its content. */
+const chartsSection = () => screen.getByRole('heading', { name: 'Charts' }).parentElement;
 /** The expanded section's content: the panel, its skeleton or the failure card, in the section's frame. */
-const chartsContent = () => chartsSection().children[1];
+const chartsContent = () => screen.getByRole('region', { name: 'Charts' }).firstElementChild;
 
 /** The dashboard around the Charts section, which the section's loading or failing leaves as it is. */
 function expectTheRestOfTheDashboard() {
@@ -431,7 +432,8 @@ describe('App: the parts it loads on demand', () => {
       const error = vi.spyOn(console, 'error');
       const client = renderConflict();
       const layer = await syncDialog();
-      expect(layer).toHaveAttribute('aria-modal', 'true');
+      expect(layer).toBeInstanceOf(HTMLDialogElement);
+      expect(isOpenModal(layer)).toBe(true);
       expect(layer).toHaveAttribute('aria-busy', 'true');
       expect(layer).toHaveFocus();
       expect(layer.querySelector('.animate-spin')).not.toBeNull();
@@ -459,7 +461,8 @@ describe('App: the parts it loads on demand', () => {
 
       await sync.reject(new TypeError(OFFLINE));
       const layer = screen.getByRole('dialog', { name: 'Sync your data' });
-      expect(layer).toHaveAttribute('aria-modal', 'true');
+      expect(layer).toBeInstanceOf(HTMLDialogElement);
+      expect(isOpenModal(layer)).toBe(true);
       expect(layer).not.toHaveAttribute('aria-busy');
       expect(placement(layer)).toEqual(placement(loading));
       expect(layer).toHaveFocus();

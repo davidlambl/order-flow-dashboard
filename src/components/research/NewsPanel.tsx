@@ -13,6 +13,10 @@ interface NewsPanelProps {
   now: number;
 }
 
+/**
+ * The item's sentiment score as a dot in the bull, bear or muted colour, with the word for it inside as visually
+ * hidden text (a screen reader hears it first in the link's name) and as the dot's title (a pointer finds it there).
+ */
 function SentimentDot({ value }: { value: number | null }) {
   if (value == null) return null;
   const color = value > 0
@@ -20,7 +24,12 @@ function SentimentDot({ value }: { value: number | null }) {
     : value < 0
     ? 'bg-[var(--color-bear)]'
     : 'bg-[var(--color-text-muted)]';
-  return <span className={`inline-block w-1.5 h-1.5 rounded-full ${color} shrink-0`} />;
+  const word = value > 0 ? 'Positive' : value < 0 ? 'Negative' : 'Neutral';
+  return (
+    <span title={`${word} sentiment`} className={`inline-block w-1.5 h-1.5 rounded-full ${color} shrink-0`}>
+      <span className="sr-only">{word} sentiment</span>
+    </span>
+  );
 }
 
 export default function NewsPanel({ news, loading, now }: NewsPanelProps) {
@@ -57,7 +66,9 @@ export default function NewsPanel({ news, loading, now }: NewsPanelProps) {
               </span>
             </div>
           </div>
-          <ExternalLink size={10} className="text-[var(--color-text-muted)] shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+          {/* Shown at rest, not on hover alone: a phone has no hover. */}
+          <ExternalLink size={10} className="text-[var(--color-text-muted)] shrink-0 mt-0.5" />{' '}
+          <span className="sr-only">(opens in a new tab)</span>
         </a>
       ))}
     </div>

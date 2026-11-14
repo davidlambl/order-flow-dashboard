@@ -68,7 +68,7 @@ describe('ChatMessage', () => {
     const { container } = render(<ChatMessage msg={{ role: 'error', content }} index={0} onDelete={vi.fn()} />);
     const text = screen.getByText(content);
     expect(text).toHaveClass('whitespace-pre-wrap');
-    expect(bubbleOf(text)).toHaveClass('bg-[var(--color-bear-bg)]', 'text-[var(--color-bear)]', 'border-[var(--color-bear)]/20');
+    expect(bubbleOf(text)).toHaveClass('bg-[var(--color-bear-bg)]', 'text-[var(--color-bear-text)]', 'border-[var(--color-bear)]/20');
     expect(container.firstChild).not.toHaveClass('flex-row-reverse');
     expect(container.querySelector('.lucide-circle-alert')).not.toBeNull();
     expect(counts.markdown).toBe(0);

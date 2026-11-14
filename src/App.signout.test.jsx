@@ -153,7 +153,7 @@ const hydrated = (client, n = 1) => waitFor(() => { expect(client.reads).toHaveL
 /** Moves the fake clock on by `ms`, running what falls due inside act(). */
 const after = (ms) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 /** The open Settings dialog. */
-const settingsDialog = () => screen.getByRole('heading', { name: 'Settings' }).closest('div.fixed');
+const settingsDialog = () => screen.getByRole('dialog', { name: 'Settings' });
 /** The sign-in screen. */
 const signInShown = () => screen.queryByPlaceholderText('you@example.com') !== null;
 
@@ -337,7 +337,7 @@ describe('App: nothing written after a sign-out outlives it', () => {
     await hydrated(client);
     await settled();
     fireEvent.click(screen.getByLabelText('Open settings'));
-    fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Backup' }));
+    fireEvent.click(within(settingsDialog()).getByRole('tab', { name: 'Backup' }));
     fireEvent.click(within(settingsDialog()).getByRole('button', { name: /Add strategic context/ }));
     fireEvent.change(await screen.findByPlaceholderText(/^Paste your strategic context here/), { target: { value: "A's private thesis" } });
     expect(localStorage.getItem('strategic_context')).toBeNull(); // still inside the editor's autosave
@@ -363,7 +363,7 @@ describe('App: nothing written after a sign-out outlives it', () => {
     await hydrated(client);
     await settled();
     fireEvent.click(screen.getByLabelText('Open settings'));
-    fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Data' }));
+    fireEvent.click(within(settingsDialog()).getByRole('tab', { name: 'Data' }));
     fireEvent.change(within(settingsDialog()).getByPlaceholderText('Paste for news, earnings, analyst data...'), { target: { value: 'fh-typed-by-the-first-account' } });
     expect(localStorage.getItem('data_finnhub_key')).toBeNull(); // still inside the tab's autosave
 
@@ -743,7 +743,7 @@ describe('App: nothing written after a sign-out outlives it', () => {
     await hydrated(client);
     await settled();
     fireEvent.click(screen.getByLabelText('Open settings'));
-    fireEvent.click(within(settingsDialog()).getByRole('button', { name: 'Backup' }));
+    fireEvent.click(within(settingsDialog()).getByRole('tab', { name: 'Backup' }));
     fireEvent.click(within(settingsDialog()).getByRole('button', { name: /Add strategic context/ }));
     fireEvent.change(await screen.findByPlaceholderText(/^Paste your strategic context here/), { target: { value: "A's private thesis" } });
     expect(localStorage.getItem('strategic_context')).toBeNull(); // still inside the editor's autosave

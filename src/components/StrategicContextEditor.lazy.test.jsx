@@ -1,6 +1,6 @@
 // src/components/StrategicContextEditor.lazy.test.jsx — the strategic context editor around its dialog, which it
 // loads on demand (StrategicContextDialog.tsx). Closed, it renders nothing and asks for nothing. Open while the import
-// is held, it is a modal of its own over the page, a spinner on a backdrop at the dialog's z-index, and once the dialog
+// is held, it is a modal of its own over the page, a spinner on a backdrop in the top layer, and once the dialog
 // is in it shows the stored text, the dialog's closes saving first as before. A failed import shows the failure card
 // in a dialog-shaped box over the backdrop, and Try again loads the dialog. While loading and after a failure, Escape
 // and the backdrop close the editor alone: Escape is stopped in the capture phase, so a window listener in the bubble
@@ -16,6 +16,7 @@ import StrategicContextEditor from './StrategicContextEditor.js';
 import { getPreference, setPreference } from '../lib/store.js';
 import { scheduleIdlePreload } from '../lib/lazyWithPreload.js';
 import { importGate, skipLazyPreload } from '../test/lazy.js';
+import { isOpenModal } from '../test/standins.js';
 
 skipLazyPreload();
 
@@ -76,14 +77,16 @@ it('closed, renders nothing and asks for nothing; the first opening asks for the
   expect(queryEditor()).toBeInTheDocument();
 });
 
-it("open while the dialog loads: a spinner on a backdrop at the dialog's z-index, over the page, none of it in place", async () => {
+it('open while the dialog loads: a spinner on a backdrop in the top layer, over the page, none of it in place', async () => {
   const { container } = render(<Host />);
   const loading = spinner();
   expect(loading).toBeInTheDocument();
   const layer = layerOf(loading);
-  expect(layer).toHaveClass('inset-0', 'z-[110]', 'flex', 'items-center', 'justify-center');
+  expect(isOpenModal(layer)).toBe(true);
+  expect(layer).toHaveClass('inset-0', 'open:flex', 'items-center', 'justify-center');
   expect(layer.parentElement).toBe(document.body);
-  expect(within(layer).getByRole('status').previousElementSibling).toHaveClass('absolute', 'inset-0', 'backdrop-blur-sm');
+  expect(within(layer).getByRole('status').parentElement).toBe(layer);
+  expect(layer).toHaveClass('backdrop:bg-black/70', 'backdrop:backdrop-blur-sm');
   expect(container).toBeEmptyDOMElement();
   expect(queryEditor()).toBeNull();
   await vi.waitFor(() => expect(dialog.imports).toBe(1));
@@ -100,7 +103,7 @@ it('shows the dialog with the stored text once it is in, in the spinner\'s place
   await act(() => dialog.resolve());
   expect(queryEditor()).toHaveValue('Long AVGO into earnings');
   expect(spinner()).toBeNull();
-  expect(document.querySelectorAll('.backdrop-blur-sm')).toHaveLength(1);
+  expect(document.querySelectorAll('dialog')).toHaveLength(1);
 
   fireEvent.change(queryEditor(), { target: { value: 'Trim 10% above 400' } });
   fireEvent.keyDown(queryEditor(), { key: 'Escape' });
@@ -149,7 +152,10 @@ describe.each([
     render(<Host onClosed={onClosed} />);
     await reach();
 
-    fireEvent.click(document.querySelector('.backdrop-blur-sm'));
+    const layer = screen.getByRole('dialog', { name: 'Strategic Context' });
+    fireEvent.pointerDown(layer);
+    fireEvent.pointerUp(layer);
+    fireEvent.click(layer);
     expect(onClosed).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.fixed')).toBeNull();
 
@@ -171,9 +177,11 @@ describe('a failed import', () => {
     const box = card.parentElement;
     expect(box).toHaveClass('relative', 'max-w-sm', 'shadow-2xl');
     const layer = layerOf(card);
-    expect(layer).toHaveClass('inset-0', 'z-[110]');
+    expect(isOpenModal(layer)).toBe(true);
+    expect(layer).toHaveClass('inset-0');
     expect(layer.parentElement).toBe(document.body);
-    expect(box.previousElementSibling).toHaveClass('absolute', 'inset-0', 'backdrop-blur-sm');
+    expect(box.parentElement).toBe(layer);
+    expect(layer).toHaveClass('backdrop:bg-black/70', 'backdrop:backdrop-blur-sm');
     expect(container).toBeEmptyDOMElement();
     expect(spinner()).toBeNull();
 

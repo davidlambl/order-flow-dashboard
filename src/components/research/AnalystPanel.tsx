@@ -1,6 +1,6 @@
 // src/components/research/AnalystPanel.tsx
 // The analysts' view of the ticker: the ratings bar, then the price target (the median, else the mean) with its upside
-// from spot, and markers for spot and the target on the low-high range.
+// from spot, and markers for spot and the target on the low-high range, spot's price also in visually hidden text.
 
 import LoadingSkeleton from './LoadingSkeleton.js';
 import RatingBar from './RatingBar.js';
@@ -77,17 +77,22 @@ export default function AnalystPanel({ analysts, spotPrice, loading }: AnalystPa
 
             {pt.low != null && pt.high != null && (
               <div className="relative h-2 rounded-full bg-[var(--color-surface-2)]">
-                {hasSpan && spotPrice != null && spotPrice > 0 && (
+                {/* The markers are drawings, titled for a pointer. The target's prices are in the text above; spot's
+                    is not, so a screen reader hears it here, between them and the range's ends below. */}
+                {hasSpan && spotPrice != null && spotPrice > 0 && (<>
                   <div
+                    aria-hidden="true"
                     className="absolute top-0 h-full w-0.5 bg-[var(--color-warn)] rounded"
                     style={{
                       left: `${Math.max(0, Math.min(100, ((spotPrice - pt.low) / span) * 100))}%`,
                     }}
                     title={`Spot: $${spotPrice.toFixed(2)}`}
                   />
-                )}
+                  <span className="sr-only">{`Spot: $${spotPrice.toFixed(2)}`}</span>
+                </>)}
                 {hasSpan && markerPrice != null && (
                   <div
+                    aria-hidden="true"
                     className="absolute top-0 h-full w-1 bg-[var(--color-accent)] rounded"
                     style={{
                       left: `${Math.max(0, Math.min(100, ((markerPrice - pt.low) / span) * 100))}%`,

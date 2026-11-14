@@ -25,7 +25,7 @@ export default function ChunkFailureCard({ retry }: ChunkFailureCardProps) {
         <button
           type="button"
           onClick={retry}
-          className="rounded-lg px-3 py-1.5 border border-[var(--color-accent)] bg-[var(--color-accent)] text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+          className="rounded-lg px-3 py-1.5 border border-[var(--color-accent-solid)] bg-[var(--color-accent-solid)] text-xs font-semibold text-white hover:bg-[var(--color-accent-solid-hover)] transition-colors"
         >
           Try again
         </button>

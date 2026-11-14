@@ -22,7 +22,7 @@ export default function ChatLockScreen({ onClose }: ChatLockScreenProps) {
           <div className="flex items-center justify-center w-6 h-6 rounded-lg bg-[var(--color-purple-bg)]">
             <Sparkles size={12} className="text-[var(--color-purple)]" />
           </div>
-          <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">AI Co-Pilot</h3>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">AI Co-Pilot</h2>
         </div>
         <button
           onClick={onClose}

@@ -27,7 +27,7 @@ export default function TickerSummary({ ticker, data, loading, usingMock, error 
           {ticker}
         </span>
         {data?.iv30 != null && !loading && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--color-purple-bg)] text-[var(--color-purple)] border border-[var(--color-purple)]/20 tabular-nums">
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[var(--color-purple-bg)] text-[var(--color-purple-text)] border border-[var(--color-purple)]/20 tabular-nums">
             IV30: {data.iv30.toFixed(1)}%
           </span>
         )}
@@ -37,7 +37,7 @@ export default function TickerSummary({ ticker, data, loading, usingMock, error 
           </span>
         )}
         {error && !usingMock && (
-          <span title={error} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20">
+          <span title={error} className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[var(--color-bear-bg)] text-[var(--color-bear-text)] border border-[var(--color-bear)]/20">
             ERROR
           </span>
         )}

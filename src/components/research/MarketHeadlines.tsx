@@ -1,5 +1,6 @@
 // src/components/research/MarketHeadlines.tsx
-// The general market headlines, each a link out with its age when the feed dated it.
+// The general market headlines, each a link out with its age when the feed dated it. A one-line headline is shorter
+// than a 24 px target, so each link is at least that tall (min-h-6).
 
 import { ExternalLink } from 'lucide-react';
 import { timeAgo } from '../../lib/format.js';
@@ -23,7 +24,7 @@ export default function MarketHeadlines({ news, now }: MarketHeadlinesProps) {
           href={n.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-start gap-2 group py-1 first:pt-0"
+          className="flex items-start gap-2 group py-1 first:pt-0 min-h-6"
         >
           <span className="flex-1 text-[11px] text-[var(--color-text-secondary)] leading-snug group-hover:text-[var(--color-text-primary)] transition-colors line-clamp-2">
             {n.headline}
@@ -32,7 +33,9 @@ export default function MarketHeadlines({ news, now }: MarketHeadlinesProps) {
             {n.datetime && (
               <span className="text-[9px] text-[var(--color-text-muted)]">{timeAgo(n.datetime, now)}</span>
             )}
-            <ExternalLink size={8} className="text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+            {/* Shown at rest, not on hover alone: a phone has no hover. */}
+            <ExternalLink size={8} className="text-[var(--color-text-muted)]" />{' '}
+            <span className="sr-only">(opens in a new tab)</span>
           </div>
         </a>
       ))}

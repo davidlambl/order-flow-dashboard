@@ -86,7 +86,7 @@ export default function PriceDisplay({
     const priceUp = (changePct || 0) >= 0;
     // The badge labels the price shown: a live quote is never "delayed", whatever the options feed is.
     const badge = hasLive
-      ? { text: q.source === 'yahoo-regular' ? 'Live · Yahoo' : sourceLabel, className: 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono' }
+      ? { text: q.source === 'yahoo-regular' ? 'Live · Yahoo' : sourceLabel, className: 'bg-[var(--color-accent)]/20 text-[var(--color-accent-text)] font-mono' }
       : isDelayed
         ? { text: `~15min delayed (${feedName})`, className: 'bg-[var(--color-warn-bg)] text-[var(--color-warn)] font-medium' }
         : { text: `Spot (${feedName})`, className: 'bg-[var(--color-surface-3)] text-[var(--color-text-muted)] font-medium' };
@@ -162,7 +162,7 @@ export default function PriceDisplay({
             {driftUp ? '+' : ''}{drift.toFixed(2)}%
           </span>
         )}
-        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent)] font-mono">
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-accent)]/20 text-[var(--color-accent-text)] font-mono">
           {sourceLabel}
         </span>
         <span className="text-xs text-[var(--color-text-muted)]">

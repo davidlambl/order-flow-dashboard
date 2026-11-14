@@ -55,33 +55,41 @@ function Stateful({ onClosed }) {
   return <AppSettings isOpen={open} onClose={() => { setOpen(false); onClosed(); }} />;
 }
 
-/** The stand-in's loading line, or null once the dialog or the failure card has taken its place. */
-const loading = () => screen.queryByRole('status');
+/**
+ * The stand-in's loading line, or null once the dialog or the failure card has taken its place. Looked for in the
+ * header, where the stand-in shows it in the tab list's place: the dialog's AI tab keeps a status region of its own in
+ * the body, empty until its Test has a result.
+ */
+function loading() {
+  const open = screen.queryByRole('dialog', { name: 'Settings' });
+  return open ? within(open.firstElementChild.firstElementChild).queryByRole('status') : null;
+}
 
 /** The tab bar's labels, in document order: the dialog's own, which the stand-in has none of. */
-const tabBar = () => screen.queryAllByRole('button')
+const tabBar = () => screen.queryAllByRole('tab')
   .map((button) => button.textContent)
   .filter((label) => TABS.includes(label));
 
-/** The frame around whatever is open, the stand-in or the dialog: the parts that must not move between them. */
+/**
+ * The frame around whatever is open, the stand-in or the dialog: the parts that must not move between them. The
+ * dialog element carries the backdrop's classes (::backdrop), and each title row's heading has an id of its own.
+ */
 function frame() {
-  const heading = screen.getByRole('heading', { name: 'Settings' });
-  const container = heading.closest('div.fixed');
-  const [backdrop, panel] = container.children;
+  const container = screen.getByRole('dialog', { name: 'Settings' });
+  const panel = container.firstElementChild;
   const header = panel.firstElementChild;
   const [titleRow, tabLine] = header.children;
   return {
     container: container.className,
-    backdrop: backdrop.className,
     panel: panel.className,
     header: header.className,
-    titleRow: titleRow.outerHTML,
+    titleRow: titleRow.outerHTML.replace(/ id="[^"]*"/g, ''),
     tabLine: tabLine.className,
   };
 }
 
 /** The open frame's panel: the box the failure card must sit in. */
-const panel = () => screen.getByRole('heading', { name: 'Settings' }).closest('div.fixed').children[1];
+const panel = () => screen.getByRole('dialog', { name: 'Settings' }).firstElementChild;
 
 /** A preference as the store keeps it (JSON in localStorage); null while there is none. */
 const stored = (name) => JSON.parse(localStorage.getItem(name));
@@ -115,7 +123,12 @@ afterEach(async ({ task }) => {
 /** The three ways out of the dialog, each of which the stand-in offers too. */
 const WAYS_OUT = [
   ['Escape', () => fireEvent.keyDown(window, { key: 'Escape' })],
-  ['the backdrop', () => fireEvent.click(document.querySelector('.backdrop-blur-sm'))],
+  ['the backdrop', () => {
+    const dialog = screen.getByRole('dialog', { name: 'Settings' });
+    fireEvent.pointerDown(dialog);
+    fireEvent.pointerUp(dialog);
+    fireEvent.click(dialog);
+  }],
   ['"Close settings"', () => fireEvent.click(screen.getByRole('button', { name: 'Close settings' }))],
 ];
 

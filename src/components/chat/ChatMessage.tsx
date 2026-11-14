@@ -1,10 +1,18 @@
 // src/components/chat/ChatMessage.tsx
 // One bubble of the conversation: the role's avatar, the text (plain for a question or an error line, markdown for a
-// reply) and, on hover, Copy (the raw markdown; 'Copied!' for 1.5 s) and Delete. Memoised on its props, so a render of
+// reply) and, under it, Copy (the raw markdown; 'Copied!' for 1.5 s) and Delete. Memoised on its props, so a render of
 // the shell (a keystroke in the composer, a streaming frame) re-renders only the bubbles whose message changed: a frame
 // gives a new object only to the reply it extends, and ReactMarkdown runs once per frame instead of once per message.
 // That holds while onDelete keeps one identity, which is why the bubble takes its index and hands it back rather than
 // a callback made for each message.
+//
+// For a keyboard, a touch screen and a screen reader. Copy and Delete show at rest, dimmed, and at full strength on
+// hover or while one of them has focus: a phone has no hover, and a keyboard user must see what they tab onto. Each is
+// 24 px square around its 11 px icon. The avatar is decoration; who is speaking is said in visually hidden text that
+// opens the bubble ("You", "Assistant", "Error"), outside the message's own text, so Copy and the stored history never
+// see it. An error line is an alert, announced as it appears. A reply has no live region: a streamed reply would be
+// read out again at every frame. None of this adds state or an effect: the bubble renders on every frame of the reply
+// it shows.
 //
 // The markdown renderer (ChatMarkdown, with react-markdown and remark-gfm) is loaded on demand: by the first reply on
 // screen, or before it in the idle preload. Once it is in, a bubble renders it directly, with nothing suspending in
@@ -69,6 +77,7 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
   useEffect(() => () => clearTimeout(copyTimer.current), []);
   const isUser = msg.role === 'user';
   const isError = msg.role === 'error';
+  const author = isUser ? 'You' : isError ? 'Error' : 'Assistant';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(msg.content).catch(() => {});
@@ -80,6 +89,7 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
   return (
     <div className={`group/msg flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''} fade-in`}>
       <div
+        aria-hidden="true"
         className={`flex items-center justify-center w-6 h-6 rounded-lg shrink-0 mt-0.5 ${
           isUser
             ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]'
@@ -92,14 +102,16 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
       </div>
       <div className="flex flex-col max-w-[85%]">
         <div
+          role={isError ? 'alert' : undefined}
           className={`text-[13px] leading-relaxed rounded-xl px-3 py-2 ${
             isUser
               ? 'bg-[var(--color-accent)]/10 text-[var(--color-text-primary)] border border-[var(--color-accent)]/20'
               : isError
-              ? 'bg-[var(--color-bear-bg)] text-[var(--color-bear)] border border-[var(--color-bear)]/20'
+              ? 'bg-[var(--color-bear-bg)] text-[var(--color-bear-text)] border border-[var(--color-bear)]/20'
               : 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)] border border-[var(--color-border-subtle)]'
           }`}
         >
+          <span className="sr-only">{author}</span>
           {isUser || isError ? (
             <RawText content={msg.content} />
           ) : (
@@ -111,10 +123,10 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
             </ChunkBoundary>
           )}
         </div>
-        <div className={`flex gap-0.5 mt-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
+        <div className={`flex gap-0.5 mt-0.5 opacity-75 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
           <button
             onClick={handleCopy}
-            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
+            className="inline-flex items-center justify-center size-6 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
             aria-label="Copy message"
             title={copied ? 'Copied!' : 'Copy markdown'}
           >
@@ -122,7 +134,7 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
           </button>
           <button
             onClick={() => onDelete(index)}
-            className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+            className="inline-flex items-center justify-center size-6 rounded text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
             aria-label="Delete message"
             title="Delete message"
           >

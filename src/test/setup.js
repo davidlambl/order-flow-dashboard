@@ -1,8 +1,9 @@
 // src/test/setup.js — dom project setup (vitest.config.js → projects.dom.setupFiles): jest-dom matchers,
 // Testing Library cleanup, storage reset, the shared MSW server, TanStack Query's notifications made synchronous,
-// the shared queryClient (src/lib/queryClient.ts) cleared after every test, and every lazily loaded component loaded
-// before a file's first test. Tests import { server } from '../test/setup.js' (same module instance) and add handlers
-// with server.use(...).
+// the shared queryClient (src/lib/queryClient.ts) cleared after every test, every lazily loaded component loaded
+// before a file's first test, and the stand-ins for what jsdom lacks (./standins.js: <dialog> and pointer capture;
+// ./viewport.js: matchMedia, back to a desktop width after every test). Tests import { server } from
+// '../test/setup.js' (same module instance) and add handlers with server.use(...).
 import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { cleanup } from '@testing-library/react';
@@ -11,9 +12,15 @@ import { setupServer } from 'msw/node';
 import { queryClient } from '../lib/queryClient.js';
 import { preloadAll, resetLazies } from '../lib/lazyWithPreload.js';
 import { lazyPreloadSkipped } from './lazy.js';
+import { installDialog, installPointerCapture } from './standins.js';
+import { installMatchMedia, resetViewport } from './viewport.js';
 
 // Testing Library registers neither of these itself when test globals are off.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+installMatchMedia();
+installDialog();
+installPointerCapture();
 
 /** Handlers target http://localhost:3000/.netlify/functions/… (jsdom's origin under Vitest). */
 export const server = setupServer();
@@ -50,6 +57,7 @@ beforeAll(async () => {
 });
 afterEach(() => {
   cleanup();
+  resetViewport();
   // The client is a module singleton and tests reuse tickers ('AVGO'), so no cached query may outlive its test.
   // After cleanup(): clear() does not detach observers, the unmount does.
   queryClient.clear();

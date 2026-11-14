@@ -1,7 +1,13 @@
 // src/components/LoginForm.jsx
-// Passwordless magic link login via Supabase Auth.
+// Passwordless magic link login via Supabase Auth. It lays out the whole screen: one main landmark under the app's
+// name as its h1 (the dashboard's header has the same h1). The e-mail field has a visible label tied to it by an id
+// from useId; a refused send is an alert that describes the field and marks it invalid; the link sent is announced as a
+// status (its two lines, not the button beside them). That status region is in the tree before its text: it mounts,
+// empty and visually hidden, as the link is requested, and the same node then holds the two lines, since a live region
+// announces a change inside it and one inserted together with its text is not read by every screen reader. Idle, the
+// screen has no status but the notice, when there is one.
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Activity } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -15,6 +21,11 @@ export default function LoginForm({ onSkip, notice }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState('idle'); // idle | sending | sent | error
   const [errorMsg, setErrorMsg] = useState('');
+  const id = useId();
+  const emailId = `${id}-email`;
+  const errorId = `${id}-error`;
+  const failed = status === 'error';
+  const sent = status === 'sent';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,12 +54,12 @@ export default function LoginForm({ onSkip, notice }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0e17] flex items-center justify-center p-4">
+    <main className="min-h-screen bg-[#0a0e17] flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
         {/* Logo */}
         <div className="flex items-center justify-center gap-2 text-blue-400">
           <Activity className="w-8 h-8" />
-          <span className="text-2xl font-bold text-white">Order Flow</span>
+          <h1 className="text-2xl font-bold text-white">Order Flow</h1>
         </div>
 
         {notice && status !== 'sent' && (
@@ -57,43 +68,65 @@ export default function LoginForm({ onSkip, notice }) {
           </p>
         )}
 
-        {status === 'sent' ? (
-          <div className="bg-[#141926] border border-gray-700 rounded-lg p-6 text-center space-y-3">
-            <p className="text-green-400 font-medium">Check your email</p>
-            <p className="text-gray-400 text-sm">
-              We sent a magic link to <span className="text-white">{email}</span>. Click it to sign in.
-            </p>
-            <button
-              onClick={() => setStatus('idle')}
-              className="text-sm text-blue-400 hover:text-blue-300"
-            >
-              Try a different email
-            </button>
+        {/* The result's card, from the moment the link is requested: until the answer it is visually hidden (sr-only,
+            so it takes no room beside the form) and its status region is empty; sent, the same nodes are the card
+            and its two lines. A refusal takes it away again and the alert in the form speaks. */}
+        {(status === 'sending' || sent) && (
+          <div className={sent ? 'bg-[#141926] border border-gray-700 rounded-lg p-6 text-center space-y-3' : 'sr-only'}>
+            <div role="status" className={sent ? 'space-y-3' : undefined}>
+              {sent && (
+                <>
+                  <p className="text-green-400 font-medium">Check your email</p>
+                  <p className="text-gray-400 text-sm">
+                    We sent a magic link to <span className="text-white">{email}</span>. Click it to sign in.
+                  </p>
+                </>
+              )}
+            </div>
+            {sent && (
+              <button
+                onClick={() => setStatus('idle')}
+                className="min-h-6 text-sm text-blue-400 hover:text-blue-300"
+              >
+                Try a different email
+              </button>
+            )}
           </div>
-        ) : (
+        )}
+
+        {!sent && (
           <form onSubmit={handleSubmit} className="bg-[#141926] border border-gray-700 rounded-lg p-6 space-y-4">
             <p className="text-gray-400 text-sm text-center">
               Sign in to sync your data across devices
             </p>
 
-            <input
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-[#0a0e17] border border-gray-600 rounded-md px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
-              autoFocus
-              disabled={status === 'sending'}
-            />
+            <div>
+              <label htmlFor={emailId} className="block text-xs font-medium text-gray-400 mb-1.5">
+                Email address
+              </label>
+              <input
+                id={emailId}
+                type="email"
+                placeholder="you@example.com"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                aria-describedby={failed ? errorId : undefined}
+                aria-invalid={failed || undefined}
+                className="w-full bg-[#0a0e17] border border-gray-600 rounded-md px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                autoFocus
+                disabled={status === 'sending'}
+              />
+            </div>
 
-            {status === 'error' && (
-              <p className="text-red-400 text-xs">{errorMsg}</p>
+            {failed && (
+              <p id={errorId} role="alert" className="text-red-400 text-xs">{errorMsg}</p>
             )}
 
             <button
               type="submit"
               disabled={status === 'sending' || !email.trim()}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-md transition-colors"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-md transition-colors"
             >
               {status === 'sending' ? 'Sending...' : 'Send magic link'}
             </button>
@@ -102,11 +135,11 @@ export default function LoginForm({ onSkip, notice }) {
 
         <button
           onClick={onSkip}
-          className="w-full text-sm text-gray-500 hover:text-gray-400 transition-colors"
+          className="w-full min-h-6 text-sm text-gray-400 hover:text-gray-300 transition-colors"
         >
           Continue without signing in
         </button>
       </div>
-    </div>
+    </main>
   );
 }

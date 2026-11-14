@@ -27,7 +27,7 @@ export default function AccountTab() {
             </div>
             <button
               onClick={() => { void signOut(); }}
-              className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+              className="min-h-6 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
             >
               Sign out
             </button>
@@ -47,7 +47,7 @@ export default function AccountTab() {
               <button
                 type="button"
                 onClick={() => signIn()}
-                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
+                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent-text)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
               >
                 Sign in
               </button>
@@ -67,8 +67,8 @@ export default function AccountTab() {
               <ShieldCheck size={16} className="text-[var(--color-bull)]" />
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
                 tier === 'pro'
-                  ? 'text-[var(--color-accent)] bg-[var(--color-accent)]/10 border-[var(--color-accent)]/20'
-                  : 'text-[var(--color-purple)] bg-[var(--color-purple-bg)] border-[var(--color-purple)]/20'
+                  ? 'text-[var(--color-accent-text)] bg-[var(--color-accent)]/10 border-[var(--color-accent)]/20'
+                  : 'text-[var(--color-purple-text)] bg-[var(--color-purple-bg)] border-[var(--color-purple)]/20'
               }`}>
                 {tier === 'pro' ? 'PRO' : 'TRIAL'}
               </span>
@@ -101,7 +101,7 @@ export default function AccountTab() {
             <button
               type="button"
               onClick={() => clearToken()}
-              className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
+              className="min-h-6 text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
             >
               Remove access token
             </button>
@@ -112,15 +112,12 @@ export default function AccountTab() {
         </div>
       ) : (
         <>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">
-              Activate Token
-            </label>
-            <TokenActivationForm
-              placeholder="Paste access token..."
-              hint="Unlocks premium features: AI Co-Pilot, Position Analysis, and Ticker Research."
-            />
-          </div>
+          {/* The form draws the label, tied to its input */}
+          <TokenActivationForm
+            label="Activate Token"
+            placeholder="Paste access token..."
+            hint="Unlocks premium features: AI Co-Pilot, Position Analysis, and Ticker Research."
+          />
 
           {/* Request access */}
           {showRequest ? (
@@ -141,7 +138,7 @@ export default function AccountTab() {
               </div>
               <button
                 onClick={() => setShowRequest(true)}
-                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
+                className="px-3 py-1.5 text-[11px] font-medium rounded-lg border border-[var(--color-accent)]/30 text-[var(--color-accent-text)] hover:bg-[var(--color-accent)]/10 transition-colors shrink-0"
               >
                 Request
               </button>

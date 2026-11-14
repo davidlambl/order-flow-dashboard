@@ -1,5 +1,6 @@
 // src/components/research/LoadingSkeleton.tsx
-// Placeholder rows in place of a research panel's content while a refetch runs over the context already shown.
+// Placeholder rows in place of a research panel's content while a refetch runs over the context already shown: a
+// status whose visually hidden text tells a screen reader what the shimmering rows show a sighted user.
 
 interface LoadingSkeletonProps {
   rows?: number;
@@ -7,7 +8,8 @@ interface LoadingSkeletonProps {
 
 export default function LoadingSkeleton({ rows = 3 }: LoadingSkeletonProps) {
   return (
-    <div className="space-y-2">
+    <div role="status" className="space-y-2">
+      <span className="sr-only">Loading…</span>
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="skeleton h-4 w-full rounded" />
       ))}

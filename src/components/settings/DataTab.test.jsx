@@ -89,7 +89,7 @@ function ResearchFlag() {
 async function openDataTab(ui = dialog()) {
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
   const view = render(ui);
-  await user.click(screen.getByRole('button', { name: 'Data' }));
+  await user.click(screen.getByRole('tab', { name: 'Data' }));
   return { user, ...view };
 }
 
@@ -253,7 +253,7 @@ describe('AppSettings: the Data tab', () => {
     // The AI tab's list has landed and its fallback model is stored, so no later write of the dialog's own moves the
     // reader and only the key's save can.
     await screen.findByRole('combobox');
-    await user.click(screen.getByRole('button', { name: 'Data' }));
+    await user.click(screen.getByRole('tab', { name: 'Data' }));
     expect(screen.getByText('research off')).toBeInTheDocument();
 
     fireEvent.change(input(FINNHUB), { target: { value: 'fh-1' } });

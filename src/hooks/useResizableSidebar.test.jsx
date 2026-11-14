@@ -1,10 +1,13 @@
 // src/hooks/useResizableSidebar.test.jsx — the chat sidebar's width as App's aside and resize handle use it, through a
 // host that renders the handle and logs every render's [width, isResizing]. A stored width counts only in range and as
-// a number, and one saved elsewhere shows at once. A drag follows the mouse from the width shown, clamped to 280-640,
-// with the body's cursor and selection set and nothing stored; the mouseup stores the dragged width with one `pref`
-// event, renders no other width on the way, ends the drag and leaves the mouse moving nothing; the next drag starts
+// a number, and one saved elsewhere shows at once. A drag follows the pointer from the width shown, clamped to 280-640,
+// with the body's cursor and selection set and nothing stored; the pointerup stores the dragged width with one `pref`
+// event, renders no other width on the way, ends the drag and leaves the pointer moving nothing; the next drag starts
 // from the stored width. An unmount mid-drag removes the drag's listeners, restores the body and stores nothing. The
-// mouse events go to document, where the drag listens; src/test/setup.js clears localStorage after each test.
+// handle takes the pointer's capture, so a browser sends the drag's pointermove and pointerup to it (the capture
+// stand-in retargets nothing: the tests fire them there), and they bubble to document, where the drag listens; after
+// an unmount they go to document. useResizableSidebar.handle.test.jsx has the keyboard, the pointercancel and the
+// pointers a drag ignores. src/test/setup.js clears localStorage after each test.
 import { StrictMode, useState } from 'react';
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
@@ -21,9 +24,9 @@ let log = [];
 
 /** The handle as App wires it. */
 function Host() {
-  const { width, isResizing, onResizeStart } = useResizableSidebar();
+  const { width, isResizing, handleProps } = useResizableSidebar();
   log.push([width, isResizing]);
-  return <div data-testid="handle" onMouseDown={onResizeStart} />;
+  return <div data-testid="handle" {...handleProps} />;
 }
 
 /** The host behind a toggle: hiding it unmounts the hook while the rest of the tree stays. */
@@ -84,22 +87,22 @@ describe('useResizableSidebar', () => {
     expect(result.current.width).toBe(300);
   });
 
-  it('drags from the width shown, following the mouse within 280-640, with the body styled and nothing stored', () => {
+  it('drags from the width shown, following the pointer within 280-640, with the body styled and nothing stored', () => {
     localStorage.setItem(KEY, '500');
     render(<StrictMode><Host /></StrictMode>);
     const events = storeEvents();
     // The default is prevented, so the press starts no text selection.
-    expect(fireEvent.mouseDown(handle(), { clientX: 1000 })).toBe(false);
+    expect(fireEvent.pointerDown(handle(), { clientX: 1000 })).toBe(false);
     expect(last()).toEqual([500, true]);
     expect(bodyStyles()).toEqual(['col-resize', 'none']);
 
-    fireEvent.mouseMove(document, { clientX: 900 }); // the aside is on the right: a move to the left widens it
+    fireEvent.pointerMove(handle(), { clientX: 900 }); // the aside is on the right: a move to the left widens it
     expect(last()).toEqual([600, true]);
-    fireEvent.mouseMove(document, { clientX: 0 });
+    fireEvent.pointerMove(handle(), { clientX: 0 });
     expect(last()).toEqual([640, true]);
-    fireEvent.mouseMove(document, { clientX: 5000 });
+    fireEvent.pointerMove(handle(), { clientX: 5000 });
     expect(last()).toEqual([280, true]);
-    fireEvent.mouseMove(document, { clientX: 1050 });
+    fireEvent.pointerMove(handle(), { clientX: 1050 });
     expect(last()).toEqual([450, true]);
 
     expect(events).toEqual([]);
@@ -107,15 +110,15 @@ describe('useResizableSidebar', () => {
     expect(bodyStyles()).toEqual(['col-resize', 'none']);
   });
 
-  it('the mouseup stores the dragged width with one pref event, renders no other width on the way and ends the drag', () => {
+  it('the pointerup stores the dragged width with one pref event, renders no other width on the way and ends the drag', () => {
     render(<StrictMode><Host /></StrictMode>);
     const events = storeEvents();
-    fireEvent.mouseDown(handle(), { clientX: 1000 });
-    fireEvent.mouseMove(document, { clientX: 900 });
+    fireEvent.pointerDown(handle(), { clientX: 1000 });
+    fireEvent.pointerMove(handle(), { clientX: 900 });
     expect(last()).toEqual([484, true]);
 
     const before = log.length;
-    fireEvent.mouseUp(document);
+    fireEvent.pointerUp(handle());
     const renders = log.slice(before);
     // Rendered again, and never with the old stored 384 between the dragged 484 and the stored one.
     expect(renders.length).toBeGreaterThan(0);
@@ -124,10 +127,10 @@ describe('useResizableSidebar', () => {
     expect(events).toEqual([{ kind: 'pref', id: 'sidebarWidth' }]);
     expect(bodyStyles()).toEqual(['', '']);
 
-    // The drag's listeners are gone: the mouse moves nothing, and another mouseup stores nothing.
+    // The drag's listeners are gone: the pointer moves nothing, and another pointerup stores nothing.
     const settled = log.length;
-    fireEvent.mouseMove(document, { clientX: 500 });
-    fireEvent.mouseUp(document);
+    fireEvent.pointerMove(handle(), { clientX: 500 });
+    fireEvent.pointerUp(handle());
     expect(log).toHaveLength(settled);
     expect(events).toHaveLength(1);
     expect(stored()).toBe('484');
@@ -135,37 +138,37 @@ describe('useResizableSidebar', () => {
 
   it('starts the next drag from the width the last one stored', () => {
     render(<Host />);
-    fireEvent.mouseDown(handle(), { clientX: 1000 });
-    fireEvent.mouseMove(document, { clientX: 900 });
-    fireEvent.mouseUp(document);
+    fireEvent.pointerDown(handle(), { clientX: 1000 });
+    fireEvent.pointerMove(handle(), { clientX: 900 });
+    fireEvent.pointerUp(handle());
     expect(last()).toEqual([484, false]);
 
-    fireEvent.mouseDown(handle(), { clientX: 1000 });
+    fireEvent.pointerDown(handle(), { clientX: 1000 });
     expect(last()).toEqual([484, true]);
-    fireEvent.mouseMove(document, { clientX: 950 });
+    fireEvent.pointerMove(handle(), { clientX: 950 });
     expect(last()).toEqual([534, true]);
-    fireEvent.mouseUp(document);
+    fireEvent.pointerUp(handle());
     expect(stored()).toBe('534');
   });
 
-  it("an unmount mid-drag removes the drag's listeners and restores the body, and the mouse then stores nothing", () => {
+  it("an unmount mid-drag removes the drag's listeners and restores the body, and the pointer then stores nothing", () => {
     const added = vi.spyOn(document, 'addEventListener');
     const removed = vi.spyOn(document, 'removeEventListener');
     render(<Toggle />);
     const events = storeEvents();
-    fireEvent.mouseDown(handle(), { clientX: 1000 });
-    fireEvent.mouseMove(document, { clientX: 900 });
+    fireEvent.pointerDown(handle(), { clientX: 1000 });
+    fireEvent.pointerMove(handle(), { clientX: 900 });
     expect(bodyStyles()).toEqual(['col-resize', 'none']);
-    const drag = added.mock.calls.filter(([type]) => type === 'mousemove' || type === 'mouseup');
-    expect(drag.map(([type]) => type)).toEqual(['mousemove', 'mouseup']);
+    const drag = added.mock.calls.filter(([type]) => ['pointermove', 'pointerup', 'pointercancel'].includes(type));
+    expect(drag.map(([type]) => type)).toEqual(['pointermove', 'pointerup', 'pointercancel']);
 
     fireEvent.click(screen.getByText('Hide'));
     expect(screen.queryByTestId('handle')).toBeNull();
     expect(bodyStyles()).toEqual(['', '']);
-    // React 19 drops an update to an unmounted component silently: a mousemove listener left behind shows only here.
+    // React 19 drops an update to an unmounted component silently: a pointermove listener left behind shows only here.
     for (const [type, listener] of drag) expect(removed).toHaveBeenCalledWith(type, listener);
-    fireEvent.mouseMove(document, { clientX: 800 });
-    fireEvent.mouseUp(document);
+    fireEvent.pointerMove(document, { clientX: 800 });
+    fireEvent.pointerUp(document);
     expect(stored()).toBeNull();
     expect(events).toEqual([]);
   });

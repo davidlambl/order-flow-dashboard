@@ -108,7 +108,12 @@ describe('StrategicContextEditor', () => {
 
   it.each([
     ['the close button', () => fireEvent.click(closeButton())],
-    ['the backdrop', () => fireEvent.click(document.querySelector('.backdrop-blur-sm'))],
+    ['the backdrop', () => {
+      const dialog = screen.getByRole('dialog', { name: 'Strategic Context' });
+      fireEvent.pointerDown(dialog);
+      fireEvent.pointerUp(dialog);
+      fireEvent.click(dialog);
+    }],
     ['Escape', () => fireEvent.keyDown(editor(), { key: 'Escape' })],
   ])('Pin: closing with %s flushes a pending edit, which onClose already finds in the store', (_, close) => {
     const seen = [];

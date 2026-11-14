@@ -1,4 +1,6 @@
 // src/components/FlowChart.jsx
+// The daily and cumulative premium flow over the history's trading days. For a screen reader the plot is an image
+// named by a one-line summary (flowSummary), and the loading card is a status.
 import { useId } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -26,11 +28,39 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
+/**
+ * A day as a screen reader should say it: 'September 25' from the digits of 'YYYY-MM-DD', in UTC so the viewer's
+ * time zone cannot move it a day (formatShortDate's rule); anything else as the axis prints it.
+ */
+const SPOKEN_DAY = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+function spokenDate(isoDate) {
+  const match = typeof isoDate === 'string' ? /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate) : null;
+  if (!match) return String(formatShortDate(isoDate));
+  return SPOKEN_DAY.format(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+/**
+ * The plot's text alternative, one sentence from the rows it draws (a trading day each, oldest first): the days it
+ * covers, then the latest day's net premium and the cumulative total it brings, in the tooltip's formats.
+ */
+function flowSummary(data) {
+  const first = data[0];
+  const last = data[data.length - 1];
+  const latest = `net premium ${formatDollar(last.netPremium)} and cumulative premium ${formatDollar(last.cumPremium)}`;
+  if (data.length === 1) {
+    return `Area chart of premium flow over 1 trading day, ${spokenDate(first.date)}; ${latest}.`;
+  }
+  return `Area chart of premium flow over ${data.length} trading days, ${spokenDate(first.date)} to `
+    + `${spokenDate(last.date)}; on the latest day, ${latest}.`;
+}
+
 export default function FlowChart({ data, loading }) {
   const gradId = useId();
   if (loading) {
+    // ChartsSkeleton draws this same card while the charts' chunk loads (App.lazy.test.jsx compares the two).
     return (
-      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
+      <div role="status" className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
+        <span className="sr-only">Loading…</span>
         <div className="skeleton h-4 w-40 mb-4" />
         <div className="skeleton h-[280px] w-full" />
       </div>
@@ -66,7 +96,8 @@ export default function FlowChart({ data, loading }) {
         </div>
       </div>
       <ResponsiveContainer width="100%" height={280}>
-        <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+        {/* On recharts' plot svg, the Tab stop of its arrow-key tooltip: GexChart.jsx says why not on a wrapper. */}
+        <AreaChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }} role="img" aria-label={flowSummary(data)}>
           <defs>
             <linearGradient id={`cumGrad${gradId}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.2} />

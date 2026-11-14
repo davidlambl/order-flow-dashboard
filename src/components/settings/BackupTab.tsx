@@ -1,6 +1,7 @@
 // src/components/settings/BackupTab.tsx
 // The Backup tab: the strategic context (a preview of the stored document, the editor it opens, Clear), then exporting
-// everything but the API keys to a JSON file and importing one behind a confirm, then Reset all settings.
+// everything but the API keys to a JSON file and importing one behind a confirm, then Reset all settings. An import that
+// fails is announced as an alert, one that finishes in a status region that is there, empty, before it.
 import { useCallback, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { Check, CircleAlert, Download, FileText, HardDrive, Pencil, RotateCcw, Upload } from 'lucide-react';
@@ -107,6 +108,9 @@ export default function BackupTab() {
     e.target.value = ''; // reset now, so picking the same file again (after a "no") fires onChange
   }, [userEmail]);
 
+  // The import's report while one finished, for the status region under the buttons.
+  const report = importStatus === 'success' ? importReport : null;
+
   return (
     <div className="p-6 space-y-5 fade-in">
       {/* Strategic Context */}
@@ -125,7 +129,7 @@ export default function BackupTab() {
                     savePreference('strategic_context', null);
                   }
                 }}
-                className="text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
+                className="min-h-6 min-w-6 text-[10px] text-[var(--color-bear)] hover:text-[var(--color-bear)]/80 transition-colors"
               >
                 Clear
               </button>
@@ -191,32 +195,40 @@ export default function BackupTab() {
           >
             <Upload size={12} /> Import
           </button>
+          {/* Never shown: the Import button opens it. The hidden attribute, not a class, so the DOM says so (jsdom and
+              axe included), and a name all the same. */}
           <input
             ref={fileInputRef}
             type="file"
             accept=".json"
             onChange={handleImport}
-            className="hidden"
+            hidden
+            aria-label="Backup file to import"
           />
         </div>
 
-        {importStatus === 'success' && importReport && (
-          <div role="status" className="flex items-start gap-1.5 text-[11px] leading-relaxed">
-            <Check size={11} className="shrink-0 mt-px text-[var(--color-bull)]" />
-            <div className="min-w-0">
-              <p className="text-[var(--color-bull)]">
-                Imported {plural(importReport.positions, 'position')}, {plural(importReport.chats, 'chat')}, {plural(importReport.prefs, 'setting')}.
-              </p>
-              {importReport.skipped.length > 0 && (
-                <p className="text-[10px] text-[var(--color-text-muted)] break-words">
-                  Not imported: {importReport.skipped.join(', ')}
+        {/* The status region is here from the first render, the same node before and after an import, since a live
+            region announces a change inside it and one inserted with its text is not read by every screen reader.
+            Empty, it is sr-only alone: absolutely positioned, so space-y gives it no room. */}
+        <div role="status" className={report ? 'flex items-start gap-1.5 text-[11px] leading-relaxed' : 'sr-only'}>
+          {report && (
+            <>
+              <Check size={11} className="shrink-0 mt-px text-[var(--color-bull)]" />
+              <div className="min-w-0">
+                <p className="text-[var(--color-bull)]">
+                  Imported {plural(report.positions, 'position')}, {plural(report.chats, 'chat')}, {plural(report.prefs, 'setting')}.
                 </p>
-              )}
-            </div>
-          </div>
-        )}
+                {report.skipped.length > 0 && (
+                  <p className="text-[10px] text-[var(--color-text-muted)] break-words">
+                    Not imported: {report.skipped.join(', ')}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
         {importStatus === 'error' && (
-          <div className="flex items-start gap-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
+          <div role="alert" className="flex items-start gap-1.5 text-[11px] text-[var(--color-bear)] leading-relaxed">
             <CircleAlert size={11} className="shrink-0 mt-px" />
             <span>{importError}</span>
           </div>
@@ -235,7 +247,7 @@ export default function BackupTab() {
       {/* Reset */}
       <button
         onClick={handleReset}
-        className="flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
+        className="min-h-6 flex items-center gap-1.5 text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-bear)] transition-colors"
       >
         <RotateCcw size={11} />
         Reset all settings

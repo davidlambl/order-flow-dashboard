@@ -267,7 +267,7 @@ describe('PositionAnalysis pins', () => {
     const lineOf = (text) => screen.getByText(text).parentElement.textContent;
     const SNAPSHOT_CBOE = 'Options snapshot (CBOE, ~15 min delayed)';
     /** The classes of the live price's badge, on either display. */
-    const LIVE_BADGE =['bg-[var(--color-accent)]/20', 'text-[var(--color-accent)]', 'font-mono'];
+    const LIVE_BADGE =['bg-[var(--color-accent)]/20', 'text-[var(--color-accent-text)]', 'font-mono'];
 
     it.each([
       { spot: 'no spot', spotPrice: undefined },

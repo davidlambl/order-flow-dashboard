@@ -48,7 +48,7 @@ function renderSettings({ auth } = {}) {
 /** Wait for the AI tab's model list (the dialog opens there), then show the Backup tab. */
 async function openBackup(user) {
   await screen.findByRole('combobox');
-  await user.click(screen.getByRole('button', { name: 'Backup' }));
+  await user.click(screen.getByRole('tab', { name: 'Backup' }));
 }
 
 /** The editor's textarea (a portal to document.body), or null while the editor is closed. */
@@ -62,6 +62,12 @@ const previewShowing = (text) => screen.getByText(text.replace(/\n/g, ' '));
 
 const fileInput = () => document.querySelector('input[type="file"]');
 const backupFile = (backup) => new File([JSON.stringify(backup)], 'b.json', { type: 'application/json' });
+
+/**
+ * The import's report as the status region holds it, '' while there is none: the tab keeps the region in the tree,
+ * empty, from its first render, where it used to insert it with the report. Read so that the pins hold on both.
+ */
+const importReport = () => screen.queryByRole('status')?.textContent ?? '';
 
 /** A backup as exportAll() writes it, with an API key and an unknown name a hand edit could add. */
 const BACKUP = {
@@ -250,7 +256,8 @@ describe('the Backup tab', () => {
     expect(screen.getByText('Long AVGO into earnings')).toBeInTheDocument();
 
     fireEvent.change(fileInput(), { target: { files: [backupFile(BACKUP)] } });
-    const status = await screen.findByRole('status');
+    await screen.findByText('Imported 1 position, 0 chats, 1 setting.');
+    const status = screen.getByRole('status');
     expect(within(status).getByText('Imported 1 position, 0 chats, 1 setting.')).toBeInTheDocument();
     expect(within(status).getByText('Not imported: ai_key_openai, bogus')).toBeInTheDocument();
     expect(confirm).toHaveBeenCalledTimes(1);
@@ -272,7 +279,7 @@ describe('the Backup tab', () => {
     renderSettings({ auth: { userEmail: 'a@b.c', signedIn: true } });
     await openBackup(user);
     fireEvent.change(fileInput(), { target: { files: [backupFile(BACKUP)] } });
-    expect(await screen.findByRole('status')).toHaveTextContent('Imported 1 position, 0 chats, 1 setting.');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Imported 1 position, 0 chats, 1 setting.'));
 
     confirm.mockReturnValue(false);
     const other = {
@@ -281,7 +288,7 @@ describe('the Backup tab', () => {
     fireEvent.change(fileInput(), { target: { files: [backupFile(other)] } });
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(2));
     expect(confirm).toHaveBeenLastCalledWith(IMPORT_QUESTION_SIGNED_IN);
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(importReport()).toBe('');
     expect(getPosition('NVDA')).toEqual({ costBasis: 100, shares: 5 });
     expect(getPosition('AMD')).toEqual({ costBasis: null, shares: null });
     expect(getPreference('ai_provider')).toBe('openai');
@@ -298,7 +305,7 @@ describe('the Backup tab', () => {
     const unversioned = { positions: { NVDA: { costBasis: 100, shares: 5 } } };
     fireEvent.change(fileInput(), { target: { files: [backupFile(unversioned)] } });
     expect(await screen.findByText('Missing schema version.')).toBeInTheDocument();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(importReport()).toBe('');
     expect(getPosition('AVGO')).toEqual({ costBasis: 150, shares: 10 });
     expect(getPosition('NVDA')).toEqual({ costBasis: null, shares: null });
   });

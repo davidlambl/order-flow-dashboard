@@ -12,11 +12,22 @@
   --color-border-subtle: #1e2730;
 
   --color-text-primary: #e8ecf1;
-  --color-text-secondary: #8b95a5;
-  --color-text-muted: #5a6475;
+  /* Secondary and muted text keep at least 4.5:1 on all four backgrounds above (WCAG 1.4.3), since most of it is 9 to
+     12 px: muted is 5.99 / 5.68 / 5.25 / 4.79 on bg / surface / surface-2 / surface-3, secondary 8.53 / 8.09 / 7.48 /
+     6.82, which keeps the two tiers apart. */
+  --color-text-secondary: #a3adbb;
+  --color-text-muted: #8590a1;
 
   --color-accent: #3b82f6;
   --color-accent-hover: #2563eb;
+  /* The -text variants are for small text in a status colour: at least 4.5:1 on every background above and on the
+     colour's own tints up to 20%, where the base colours fall to 3.1 to 3.4. Fills, borders, icons and focus rings
+     keep the base colour. */
+  --color-accent-text: #60a5fa;
+  /* Fills under white text, a button's label: white is 3.67:1 on --color-accent, 5.17:1 on this and 6.70:1 on its
+     hover. The logo tile and other fills that carry an icon alone keep --color-accent (3:1 is asked of those). */
+  --color-accent-solid: #2563eb;
+  --color-accent-solid-hover: #1d4ed8;
 
   --color-bull: #22c55e;
   --color-bull-bg: rgba(34, 197, 94, 0.1);
@@ -26,6 +37,7 @@
   --color-bear: #ef4444;
   --color-bear-bg: rgba(239, 68, 68, 0.1);
   --color-bear-muted: #dc2626;
+  --color-bear-text: #f87171;
   --color-bear-border-muted: rgba(239, 68, 68, 0.2);
 
   --color-warn: #f59e0b;
@@ -34,6 +46,7 @@
 
   --color-purple: #a855f7;
   --color-purple-bg: rgba(168, 85, 247, 0.1);
+  --color-purple-text: #c084fc;
 
   --color-cyan: #06b6d4;
   --color-cyan-bg: rgba(6, 182, 212, 0.1);
@@ -147,4 +160,31 @@
   background-size: 200% 100%;
   animation: skeleton-shimmer 1.5s ease-in-out infinite;
   border-radius: 4px;
+}
+
+/* Reduced motion (the visitor's system setting): decoration stops moving. The countdown's ping, the pulses, the
+   skeleton's shimmer and fade-in's rise are off, hover scaling too, and every transition ends at once, the chat
+   sidebar's width among them. A spinner (animate-spin) keeps turning: where one shows, it is the only sign that work
+   is under way. Unlayered on purpose, after the classes above: it then wins over Tailwind's utilities, which sit in a
+   layer, and over the three classes of this file, by order. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-ping,
+  .animate-pulse,
+  .pulse-glow,
+  .fade-in,
+  .skeleton {
+    animation: none;
+  }
+
+  [class*='hover:scale-']:hover,
+  [class*='active:scale-']:active {
+    scale: none;
+  }
+
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
 }

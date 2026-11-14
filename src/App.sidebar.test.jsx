@@ -1,15 +1,18 @@
 // src/App.sidebar.test.jsx — App's resizable chat sidebar, in the main.jsx tree as App.test.jsx renders it (StrictMode,
 // ErrorBoundary and QueryClientProvider around it, MSW answering the functions). The aside is 0 wide while the chat is
 // closed, with no resize handle before it; open, it is as wide as the store says (chat_sidebar_w: a number from 280 to
-// 640, else the default 384). Dragging the handle moves the width with the mouse, clamped to that range, with the
-// aside's transition off, the handle's bar lit and the page's cursor and text selection held for the drag; the mouseup
-// stores the width once through the store bus (one store-changed with the preference's detail), keeps it on screen
-// through every commit after it and gives the page back; the next drag starts from the stored width; an unmount
+// 640, else the default 384). Dragging the handle moves the width with the pointer, clamped to that range, with the
+// aside's transition off, the handle's bar lit and the page's cursor and text selection held for the drag; the
+// pointerup stores the width once through the store bus (one store-changed with the preference's detail), keeps it on
+// screen through every commit after it and gives the page back; the next drag starts from the stored width; an unmount
 // mid-drag gives the page back and stores nothing. Every test is a pin, written against the one-file App.jsx as the
-// contract its split into hooks must keep: each asserts what is shown, stored and dispatched after an event, never how
-// App gets there (the mouseup's store write and the drag's end land in one commit in either order, so their order is
-// not pinned). Not pinned either, a known gap of today's App: a mousedown with any button starts a drag, even while one
-// is under way, and a second one leaves the first one's listeners behind (an unmount then removes only its own).
+// contract its split into hooks must keep, with mouse events until the handle moved to pointer events: each asserts
+// what is shown, stored and dispatched after an event, never how App gets there (the pointerup's store write and the
+// drag's end land in one commit in either order, so their order is not pinned). The handle takes the pointer's
+// capture, so a browser sends the drag's pointermove and pointerup to it, and the tests fire them there (the capture
+// stand-in in src/test/standins.js retargets nothing); after an unmount they go to document. Which pointers start a
+// drag, the keyboard and a pointercancel are useResizableSidebar.handle.test.jsx's; the handle's role and value and the
+// phone layout, App.phone.test.jsx's. This file runs at src/test/viewport.js's desktop width, where the handle shows.
 // No access token: the open chat is its lock screen, which has a 'Close chat' button as the chat's own header does.
 // Fake timers run with shouldAdvanceTime from Friday 2026-09-25 at 11:00 ET, as in App.test.jsx.
 import { StrictMode } from 'react';
@@ -87,8 +90,11 @@ const renderApp = () => render(
 /** Every TanStack request has been answered and applied, so no query result lands outside act() after this. */
 const settled = () => waitFor(() => { expect(queryClient.isFetching()).toBe(0); }, { timeout: 5_000 });
 
-/** The chat sidebar. */
-const aside = () => screen.getByRole('complementary');
+/**
+ * The chat sidebar: the last child of the row it shares with main. Not by its role: closed, it is no landmark
+ * (App.sidebar.landmark.test.jsx), and these pins read its width closed as well as open.
+ */
+const aside = () => screen.getByRole('main').parentElement.lastElementChild;
 /** What comes right before the aside: the resize handle while the chat is open, the dashboard's main otherwise. */
 const beforeAside = () => aside().previousElementSibling;
 const openChat = () => fireEvent.click(screen.getByLabelText('Open AI Co-Pilot'));
@@ -179,7 +185,7 @@ describe('App: the resizable chat sidebar', () => {
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 
-  it('Pin: a drag moves the width with the mouse, clamped to 280-640, with the transition off, the bar lit and the page held', async () => {
+  it('Pin: a drag moves the width with the pointer, clamped to 280-640, with the transition off, the bar lit and the page held', async () => {
     const error = vi.spyOn(console, 'error');
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     renderApp();
@@ -189,20 +195,20 @@ describe('App: the resizable chat sidebar', () => {
     const handle = beforeAside();
 
     // Cancelled: the browser starts no text selection or native drag from the handle.
-    expect(fireEvent.mouseDown(handle, { clientX: 1000 })).toBe(false);
+    expect(fireEvent.pointerDown(handle, { clientX: 1000 })).toBe(false);
     expect(document.body.style.cursor).toBe('col-resize');
     expect(document.body.style.userSelect).toBe('none');
     expect(aside()).not.toHaveClass('transition-all');
     expect(handle.firstChild).toHaveClass(LIT);
     expect(aside().style.width).toBe('384px');
 
-    fireEvent.mouseMove(document, { clientX: 900 }); // 100 px to the left: 100 px wider
+    fireEvent.pointerMove(handle, { clientX: 900 }); // 100 px to the left: 100 px wider
     expect(aside().style.width).toBe('484px');
-    fireEvent.mouseMove(document, { clientX: 0 });
+    fireEvent.pointerMove(handle, { clientX: 0 });
     expect(aside().style.width).toBe('640px');
-    fireEvent.mouseMove(document, { clientX: 2000 });
+    fireEvent.pointerMove(handle, { clientX: 2000 });
     expect(aside().style.width).toBe('280px');
-    fireEvent.mouseMove(document, { clientX: 950 });
+    fireEvent.pointerMove(handle, { clientX: 950 });
     expect(aside().style.width).toBe('434px');
     expect(aside()).not.toHaveClass('transition-all');
     expect(widthWrites(setItem)).toEqual([]);
@@ -210,7 +216,7 @@ describe('App: the resizable chat sidebar', () => {
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 
-  it('Pin: the mouseup stores the width once through the store bus, keeps it on screen and ends the drag; later mouse events change nothing', async () => {
+  it('Pin: the pointerup stores the width once through the store bus, keeps it on screen and ends the drag; later pointer events change nothing', async () => {
     const error = vi.spyOn(console, 'error');
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     renderApp();
@@ -218,13 +224,13 @@ describe('App: the resizable chat sidebar', () => {
     openChat();
     const events = storeEvents();
     const handle = beforeAside();
-    fireEvent.mouseDown(handle, { clientX: 1000 });
-    fireEvent.mouseMove(document, { clientX: 950 });
+    fireEvent.pointerDown(handle, { clientX: 1000 });
+    fireEvent.pointerMove(handle, { clientX: 950 });
     const widths = widthsShown(aside());
 
-    fireEvent.mouseUp(document);
+    fireEvent.pointerUp(handle);
     expect(aside().style.width).toBe('434px');
-    expect(widths()).toEqual(['434px']); // no commit after the mouseup showed another width
+    expect(widths()).toEqual(['434px']); // no commit after the pointerup showed another width
     expect(widthWrites(setItem)).toEqual(['434']);
     expect(events).toEqual([{ kind: 'pref', id: 'sidebarWidth' }]);
     expect(document.body.style.cursor).toBe('');
@@ -232,8 +238,8 @@ describe('App: the resizable chat sidebar', () => {
     expect(aside()).toHaveClass('transition-all');
     expect(handle.firstChild).not.toHaveClass(LIT);
 
-    fireEvent.mouseMove(document, { clientX: 500 });
-    fireEvent.mouseUp(document);
+    fireEvent.pointerMove(handle, { clientX: 500 });
+    fireEvent.pointerUp(handle);
     expect(aside().style.width).toBe('434px');
     expect(widths()).toEqual(['434px']);
     expect(widthWrites(setItem)).toEqual(['434']);
@@ -247,15 +253,15 @@ describe('App: the resizable chat sidebar', () => {
     renderApp();
     await settled();
     openChat();
-    fireEvent.mouseDown(beforeAside(), { clientX: 1000 });
-    fireEvent.mouseMove(document, { clientX: 950 });
-    fireEvent.mouseUp(document);
+    fireEvent.pointerDown(beforeAside(), { clientX: 1000 });
+    fireEvent.pointerMove(beforeAside(), { clientX: 950 });
+    fireEvent.pointerUp(beforeAside());
     expect(aside().style.width).toBe('434px');
 
-    fireEvent.mouseDown(beforeAside(), { clientX: 700 });
-    fireEvent.mouseMove(document, { clientX: 600 });
+    fireEvent.pointerDown(beforeAside(), { clientX: 700 });
+    fireEvent.pointerMove(beforeAside(), { clientX: 600 });
     expect(aside().style.width).toBe('534px');
-    fireEvent.mouseUp(document);
+    fireEvent.pointerUp(beforeAside());
     expect(localStorage.getItem('chat_sidebar_w')).toBe('534');
 
     closeChat();
@@ -265,22 +271,22 @@ describe('App: the resizable chat sidebar', () => {
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 
-  it('Pin: an unmount mid-drag gives the page back and stores nothing; later mouse events reach nothing', async () => {
+  it('Pin: an unmount mid-drag gives the page back and stores nothing; later pointer events reach nothing', async () => {
     const error = vi.spyOn(console, 'error');
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     const view = renderApp();
     await settled();
     openChat();
     const events = storeEvents();
-    fireEvent.mouseDown(beforeAside(), { clientX: 1000 });
-    fireEvent.mouseMove(document, { clientX: 900 });
+    fireEvent.pointerDown(beforeAside(), { clientX: 1000 });
+    fireEvent.pointerMove(beforeAside(), { clientX: 900 });
     expect(aside().style.width).toBe('484px');
 
     view.unmount();
     expect(document.body.style.cursor).toBe('');
     expect(document.body.style.userSelect).toBe('');
-    fireEvent.mouseMove(document, { clientX: 800 });
-    fireEvent.mouseUp(document);
+    fireEvent.pointerMove(document, { clientX: 800 });
+    fireEvent.pointerUp(document);
     expect(widthWrites(setItem)).toEqual([]);
     expect(events).toEqual([]);
     expect(document.body.style.cursor).toBe('');

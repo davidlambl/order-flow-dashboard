@@ -22,7 +22,7 @@ const market = { autoRefresh: true, optionsMarketOpen: true, usingMock: false, r
 /** Header under both providers: `over` is layered on `market`, `auth` on the free, signed-out defaults. */
 const header = (over, auth) => withContexts(<Header onOpenSettings={() => {}} />, { market: { ...market, ...over }, auth });
 
-const toggle = () => screen.getByRole('button', { name: 'Disable auto-refresh' });
+const toggle = () => screen.getByRole('button', { name: /^Disable auto-refresh\b/ });
 
 /** Move the fake clock inside act, so the leaf's once-a-second tick fires there. */
 const advance = (ms) => act(() => { vi.advanceTimersByTime(ms); });

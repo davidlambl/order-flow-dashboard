@@ -1,8 +1,12 @@
 // src/components/SyncChoice.jsx
 // Shown when hydrate() finds different data in this browser and in the signed-in account (roadmap D1, D6).
-// Blocking on purpose: no close button, no backdrop dismiss. Until the user picks, neither copy is written
-// over the other, and there is no safe default to fall back on.
+// Blocking on purpose: no close button, no backdrop dismiss, and Escape does nothing. Until the user picks, neither
+// copy is written over the other, and there is no safe default to fall back on. A modal dialog (ModalDialog) without
+// onDismiss: named by its heading, described by its sentence, opened with focus on the recommended choice, and opened
+// again if the browser ever closes it on its own (see ModalDialog). A choice settles the conflict and App unmounts it.
+import { useId, useRef } from 'react';
 import { LoaderCircle, RefreshCw } from 'lucide-react';
+import ModalDialog from './ModalDialog.js';
 
 const CHOICES = [
   {
@@ -27,27 +31,26 @@ function summary(counts) {
  *   report: hydrate()'s conflict report (counts per side)
  */
 export default function SyncChoice({ report, onChoose, busy }) {
+  const id = useId();
+  const recommended = useRef(null);
   return (
-    <div
-      className="fixed inset-0 z-[120] flex items-center justify-center"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="sync-choice-title"
-      aria-describedby="sync-choice-description"
+    <ModalDialog
+      labelledBy={`${id}-title`}
+      describedBy={`${id}-description`}
+      initialFocus={recommended}
+      backdropClassName="backdrop:bg-black/60 backdrop:backdrop-blur-sm"
     >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
       <div className="relative w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] shadow-2xl p-6 space-y-4">
         <div className="flex items-center gap-2.5">
           <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-[var(--color-purple-bg)]">
             <RefreshCw size={14} className="text-[var(--color-purple)]" />
           </div>
-          <h2 id="sync-choice-title" className="text-sm font-semibold text-[var(--color-text-primary)]">
+          <h2 id={`${id}-title`} className="text-sm font-semibold text-[var(--color-text-primary)]">
             Sync your data
           </h2>
         </div>
 
-        <p id="sync-choice-description" className="text-xs text-[var(--color-text-secondary)]">
+        <p id={`${id}-description`} className="text-xs text-[var(--color-text-secondary)]">
           This browser and your account both have saved data. Choose what to keep.
         </p>
 
@@ -66,13 +69,13 @@ export default function SyncChoice({ report, onChoose, busy }) {
           {CHOICES.map((choice) => (
             <button
               key={choice.id}
+              ref={choice.recommended ? recommended : undefined}
               type="button"
               onClick={() => onChoose(choice.id)}
               disabled={busy}
-              autoFocus={choice.recommended}
               className={`w-full text-left rounded-lg px-3 py-2.5 border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                 choice.recommended
-                  ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]'
+                  ? 'bg-[var(--color-accent-solid)] border-[var(--color-accent-solid)] text-white hover:bg-[var(--color-accent-solid-hover)]'
                   : 'bg-[var(--color-surface-2)] border-[var(--color-border-subtle)] text-[var(--color-text-primary)] hover:bg-[var(--color-surface-3)]'
               }`}
             >
@@ -82,7 +85,7 @@ export default function SyncChoice({ report, onChoose, busy }) {
                   <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-white/15">Recommended</span>
                 )}
               </span>
-              <span className={`block mt-0.5 text-[11px] ${choice.recommended ? 'text-white/80' : 'text-[var(--color-text-secondary)]'}`}>
+              <span className={`block mt-0.5 text-[11px] ${choice.recommended ? 'text-white' : 'text-[var(--color-text-secondary)]'}`}>
                 {choice.description}
               </span>
             </button>
@@ -95,6 +98,6 @@ export default function SyncChoice({ report, onChoose, busy }) {
           </p>
         )}
       </div>
-    </div>
+    </ModalDialog>
   );
 }

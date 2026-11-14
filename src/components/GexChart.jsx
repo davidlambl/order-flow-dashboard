@@ -1,4 +1,7 @@
 // src/components/GexChart.jsx
+// Net gamma exposure by strike, with the spot, basis and moving-average lines. For a screen reader the plot is an
+// image named by a one-line summary of the bars (gexSummary), the MA toggle says whether it is pressed, and the
+// loading card is a status.
 import { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -36,17 +39,36 @@ function CustomTooltip({ active, payload }) {
 
 function OffChartHint() {
   return (
-    <span className="text-[10px] opacity-70" title="Outside the strike range shown">
+    <span className="text-[10px]" title="Outside the strike range shown">
       (off-chart)
     </span>
   );
 }
 
+/**
+ * The plot's text alternative, one sentence from the rows it draws: how many strikes it spans and where the largest
+ * positive and the largest negative net exposure sit (the first of equals), in the tooltip's formats.
+ */
+function gexSummary(rows, minStrike, maxStrike) {
+  let top = null;
+  let bottom = null;
+  for (const row of rows) {
+    if (row.gex > 0 && (top == null || row.gex > top.gex)) top = row;
+    if (row.gex < 0 && (bottom == null || row.gex < bottom.gex)) bottom = row;
+  }
+  const positive = top ? `largest positive ${formatCompact(top.gex)} at ${formatPrice(top.strike)}` : 'no positive exposure';
+  const negative = bottom ? `largest negative ${formatCompact(bottom.gex)} at ${formatPrice(bottom.strike)}` : 'no negative exposure';
+  return `Bar chart of net gamma exposure across ${rows.length} strikes from ${formatPrice(minStrike)} to `
+    + `${formatPrice(maxStrike)}: ${positive}, ${negative}.`;
+}
+
 export default function GexChart({ data, loading, spotPrice, costBasis, technicals }) {
   const [showMAs, setShowMAs] = useState(true);
   if (loading) {
+    // ChartsSkeleton draws this same card while the charts' chunk loads (App.lazy.test.jsx compares the two).
     return (
-      <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
+      <div role="status" className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 h-[340px]">
+        <span className="sr-only">Loading…</span>
         <div className="skeleton h-4 w-40 mb-4" />
         <div className="skeleton h-[280px] w-full" />
       </div>
@@ -79,6 +101,7 @@ export default function GexChart({ data, loading, spotPrice, costBasis, technica
   const masOffChart = maLevels.length > 0 && maLevels.every((level) => !level.visible);
 
   const hasMAs = technicals?.sma50 != null || technicals?.sma200 != null;
+  const summary = gexSummary(rows, minStrike, maxStrike);
 
   return (
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-[var(--color-surface)] p-4 fade-in">
@@ -111,21 +134,29 @@ export default function GexChart({ data, loading, spotPrice, costBasis, technica
             </span>
           )}
           {hasMAs && (
+            // A toggle whose name stays put: aria-pressed says what its colour shows. The expansion of MA comes last,
+            // so the name still starts with the text it shows (WCAG 2.5.3); py-1 makes it 24 px tall.
             <button
+              type="button"
               onClick={() => setShowMAs((v) => !v)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
-                showMAs ? 'bg-[var(--color-purple-bg)] text-[var(--color-purple)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+              aria-pressed={showMAs}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors ${
+                showMAs ? 'bg-[var(--color-purple-bg)] text-[var(--color-purple-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
               }`}
               title={showMAs ? 'Hide moving averages' : 'Show moving averages'}
             >
               <span className="w-2 h-0.5 bg-[var(--color-purple)]" /> MA
-              {masOffChart && <OffChartHint />}
+              {masOffChart && <OffChartHint />}{' '}
+              <span className="sr-only">(moving averages)</span>
             </button>
           )}
         </div>
       </div>
       <ResponsiveContainer width="100%" height={280} debounce={100}>
-        <BarChart data={rows} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+        {/* recharts puts role and aria-label on its plot svg, which its keyboard layer makes a Tab stop (the arrow keys
+            move the tooltip): the image a screen reader meets is the element that takes focus. A wrapper with role
+            img would put that Tab stop inside an image, whose content assistive technology does not see. */}
+        <BarChart data={rows} margin={{ top: 5, right: 5, bottom: 5, left: 5 }} role="img" aria-label={summary}>
           <CartesianGrid
             strokeDasharray="3 3"
             stroke="var(--color-border-subtle)"

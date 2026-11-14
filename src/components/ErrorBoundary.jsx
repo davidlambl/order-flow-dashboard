@@ -1,5 +1,7 @@
 // src/components/ErrorBoundary.jsx
-// Catches unhandled render errors and displays a recovery UI instead of a white screen.
+// Catches unhandled render errors and displays a recovery UI instead of a white screen. It is the root boundary
+// (src/main.jsx), so the recovery screen replaces the whole page: it is the page's main landmark, and its card is an
+// alert, which a screen reader announces as it appears. The warning sign is decoration beside the heading.
 import { Component } from 'react';
 
 export default class ErrorBoundary extends Component {
@@ -24,9 +26,9 @@ export default class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-6">
-          <div className="max-w-md w-full text-center space-y-4">
-            <div className="text-4xl">⚠️</div>
+        <main className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-6">
+          <div role="alert" className="max-w-md w-full text-center space-y-4">
+            <div aria-hidden="true" className="text-4xl">⚠️</div>
             <h1 className="text-xl font-semibold text-[var(--color-text-primary)]">
               Something went wrong
             </h1>
@@ -40,12 +42,12 @@ export default class ErrorBoundary extends Component {
             )}
             <button
               onClick={this.handleReload}
-              className="px-5 py-2.5 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors"
+              className="px-5 py-2.5 rounded-lg bg-[var(--color-accent-solid)] hover:bg-[var(--color-accent-solid-hover)] text-white font-medium transition-colors"
             >
               Reload Dashboard
             </button>
           </div>
-        </div>
+        </main>
       );
     }
 

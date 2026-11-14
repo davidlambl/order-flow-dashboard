@@ -1,7 +1,8 @@
 // src/App.tsx
 // The dashboard: a shell over three hooks and the leaves in components/dashboard/. useSupabaseAuth holds the sign-in,
 // the storage backend keyed on the signed-in account, the sync conflict SyncChoice settles and the one sign-out;
-// usePositionDraft the position inputs' draft and its debounced save; useResizableSidebar the chat sidebar's width.
+// usePositionDraft the position inputs' draft and its debounced save; useResizableSidebar the chat sidebar's width and
+// its resize handle.
 // The shell owns the ticker, the chat and Settings toggles and the data hooks, builds the two contexts everything
 // below it reads (src/contexts), and renders the spinner while the session is checked, the sign-in screen, or the
 // dashboard keyed on the account.
@@ -9,7 +10,13 @@
 // costs that part alone: the charts, and recharts with them, only while their section is expanded; the sign-in form
 // and the sync choice, which exist only on a build with cloud sign-in and load while the session is checked. Once the
 // dashboard shows, the idle preload loads what it may open next, never the charts.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+// The chat is ONE element, always mounted and restyled at Tailwind's `md` (useMediaQuery, with a query equivalent to
+// the CSS's): from md up a sidebar beside `main`, the complementary landmark while open, with the resize handle on its
+// left edge; below md, while open, a modal dialog over the whole page, with `main` and the header inert, which Escape
+// closes. ChatBot never remounts across the breakpoint, so a reply keeps streaming (ChatBot.tsx's header). Settings
+// and the sync choice render beside it, in the account-keyed root, which is never inert: an inert ancestor would leave
+// even a dialog in the top layer dead.
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Target, ChartNoAxesColumn } from 'lucide-react';
 import Header from './components/Header.jsx';
 import KPICards from './components/KPICards.jsx';
@@ -37,6 +44,7 @@ import { useStoreValue } from './hooks/useStoreValue.js';
 import { usePositionDraft } from './hooks/usePositionDraft.js';
 import { useSupabaseAuth } from './hooks/useSupabaseAuth.js';
 import { useResizableSidebar } from './hooks/useResizableSidebar.js';
+import { useMediaQuery } from './hooks/useMediaQuery.js';
 import { verifyStoredToken } from './lib/auth.js';
 import { lazyWithPreload, scheduleIdlePreload } from './lib/lazyWithPreload.js';
 import { getPreference, subscribeCrossTab } from './lib/store.js';
@@ -44,6 +52,15 @@ import { getPreference, subscribeCrossTab } from './lib/store.js';
 // What App reads from the store through useStoreValue. Module level: a snapshot function with a new identity per
 // render costs React a passive effect to re-check it.
 const readHasFinnhubKey = () => Boolean(getPreference('data_finnhub_key'));
+
+/**
+ * Tailwind's `md` breakpoint: the sidebar layout from here up. The stylesheet's `md:` variant compiles to
+ * `@media (width >= 48rem)`; this is the equivalent `min-width` form, the one the tests' matchMedia stand-in parses
+ * (src/test/viewport.js). The two would part if `--breakpoint-md` were ever themed.
+ */
+const MD_UP = '(min-width: 48rem)';
+/** The chat's accessible name: its landmark's from md up, its dialog's below. */
+const CHAT_NAME = 'AI Co-Pilot';
 
 // The parts loaded on demand. recharts is a third of the bundle and only the expanded Charts section draws with it,
 // so the charts are fetched when the section renders them, and never ahead. The sign-in form and the sync choice
@@ -128,8 +145,55 @@ export default function App() {
   const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
   const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
 
-  // The chat sidebar's width: the stored one, or the mouse's while the handle is dragged.
-  const { width, isResizing, onResizeStart } = useResizableSidebar();
+  // The chat sidebar's width: the stored one, or the handle's while a drag or the arrow keys move it.
+  const { width, isResizing, handleProps } = useResizableSidebar();
+
+  // From md up the chat is a sidebar; below md, while open, it covers the page. Neither the media query's answer nor
+  // anything derived from it goes into a context: the chat's layout is App's alone.
+  const wide = useMediaQuery(MD_UP);
+  const chatCovers = chatOpen && !wide;
+  const chatId = useId();
+  const chatRef = useRef<HTMLDivElement>(null);
+  const fabRef = useRef<HTMLButtonElement>(null);
+  // Set when the chat closes with focus inside it, or on the body while it covered the page (a disabled composer, an
+  // unmounted button or a narrowed window leaves focus there): the close takes what held focus off the page, or left
+  // it nowhere, and the chat toggle that the same commit mounts takes focus instead. Focus anywhere else stays where
+  // it is, and from md up focus on the body stays there too.
+  const refocusToggleRef = useRef(false);
+
+  const closeChat = useCallback(() => {
+    const active = document.activeElement;
+    refocusToggleRef.current = (chatRef.current?.contains(active) ?? false) || (chatCovers && active === document.body);
+    setChatOpen(false);
+  }, [chatCovers]);
+
+  useLayoutEffect(() => {
+    if (chatOpen || !refocusToggleRef.current) return;
+    refocusToggleRef.current = false;
+    fabRef.current?.focus();
+  }, [chatOpen]);
+
+  // Escape closes the chat while it covers the page, when the key comes from inside the chat or from the body, where
+  // focus often is while the chat covers the page. Heard on document, in the bubble phase, while the chat covers the
+  // page: React runs the chat's own handlers at its root, below document, so a key one of them handled already, like
+  // a key that composes text, arrives prevented and is left alone. A key from anywhere else is not the chat's. While
+  // a <dialog> is open (Settings, the context editor) the key is that dialog's wherever focus is: Settings hears
+  // Escape on window, after document, so one Escape on the body would otherwise close the chat and Settings both. The
+  // sidebar ignores Escape, as it always has.
+  useEffect(() => {
+    if (!chatCovers) return undefined;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+      if (document.querySelector('dialog[open]')) return;
+      const { target } = e;
+      const fromChat = target instanceof Node && (chatRef.current?.contains(target) ?? false);
+      if (!fromChat && target !== document.body) return;
+      e.preventDefault();
+      closeChat();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [chatCovers, closeChat]);
 
   const handleTickerChange = useCallback((newTicker: string) => {
     settle(); // the old ticker's edit is stored before the new ticker's position shows
@@ -185,11 +249,16 @@ export default function App() {
     <div key={accountKey} className="h-full flex flex-col overflow-hidden">
       <AuthContext value={auth}>
         <MarketContext value={market}>
-          <Header onOpenSettings={openSettings} />
+          {/* A wrapper for `inert` alone (Header's own root is the banner landmark): inert, with main, while the chat
+              covers the page. A plain block that clips nothing: the header's ticker message hangs below its box. */}
+          <div inert={chatCovers}>
+            <Header onOpenSettings={openSettings} />
+          </div>
 
           <div className="flex-1 flex overflow-hidden">
             {/* Main Content */}
             <main
+              inert={chatCovers}
               className="flex-1 overflow-y-auto p-4 md:p-5 space-y-4"
               style={{ overscrollBehavior: 'contain' }}
             >
@@ -232,12 +301,22 @@ export default function App() {
               <DataSourceNote usingMock={usingMock} provider={data?.provider} />
             </main>
 
-            {/* Resize handle */}
-            {chatOpen && (
+            {/* The resize handle, from md up while the chat is open: a separator on the sidebar's left edge that a
+                pointer drags (touch-action none, so a finger's drag is not taken for a scroll) and the arrow keys
+                step; its value is the sidebar's width, in pixels and in words. The box is 5 px wide, its 1 px line
+                centred; a transparent ::before, stacked above the chat, widens what a pointer can press by 12 px to
+                the right only, over the chat's own left padding, where nothing the chat draws is interactive (to the
+                left is main's scrollbar). A pseudo-element is hit-tested as its element, touch-action included. */}
+            {chatOpen && wide && (
               <div
-                onMouseDown={onResizeStart}
-                className="relative shrink-0 cursor-col-resize group"
-                style={{ width: 5 }}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={`Resize ${CHAT_NAME}`}
+                aria-controls={chatId}
+                tabIndex={0}
+                {...handleProps}
+                className="relative z-10 shrink-0 cursor-col-resize group before:absolute before:inset-y-0 before:left-0 before:-right-3 before:content-['']"
+                style={{ width: 5, touchAction: 'none' }}
               >
                 <div className={`absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${
                   isResizing ? 'bg-[var(--color-accent)]' : 'group-hover:bg-[var(--color-text-muted)]'
@@ -245,28 +324,41 @@ export default function App() {
               </div>
             )}
 
-            {/* Chat Sidebar */}
-            <aside
-              className={`overflow-hidden shrink-0 ${
-                isResizing ? '' : 'transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'
-              }`}
-              style={{ width: chatOpen ? width : 0 }}
+            {/* The chat, one element at every width (the header says why). From md up: the sidebar, as wide as the
+                store says; open, the complementary landmark; closed, a 0 px element with nothing in it and neither
+                role nor name, so that no empty landmark stays in a screen reader's list. Below md: open, a modal
+                dialog fixed over the whole viewport (the page's 100dvh included), above the page (the header's ticker
+                message at z-10, the chat toggle at z-50) and below Settings, the context editor and the sync choice,
+                closed by Escape through the document listener above; closed, hidden, so that no empty dialog stays in
+                the accessibility tree. Not an <aside>, which may not take the dialog role. */}
+            <div
+              ref={chatRef}
+              id={chatId}
+              role={wide ? (chatOpen ? 'complementary' : undefined) : 'dialog'}
+              aria-modal={wide ? undefined : true}
+              aria-label={wide && !chatOpen ? undefined : CHAT_NAME}
+              hidden={!wide && !chatOpen}
+              className={wide
+                ? `overflow-hidden shrink-0 ${isResizing ? '' : 'transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]'}`
+                : 'fixed inset-0 z-[60] overflow-hidden'}
+              style={wide ? { width: chatOpen ? width : 0 } : undefined}
             >
               <ChatBot
                 isOpen={chatOpen}
-                onClose={() => setChatOpen(false)}
+                onClose={closeChat}
                 onOpenSettings={openSettings}
                 costBasis={costBasis}
                 shares={shares}
               />
-            </aside>
+            </div>
           </div>
 
           {/* Chat Toggle FAB */}
           {!chatOpen && (
             <button
+              ref={fabRef}
               onClick={() => setChatOpen(true)}
-              className="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--color-accent)] text-white text-sm font-medium shadow-lg hover:bg-[var(--color-accent-hover)] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] z-50"
+              className="fixed bottom-5 right-5 flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--color-accent-solid)] text-white text-sm font-medium shadow-lg hover:bg-[var(--color-accent-solid-hover)] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] z-50"
               aria-label="Open AI Co-Pilot"
             >
               <Sparkles size={16} />
