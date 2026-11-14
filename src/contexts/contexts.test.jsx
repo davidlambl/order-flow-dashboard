@@ -48,8 +48,11 @@ describe('inside withContexts', () => {
       marketOpen: true,
       optionsMarketOpen: true,
       liveQuote: null,
+      quoteError: null,
       tickerContext: null,
       contextLoading: false,
+      contextError: null,
+      refreshContext: expect.any(Function),
       dataSource: 'cboe',
     });
   });
