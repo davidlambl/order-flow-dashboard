@@ -17,6 +17,8 @@ interface TickerSummaryProps {
   usingMock: boolean;
   /** useMarketData's error: the last failure's message, null after a success. */
   error: string | null;
+  /** App's handleRefresh: reloads the market data and the live quote in the foreground, for a failure shown here. */
+  onRetry: () => void;
 }
 
 export default function TickerSummary({ ticker, data, loading, usingMock, error }: TickerSummaryProps) {
