@@ -170,8 +170,8 @@ describe("ChatBot: the shell's send paths", () => {
   });
 
   // Mutants: the draft cleared, or the composer's height reset, before start() is asked. A send refused that way needs
-  // a draft while a reply streams: one typed before Suggest updates stays in the disabled composer, and a Clear
-  // mid-reply brings the empty state back, whose suggestions still send while the reply runs on.
+  // a draft while a reply streams: one typed before Suggest updates stays in the composer, where Enter is refused,
+  // and a Clear mid-reply brings the empty state back, whose suggestions still send while the reply runs on.
   it('Pin: a send that start() refuses while a reply streams keeps the draft and the composer\'s height, and shows nothing', async () => {
     setChatHistory('AVGO', [turn('user', 'u0'), turn('assistant', 'a0')]);
     render(chat());
@@ -181,8 +181,14 @@ describe("ChatBot: the shell's send paths", () => {
 
     fireEvent.click(screen.getByLabelText('Suggest updates to Strategic Context'));
     await waitFor(() => expect(rec.calls).toHaveLength(1));
-    expect(box()).toBeDisabled();
     expect(box()).toHaveValue('DRAFT');
+
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await act(async () => { await tick(); });
+    expect(rec.calls).toHaveLength(1);
+    expect(bubbleCount()).toBe(2); // u0 and a0: the draft went nowhere
+    expect(box()).toHaveValue('DRAFT');
+    expect(box().style.height).toBe(height);
 
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     fireEvent.click(screen.getByLabelText('Clear chat history'));

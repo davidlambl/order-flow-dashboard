@@ -1,18 +1,20 @@
 // src/components/chat/ChatMessage.tsx
 // One bubble of the conversation: the role's avatar, the text (plain for a question or an error line, markdown for a
-// reply) and, under it, Copy (the raw markdown; 'Copied!' for 1.5 s) and Delete. Memoised on its props, so a render of
-// the shell (a keystroke in the composer, a streaming frame) re-renders only the bubbles whose message changed: a frame
-// gives a new object only to the reply it extends, and ReactMarkdown runs once per frame instead of once per message.
-// That holds while onDelete keeps one identity, which is why the bubble takes its index and hands it back rather than
-// a callback made for each message.
+// reply) and, under it, Retry on the error bubble the shell offers it to, Copy (the raw markdown; 'Copied!' for 1.5 s)
+// and Delete. Memoised on its props, so a render of the shell (a keystroke in the composer, a streaming frame)
+// re-renders only the bubbles whose message changed: a frame gives a new object only to the reply it extends, and
+// ReactMarkdown runs once per frame instead of once per message. That holds while onDelete keeps one identity, which is
+// why the bubble takes its index and hands it back rather than a callback made for each message, and while onRetry goes
+// to the last bubble alone.
 //
-// For a keyboard, a touch screen and a screen reader. Copy and Delete show at rest, dimmed, and at full strength on
-// hover or while one of them has focus: a phone has no hover, and a keyboard user must see what they tab onto. Each is
-// 24 px square around its 11 px icon. The avatar is decoration; who is speaking is said in visually hidden text that
-// opens the bubble ("You", "Assistant", "Error"), outside the message's own text, so Copy and the stored history never
-// see it. An error line is an alert, announced as it appears. A reply has no live region: a streamed reply would be
-// read out again at every frame. None of this adds state or an effect: the bubble renders on every frame of the reply
-// it shows.
+// For a keyboard, a touch screen and a screen reader. The actions show at rest, dimmed, and at full strength on hover
+// or while one of them has focus: a phone has no hover, and a keyboard user must see what they tab onto. Copy and
+// Delete are 24 px square around their 11 px icon; Retry, first in the row, is the word with its icon, 24 px high. The
+// avatar is decoration; who is speaking is said in visually hidden text that opens the bubble ("You", "Assistant",
+// "Error"), outside the message's own text, so Copy and the stored history never see it. An error line is an alert,
+// announced as it appears, and Retry sits outside it, so the alert says the error alone. A reply has no live region: a
+// streamed reply would be read out again at every frame. None of this adds state or an effect: the bubble renders on
+// every frame of the reply it shows.
 //
 // The markdown renderer (ChatMarkdown, with react-markdown and remark-gfm) is loaded on demand: by the first reply on
 // screen, or before it in the idle preload. Once it is in, a bubble renders it directly, with nothing suspending in
@@ -23,7 +25,7 @@
 // import (the next reply's, say) brings the renderer in.
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Bot, Check, CircleAlert, Copy, Trash, User } from 'lucide-react';
+import { Bot, Check, CircleAlert, Copy, RotateCcw, Trash, User } from 'lucide-react';
 import type { ChatMessage } from '../../lib/store.js';
 import { lazyWithPreload } from '../../lib/lazyWithPreload.js';
 import ChunkBoundary from '../ChunkBoundary.js';
@@ -43,6 +45,11 @@ interface ChatMessageProps {
   index: number;
   /** Deletes the message at `index`: the history's deleteMessage itself, never a function made per render. */
   onDelete: (index: number) => void;
+  /**
+   * Asks the failed request again. The shell gives it to the last message alone, when that is an error bubble it can
+   * retry and no reply is in flight; an error bubble without it shows no Retry.
+   */
+  onRetry?: () => void;
 }
 
 /** A message's text as written: a question, an error line, or a reply without its renderer. */
@@ -71,7 +78,7 @@ function RawTextUntilRenderer({ content, retry }: { content: string; retry: () =
   return <RawText content={content} />;
 }
 
-function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
+function ChatMessage({ msg, index, onDelete, onRetry }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(copyTimer.current), []);
@@ -124,6 +131,16 @@ function ChatMessage({ msg, index, onDelete }: ChatMessageProps) {
           )}
         </div>
         <div className={`flex gap-0.5 mt-0.5 opacity-75 group-hover/msg:opacity-100 focus-within:opacity-100 transition-opacity ${isUser ? 'justify-end' : ''}`}>
+          {isError && onRetry && (
+            <button
+              type="button"
+              onClick={() => onRetry()}
+              className="inline-flex items-center gap-1 min-h-6 px-1.5 rounded text-[11px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+            >
+              <RotateCcw size={11} />
+              Retry
+            </button>
+          )}
           <button
             onClick={handleCopy}
             className="inline-flex items-center justify-center size-6 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"

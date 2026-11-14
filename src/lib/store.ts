@@ -76,6 +76,13 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'error';
   content: string;
   pending?: boolean;
+  /**
+   * An error bubble's record of the request that failed, which its Retry asks again (lib/chatMessages.ts's failReply
+   * writes it, retryBase reads it): `kind`, a send or the suggestions; `partials`, how many partial replies of that
+   * request sit just before the bubble, kept in the chat and left out of the next request; `at`, the bubble's index.
+   * It goes with the bubble, which is never stored.
+   */
+  retry?: { kind: 'send' | 'suggest'; partials: number; at: number };
 }
 
 /** A preference name the store knows: a key of PREF_MAP. */

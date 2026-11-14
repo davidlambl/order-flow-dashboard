@@ -1,7 +1,7 @@
 // src/components/chat/ChatComposer.test.jsx — the chat's input row, rendered bare (it reads no context) under a host
 // that holds the value as the shell does: typing reports each value and fits the textarea to its text, 120 px at most;
 // Enter sends the value and stays out of the text, Shift+Enter breaks the line; Send is live only for more than
-// whitespace and submits the value as typed (the shell trims it); while a reply streams the textarea is disabled and
+// whitespace and submits the value as typed (the shell trims it); while a reply streams the textarea stays enabled and
 // Stop takes Send's node, and only a fresh click stops, so a double-click on Send sends once and leaves its reply
 // running; the suggest button sits between the textarea and Send only once the chat holds a reply and not while
 // sending, and asks without submitting; the ref the shell passes reaches the textarea.
@@ -77,14 +77,14 @@ describe('ChatComposer', () => {
     expect(fireEvent.submit(box().closest('form'))).toBe(false);
   });
 
-  it("while a reply streams, the textarea is disabled and Stop takes Send's node", () => {
+  it("while a reply streams, the textarea stays enabled and Stop takes Send's node", () => {
     const fns = spies();
     const { rerender } = render(composer(fns, { initial: 'Q3' }));
     const send = sendButton();
     expect(box()).toBeEnabled();
 
     rerender(composer(fns, { initial: 'Q3', sending: true }));
-    expect(box()).toBeDisabled();
+    expect(box()).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
     expect(stopButton()).toBe(send);
 

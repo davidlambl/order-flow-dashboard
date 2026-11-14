@@ -1,15 +1,15 @@
 // src/components/chat/TypingIndicator.tsx
 // Three pulsing dots beside the assistant's avatar: the reply's place while it is in flight and no text of it has
-// arrived yet. For a screen reader it is a status whose one line, visually hidden, says the assistant is typing. The
-// region mounts together with that line and the line never changes while it is up, so whether it is spoken is the
-// screen reader's choice: a live region announces a change inside it, and one inserted with its text is not read by
-// every screen reader. The avatar and the dots are decoration.
+// arrived yet. For a screen reader reading the chat, its one line, visually hidden, says the assistant is typing. It is
+// not a live region: the shell's status line, in the tree from the chat's first render, announces that a reply has
+// started and how it ended (a status that mounts together with its text is not read by every screen reader). The
+// avatar and the dots are decoration.
 
 import { Bot } from 'lucide-react';
 
 export default function TypingIndicator() {
   return (
-    <div role="status" className="flex gap-2.5 fade-in">
+    <div className="flex gap-2.5 fade-in">
       <div
         aria-hidden="true"
         className="flex items-center justify-center w-6 h-6 rounded-lg shrink-0 bg-[var(--color-purple-bg)] text-[var(--color-purple)]"

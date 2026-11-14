@@ -1,12 +1,15 @@
 // src/components/chat/ChatComposer.tsx
 // The chat's input row: the textarea that grows with its text (Enter sends, Shift+Enter breaks the line), the button
 // that asks for strategic-context updates once the chat holds a reply, and Send, which Stop replaces while a reply
-// streams. The textarea's ref is the shell's, passed as a React 19 prop: the shell focuses the input when the chat
-// opens (not when the lock lifts) and resets its height after an accepted send, the empty state's suggestions
-// included. The children keep their order (the textarea, the suggest button, then Send or Stop), so React turns Send's
-// node into Stop: the second click of a double-click on Send lands on Stop, whose guard ignores it. The textarea's name
-// is not shown (the placeholder is the visible hint): it is set on the element with aria-label, since the form holds
-// exactly those three children and a <label> outside it would sit in the shell's column.
+// streams. The textarea stays enabled while a reply streams: a draft can be typed ahead and focus stays in it (a
+// disabled textarea dropped focus to the page at every send); a send then is refused by the shell, which keeps the
+// draft. The textarea's ref is the shell's, passed as a React 19 prop: the shell focuses the input when the chat opens
+// (not when the lock lifts) and after a reply started from a button that then hides, and resets its height after an
+// accepted send, the empty state's suggestions included. The children keep their order (the textarea, the suggest
+// button, then Send or Stop), so React turns Send's node into Stop: the second click of a double-click on Send lands
+// on Stop, whose guard ignores it. The textarea's name is not shown (the placeholder is the visible hint): it is set on
+// the element with aria-label, since the form holds exactly those three children and a <label> outside it would sit
+// in the shell's column.
 import type { Ref } from 'react';
 import { ListChecks, Send, Square } from 'lucide-react';
 
@@ -16,7 +19,7 @@ interface ChatComposerProps {
   onChange: (value: string) => void;
   /** The text as typed: the shell trims it and ignores a blank one. */
   onSend: (text: string) => void;
-  /** A reply is streaming: the textarea is disabled and Stop stands in for Send. */
+  /** A reply is streaming: Stop stands in for Send, and the textarea stays enabled. */
   sending: boolean;
   onStop: () => void;
   /** The chat holds a reply: the suggest button shows, except while sending. */
@@ -50,7 +53,6 @@ export default function ChatComposer({ ref, value, onChange, onSend, sending, on
         placeholder="Ask about the flow..."
         rows={1}
         className="flex-1 bg-[var(--color-surface-2)] text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] rounded-lg px-3 py-2 border border-[var(--color-border-subtle)] outline-none focus:border-[var(--color-accent)] transition-colors resize-none leading-relaxed"
-        disabled={sending}
       />
       {canSuggest && !sending && (
         <button

@@ -1,17 +1,17 @@
 // src/components/chat/TypingIndicator.a11y.test.jsx — the reply's place while no text of it has arrived, for a screen
-// reader: a status region whose only text is "The assistant is typing", in visually hidden text, so it is said once
-// when the indicator shows; the avatar and the three pulsing dots are decoration (the dots keep their class, which the
-// ChatBot tests count). axe finds nothing.
+// reader: its only text is "The assistant is typing", visually hidden, read where the reply will be; it is no live
+// region (the chat's status line announces the reply, ChatBot.status.test.jsx); the avatar and the three pulsing dots
+// are decoration (the dots keep their class, which the ChatBot tests count). axe finds nothing.
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import TypingIndicator from './TypingIndicator.js';
 import { expectNoAxeViolations } from '../../test/a11y.js';
 
 describe('TypingIndicator', () => {
-  it('is a status that says the assistant is typing, with the avatar and the dots hidden from the tree', () => {
+  it('Pin: says the assistant is typing in visually hidden text, with the avatar and the dots hidden from the tree', () => {
     const { container } = render(<TypingIndicator />);
-    const status = screen.getByRole('status');
-    expect(status).toHaveTextContent(/^The assistant is typing$/);
+    const indicator = container.firstElementChild;
+    expect(indicator).toHaveTextContent(/^The assistant is typing$/);
     expect(screen.getByText('The assistant is typing')).toHaveClass('sr-only');
 
     expect(container.querySelector('.lucide-bot').parentElement).toHaveAttribute('aria-hidden', 'true');
