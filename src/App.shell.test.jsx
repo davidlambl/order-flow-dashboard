@@ -1,7 +1,7 @@
 // src/App.shell.test.jsx — what App renders around its panels, and the two context values it hands them. First the
-// ticker row: the symbol, IV30 to one decimal (only for loaded data that has one), DEMO DATA, ERROR with the failure
-// as its title (a refresh that fails after a success keeps the data, so the badge does show) and the contracts count
-// (above 0 only, grouped by toLocaleString); and the footer's one data-source sentence, for CBOE, Tradier, the
+// ticker row: the symbol, IV30 to one decimal (only for loaded data that has one), DEMO DATA, ERROR (a refresh that
+// fails after a success keeps the data, so the badge does show) and the contracts count (above 0 only, grouped by
+// toLocaleString), with the failure said in words in the status line under the row; and the footer's one data-source sentence, for CBOE, Tradier, the
 // Tradier sandbox and demo data. Then the contexts: an App render that changes nothing in either hands every consumer
 // the same two objects, and each value changes with its own inputs (the ticker; the stored access token), so that pin
 // cannot pass on a value that never changes. A new value re-renders every consumer, and App also renders on state
@@ -15,7 +15,7 @@
 // shows or what the contexts carry, never on how App computes them.
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { server } from './test/setup.js';
@@ -164,9 +164,16 @@ async function renderLoaded() {
   await settled();
 }
 
-/** The ticker row, first in <main>: the text of each of its parts in order (the symbol, the badges, the count). */
-const tickerRow = () => [...screen.getByRole('main').firstElementChild.querySelectorAll('span')]
-  .map((part) => part.textContent);
+/**
+ * The ticker row, first in <main>: the text of each of its parts in order (the symbol, the badges, the count). The row
+ * is found through its first span, the symbol, whose group it holds, so the failure line under it is not read.
+ */
+const tickerRow = () => [
+  ...screen.getByRole('main').firstElementChild.querySelector('span').parentElement.parentElement.querySelectorAll('span'),
+].map((part) => part.textContent);
+
+/** The failure line under the ticker row: its status region's text. */
+const rowStatus = () => within(screen.getByRole('main').firstElementChild).getByRole('status').textContent;
 
 /** The footer, last in <main>: its one data-source sentence. */
 const footer = () => screen.getByRole('main').lastElementChild.textContent;
@@ -220,21 +227,22 @@ describe('App: the ticker row, the footer and the two context values', () => {
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 
-  it('Pin: demo data (getMarketData failing before anything loaded) shows DEMO DATA, no ERROR, and the demo sentence', async () => {
+  it('demo data (getMarketData failing before anything loaded) shows DEMO DATA, no ERROR, the reason in words and the demo sentence', async () => {
     const error = vi.spyOn(console, 'error');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     serveFunctions();
     failMarketData();
     await renderLoaded();
 
-    // The failure is the hook's error here too, but in demo mode DEMO DATA stands for it.
+    // The failure is the hook's error here too, but in demo mode DEMO DATA stands for it; the line under says why.
     expect(tickerRow()).toEqual(['AVGO', 'DEMO DATA', `${(2_468).toLocaleString()} contracts analyzed`]);
+    expect(rowStatus()).toBe('Options data could not be loaded: Upstream down. Demo data is shown instead.');
     expect(footer()).toBe(NOTE.demo);
     expect(warn).toHaveBeenCalledWith('No data loaded for', 'AVGO', '— showing demo data:', 'Upstream down');
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 
-  it('Pin: a refresh that fails after a success keeps the data and adds ERROR, with the failure as its title', async () => {
+  it('a refresh that fails after a success keeps the data and adds ERROR, with the failure in words under the row', async () => {
     const error = vi.spyOn(console, 'error');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     serveFunctions();
@@ -247,7 +255,8 @@ describe('App: the ticker row, the footer and the two context values', () => {
       expect(tickerRow()).toEqual(['AVGO', 'IV30: 31.4%', 'ERROR', '420 contracts analyzed']);
     }, { timeout: 5_000 });
     await settled();
-    expect(screen.getByText('ERROR')).toHaveAttribute('title', 'Upstream down');
+    expect(screen.getByText('ERROR')).not.toHaveAttribute('title');
+    expect(rowStatus()).toBe('Options data could not be refreshed: Upstream down. The last data loaded is shown.');
     expect(footer()).toBe(NOTE.cboe); // still the last good data's source
     expect(warn).toHaveBeenCalledWith('Market data refresh failed; keeping last good data:', 'Upstream down');
     expect(error).not.toHaveBeenCalled();

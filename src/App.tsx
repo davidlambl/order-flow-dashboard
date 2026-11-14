@@ -265,7 +265,10 @@ export default function App() {
               style={{ overscrollBehavior: 'contain' }}
             >
               {/* Ticker badge */}
-              <TickerSummary ticker={ticker} data={data} loading={loading} usingMock={usingMock} error={error} onRetry={handleRefresh} />
+              <TickerSummary
+                ticker={ticker} data={data} loading={loading} usingMock={usingMock} error={error}
+                quoteError={quoteError} liveQuoteShown={liveQuote != null} onRetry={handleRefresh}
+              />
 
               {/* KPI Cards */}
               <KPICards kpis={data?.kpis} loading={loading} />
