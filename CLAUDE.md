@@ -29,7 +29,9 @@ should:
 - `npm run build` — must pass; it writes the entry chunk, Rolldown's runtime chunk, five vendor chunks (`react`, `query`,
   `supabase`, `recharts`, `markdown`: `output.codeSplitting.groups` in `vite.config.js`), one chunk per lazily loaded
   part, a chunk for what two of those share (`useAutoSave`) and `dist/.vite/manifest.json` (Netlify does not publish
-  the dot-directory). `ANALYZE=1 npm run build` also writes `dist/stats.html`.
+  the dot-directory); then `scripts/write-headers.js` writes `dist/_headers`, one immutable `Cache-Control` rule per
+  hashed file under `dist/assets/` (why not a `/assets/*` rule: the comment in `netlify.toml`), and fails the build on
+  an unhashed file there. `ANALYZE=1 npm run build` also writes `dist/stats.html`.
 - `npm run check:bundle` — `scripts/check-bundle.js` on the built `dist/`: the entry chunk at most 350 kB, initial JS
   (the entry and everything it imports statically, read from the manifest and compared with `index.html`'s preloads) at
   most 700 kB, and no `recharts` or `markdown` chunk on that startup path. Exit 1 over budget, 2 when the build cannot
