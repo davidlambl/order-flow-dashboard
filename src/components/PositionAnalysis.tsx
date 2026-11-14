@@ -43,7 +43,7 @@ export default function PositionAnalysis({ costBasis, shares, onUpdate }: Positi
     <div>
       {/* Price Display */}
       {loading ? (
-        <div aria-hidden="true" className="skeleton h-8 w-48" />
+        <div aria-hidden="true" className="skeleton h-11 w-48" />
       ) : (
         <PriceDisplay
           spotPrice={spotPrice}
