@@ -167,8 +167,8 @@ export default function App() {
   const chatId = useId();
   const chatRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
-  // Set when the chat closes with focus inside it, or on the body while it covered the page (a disabled composer, an
-  // unmounted button or a narrowed window leaves focus there): the close takes what held focus off the page, or left
+  // Set when the chat closes with focus inside it, or on the body while it covered the page (an unmounted button, a
+  // locked chat or a narrowed window leaves focus there): the close takes what held focus off the page, or left
   // it nowhere, and the chat toggle that the same commit mounts takes focus instead. Focus anywhere else stays where
   // it is, and from md up focus on the body stays there too.
   const refocusToggleRef = useRef(false);

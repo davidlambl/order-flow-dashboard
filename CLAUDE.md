@@ -65,7 +65,10 @@ should:
   clears the shared `queryClient` after every test; hooks take the client as `useQuery`'s second argument, so hook
   tests render them bare, with no provider. A component that reads the contexts renders inside them with
   `src/test/contexts.jsx` (`marketValue(overrides)`, `authValue(overrides)`, `withContexts(ui, { market, auth })`),
-  which replaced the props those tests used to pass. The setup also loads every lazily loaded component
+  which replaced the props those tests used to pass. A surface that says a data hook's failure (the ticker row,
+  Research) is also tested through the REAL hooks, in the whole App with MSW (`src/App.surfaces.test.jsx`): a hook
+  never gives an error together with a first load, so a hand-built `{ error, loading }` pair can pass on a state no
+  user meets. The setup also loads every lazily loaded component
   (`lazyWithPreload`) before a file's first test, so a lazy part renders inside `render()`'s act like an eager one and
   the test files need not know which parts are lazy. A file that tests a lazy part's pending, failed and retried paths
   opts out with a top-level `skipLazyPreload()` and holds the import with `importGate()` (`src/test/lazy.js`, whose
@@ -189,17 +192,30 @@ should:
   width where it is (a vertical move, one past a bound) returns the same state, so App does not render per move;
   `isResizing` is a drag alone); `useMediaQuery(query)` → whether a media query
   matches, followed as it changes (`useSyncExternalStore` over `matchMedia`; false where there is none).
+  The failure surfaces' two (Phase 6): `useLastFailure(error, loaded, key)` → a data hook's last failure, kept until a
+  load succeeds (`loaded` with no error) or `key` changes, and returned in the same render (state adjusted during
+  render, no effect). A data hook's own `error` cannot be shown as it stands: TanStack clears a query's error the
+  moment a fetch starts while the query holds no data, the quote refetches every 60 s and its `refresh()` resets the
+  query, so a failure that is still the truth would leave the page, with its Retry button and the focus, for as long
+  as the next request runs. `useRetryOutcome(busy, failing, key)` → `{ outcome: 'none' | 'retrying' | 'worked', begin }`:
+  what a status region says for a PRESSED Retry (`begin()` at the press; 'retrying' while the load it started runs;
+  then 'worked', or 'none' when a failure line is the outcome); a load nobody pressed for stays 'none'.
 - `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
   provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
   ChatBot, TickerResearch, the Settings tabs (AccountTab, BackupTab, DataTab) and PremiumGate read them instead of App's
   props; `KPICards`, `GexChart` and
   `FlowChart` keep their data props (pure leaves, and `App.test.jsx` counts App's renders through KPICards'), and the
-  position draft, `isOpen`/`onClose` and `onOpenSettings` stay props.
+  position draft, `isOpen`/`onClose` and `onOpenSettings` stay props. In the market value, `quoteError` and
+  `contextError` are the KEPT failures (`useLastFailure`: Header's "snapshot" marker and the Research panel read
+  them), `error` is `useMarketData`'s own, as it stands (the ticker row takes the kept one as a prop), and
+  `refreshContext` is `useTickerContext`'s refresh.
 - `src/components/` UI. `src/App.tsx` itself is a shell (Phase 5 (d)): it owns the ticker, the chat and Settings toggles, the
   data hooks and the two contexts, calls `usePositionDraft` before `useSupabaseAuth` (which takes its `flush`), destructures
   every hook result (a hook's return object in a dependency list would give the contexts a new value per render; the
   `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
-  with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
+  with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` as `main`'s first and last children, both fed by props:
+  `DataSourceNote` is pure; `TickerSummary` also says, in ONE status region under the ticker, what failed and why
+  (options data loaded or refreshed, the live price loaded or refreshed), with Retry beside it, which reloads both.
   The chat is ONE element at every width and never remounts, since a remount would cut a streaming reply: a `div` (an
   `aside` may not take the dialog role) that from `md` up is the complementary landmark "AI Co-Pilot" while open,
   with the resize handle before it (closed, it is an empty 0 px element with neither role nor name, so that no empty
@@ -209,8 +225,8 @@ should:
   left is `main`'s scrollbar). The layout follows
   `useMediaQuery('(min-width: 48rem)')`, Tailwind's `md` (the stylesheet writes `(width >= 48rem)`, a range the test
   stand-in does not parse). Escape closes the chat only while it covers the page, heard on `document` by a listener
-  that lives only then: from inside the chat or from `body`, where focus is after a send (the composer is disabled
-  while a reply streams) or once a pressed button unmounts, and never while a `<dialog>` is open, since Settings hears
+  that lives only then: from inside the chat or from `body`, where focus falls once a pressed button unmounts or while
+  the chat is locked (the composer itself stays enabled while a reply streams), and never while a `<dialog>` is open, since Settings hears
   Escape on `window`, after `document`, and one key would otherwise close both. Closing it with focus inside, or on
   `body` while it covered the page, moves focus to "Open AI Co-Pilot", which mounts in the same commit. The
   account-keyed root is never inert:
@@ -235,7 +251,11 @@ should:
   an effect only when `configured`. The idle preload starts from an effect once `screen === 'app'`.
   `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
-  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `CollapsibleSection.jsx` (the Position,
+  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). The shell tells the panel's states apart
+  (research switched off, a first load, a failed load, an empty answer, a partial one, a failed refresh over research
+  already shown, loaded), and `research/ResearchStatus.tsx` holds the panel's one status region and its Retry: the
+  failed request's reason, the sources a partial answer lacks, named in words, and apart from them the sources the
+  data plan does not include (a 403, which no retry fixes and which alone earns no Retry). `CollapsibleSection.jsx` (the Position,
   Research and Charts sections) is the accordion pattern: an `h2` holding the toggle (`aria-expanded`, and
   `aria-controls` while open), and the open content a `region` labelled by the title's own element, not by the toggle,
   whose name also carries the badge (Research's "Loading..."); collapsed, the content is not rendered, so the toggle
@@ -259,7 +279,10 @@ should:
   demand, by `ChatMessage`, whose fallback while it loads AND if it fails is the reply's raw text. `PositionAnalysis.tsx` is
   the shell over `components/position/*.tsx` (PriceDisplay, PositionInputs, PnLStat, RecommendationBadge,
   DualRecommendationView, PriceLevelBar, ReasonList: pure leaves) and `usePositionSignals`; it pairs each field's edit with
-  the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)).
+  the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)). It is ONE tree,
+  loading or not: the two inputs stay mounted, the same nodes, through a load (focus, the caret and a value being
+  typed survive a ticker switch or a refresh), and what is read from the market data gives way to `aria-hidden`
+  placeholder blocks meanwhile.
 - `netlify/functions/` TypeScript, every function in Netlify's v2 form (a default export): six `Request → Response`
   handlers (`askLLM`, `getLiveQuote`, `getTickerContext`, `validateToken`, `getMarketData`, `getModels`), typed from
   `types/market.ts` (every error body is checked against `ApiErrorBody` with `satisfies`), and the scheduled
