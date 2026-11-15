@@ -4,10 +4,15 @@
 // announces a line as it arrives; it is a status, not an alert, since research loads on a ticker change rather than
 // on a press. It says a failed load or a failed refresh (with the request's own reason), the sources a partial answer
 // lacks, named in words, and apart from them the sources the data plan does not include (a 403: a paid Finnhub
-// endpoint on a free key, which no retry fixes). Retry shows only where a retry can help.
+// endpoint on a free key, which no retry fixes). Retry shows only where a retry can help. The failure is App's kept
+// one (useLastFailure), so it stays said, with Retry, while the next request runs, also for a first load that failed.
+// A pressed Retry says how it went (useRetryOutcome): "Retrying..." in place of the lines while its request runs,
+// visible; then the lines again (a change, so a failure that comes back the same is spoken), or, visually hidden,
+// "Research loaded." once nothing is left to say. A request nobody pressed for says nothing new.
 
 import { useCallback, useEffect, useRef } from 'react';
 import { CircleAlert, RotateCw } from 'lucide-react';
+import { useRetryOutcome } from '../../hooks/useRetryOutcome.js';
 import type { ContextErrors, ContextSection } from '../../../types/market.js';
 
 /** Each source getTickerContext can name in `errors`, in the words the line uses, in the order it lists them. */
@@ -31,7 +36,12 @@ const LIST = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
 const sentence = (text: string) => (/[.!?]$/.test(text) ? text : `${text}.`);
 
 interface ResearchStatusProps {
-  /** The failed request's message (useTickerContext's `error`), or null. */
+  /** The ticker the research is about: a new one forgets a pressed Retry's outcome. */
+  subject: string;
+  /**
+   * The last failed request's message (useTickerContext's, kept by App until a load succeeds, the ticker changes or
+   * research is switched off or on), or null.
+   */
   error: string | null;
   /** Research is on screen: a failure is then a failed refresh over it, not a failed load. */
   shown: boolean;
@@ -59,7 +69,7 @@ function focusSectionToggle(inside: HTMLElement) {
   toggle?.focus();
 }
 
-export default function ResearchStatus({ error, shown, errors, loading, onRetry }: ResearchStatusProps) {
+export default function ResearchStatus({ subject, error, shown, errors, loading, onRetry }: ResearchStatusProps) {
   const failedSources = SOURCES.filter((s) => errors[s] !== undefined);
   const missing = failedSources.filter((s) => errors[s] !== 'HTTP 403');
   const notInPlan = failedSources.filter((s) => errors[s] === 'HTTP 403');
@@ -80,6 +90,7 @@ export default function ResearchStatus({ error, shown, errors, loading, onRetry 
     });
   }
   const showRetry = error !== null || missing.length > 0;
+  const { outcome, begin } = useRetryOutcome(loading, lines.length > 0, subject);
 
   const statusRef = useRef<HTMLDivElement>(null);
   // Set when Retry leaves the document while it holds the focus. A ref callback's cleanup runs before React removes
@@ -99,13 +110,19 @@ export default function ResearchStatus({ error, shown, errors, loading, onRetry 
   });
 
   const press = () => {
-    if (!loading) onRetry();
+    if (loading) return;
+    begin();
+    onRetry();
   };
 
+  const visible = outcome === 'retrying' || (outcome === 'none' && lines.length > 0);
+
   return (
-    <div className={lines.length > 0 || showRetry ? 'flex items-start gap-3 mb-3' : undefined}>
-      <div ref={statusRef} role="status" className={lines.length > 0 ? 'flex-1 min-w-0 space-y-1' : 'sr-only'}>
-        {lines.map((line) => (
+    <div className={visible || showRetry ? 'flex items-start gap-3 mb-3' : undefined}>
+      <div ref={statusRef} role="status" className={visible ? 'flex-1 min-w-0 space-y-1' : 'sr-only'}>
+        {outcome === 'retrying' ? (
+          <p className="text-xs text-[var(--color-text-muted)]">Retrying...</p>
+        ) : outcome === 'worked' ? 'Research loaded.' : lines.map((line) => (
           <p
             key={line.text}
             className={line.failure

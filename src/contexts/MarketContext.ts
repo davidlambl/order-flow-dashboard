@@ -38,13 +38,19 @@ export interface MarketValue {
   optionsMarketOpen: boolean;
   /** useLiveQuote's quote, or null until one lands. */
   liveQuote: LiveQuote | null;
-  /** useLiveQuote's error: the last failed quote request's message, null after a success. */
+  /**
+   * The live quote's last failure (useLiveQuote's error through App's useLastFailure): kept until a quote loads or the
+   * ticker changes, also while the next request runs, when the hook's own error is cleared.
+   */
   quoteError: string | null;
   /** useTickerContext's context: the ticker's research, null until it lands and while research is off. */
   tickerContext: TickerContext | null;
   /** useTickerContext's loading. */
   contextLoading: boolean;
-  /** useTickerContext's error: the last failed research request's message; null after a success and while research is off. */
+  /**
+   * The research's last failure (useTickerContext's error through App's useLastFailure): kept until research loads,
+   * the ticker changes or research is switched off or on, also while the next request runs; null while research is off.
+   */
   contextError: string | null;
   /** useTickerContext's refresh: fetches the research again, the current one staying shown meanwhile. */
   refreshContext: () => void;

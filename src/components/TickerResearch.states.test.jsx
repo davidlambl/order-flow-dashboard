@@ -240,7 +240,9 @@ describe('TickerResearch states', () => {
     expect(refreshContext).toHaveBeenCalledTimes(3);
   });
 
-  it('while a request runs Retry is aria-disabled, never disabled, ignores a press and keeps the focus', async () => {
+  it('while a pressed retry runs Retry is aria-disabled, never disabled, ignores a press, keeps the focus, and the region says "Retrying..."', async () => {
+    // App keeps the failed first load's message (useLastFailure) while the retry's request runs: the hook alone clears
+    // its error at that request's start, since its query holds no data.
     const user = userEvent.setup();
     const refreshContext = vi.fn();
     const { rerender } = renderPanel({ market: { contextError: 'timeout', refreshContext } });
@@ -252,15 +254,19 @@ describe('TickerResearch states', () => {
     expect(retry()).toHaveAttribute('aria-disabled', 'true');
     expect(retry()).not.toBeDisabled();
     expect(retry()).toHaveAccessibleName(/^Retry/);
+    expect(statusRegion()).toHaveTextContent(/^Retrying\.\.\.$/);
+    expect(statusRegion()).not.toHaveClass('sr-only');
+    expect(stateTexts()).toEqual([]); // neither the empty sentence nor the failure while it runs
     await user.click(retry());
     await user.keyboard('{Enter}');
     expect(refreshContext).toHaveBeenCalledTimes(1);
     expect(retry()).toHaveFocus();
 
-    // The retry failed again: the button is back in service, focus still on it.
+    // The retry failed again: the button is back in service, focus still on it, the failure said again.
     rerender(panel({ market: { contextError: 'timeout', refreshContext } }));
     expect(retry()).toHaveFocus();
     expect(retry()).not.toHaveAttribute('aria-disabled');
+    expect(statusRegion()).toHaveTextContent(failed('timeout'));
   });
 
   it('a retry that succeeds hands the focus to the section toggle, never to the page body', async () => {
@@ -273,6 +279,8 @@ describe('TickerResearch states', () => {
     await act(async () => { rerender(panel({ market: { tickerContext: loaded() } })); });
     expect(retry()).toBeNull();
     expect(toggle()).toHaveFocus();
+    expect(statusRegion()).toHaveTextContent(/^Research loaded\.$/);
+    expect(statusRegion()).toHaveClass('sr-only');
   });
 
   it('Pin: Retry leaving while the focus is elsewhere moves nothing', async () => {

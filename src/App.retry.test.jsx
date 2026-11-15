@@ -2,7 +2,7 @@
 // (StrictMode, ErrorBoundary, QueryClientProvider), with MSW answering getMarketData and getLiveQuote and fake timers
 // running with shouldAdvanceTime from Friday 2026-09-25 at 11:00 ET, as in App.shell.test.jsx. A failing live quote is
 // said in the row, in words, and marked on the header's snapshot price; Retry asks both functions once more, as the
-// header's Refresh does, and the focus never falls to the body.
+// header's Refresh does, and the focus stays on Retry.
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -104,7 +104,8 @@ describe('App: a failed live quote in the ticker row, and Retry', () => {
     await waitFor(() => { expect(rowStatus().textContent).toBe(QUOTE); }, { timeout: 5_000 }); // it failed again
     expect(rowStatus()).toBe(status); // the same region throughout
     expect(asked).toEqual({ market: before.market + 1, quote: before.quote + 1 });
-    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole('button', { name: /^Retry/ })).toBe(retry);
+    expect(retry).toHaveFocus();
     expect(error).not.toHaveBeenCalled();
   }, 15_000);
 });

@@ -4,14 +4,21 @@
 // data only: a failed refresh keeps the last good data and sets the error; in demo mode DEMO DATA stands in for it.
 // IV30 and the count wait out a foreground load, while the payload shown may still be the previous ticker's.
 // The failure line is ONE role="status" region, in the tree from the first render (empty and sr-only while nothing
-// failed) and the same node throughout, so a screen reader announces a change in it, and an identical failure arriving
-// again (the silent refresh fails every minute) changes nothing and is not spoken again. Retry sits beside it, outside
-// the region: shown while something failed, and held through the foreground load that follows a press (a live-quote
-// retry clears the quote's error at once), aria-disabled then rather than disabled so it keeps the focus. When it
-// leaves with the focus, the focus goes to the row itself rather than falling to the page.
+// failed) and the same node throughout, so a screen reader announces a change in it. Its sentences are built from the
+// last failures App keeps (useLastFailure: kept until a load succeeds or the ticker changes), so a failure stays said
+// while the next attempt runs, and an identical failure arriving again from an attempt nobody pressed for (the live
+// quote's refetch every minute, the silent refresh) changes nothing and is not spoken again. A pressed Retry says how
+// it went (useRetryOutcome): "Retrying..." in place of the sentences while its load runs, visible, so the button
+// beside it does not move; then the sentence again if it failed again (now a change, so it is spoken), or, visually
+// hidden, "Market data loaded." once nothing failed. Retry sits beside the region, outside it: shown while something
+// failed (demo data included), aria-disabled rather than disabled while the market data or the live quote loads (the
+// quote's own attempt every minute too), so it stays where it is with the focus. When it leaves with the focus, the
+// focus goes to the row itself rather than falling to the page. A switch to another ticker forgets the failures.
 
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useRetryOutcome } from '../../hooks/useRetryOutcome.js';
+import type { RetryOutcome } from '../../hooks/useRetryOutcome.js';
 import type { MarketData } from '../../../types/market.js';
 
 interface TickerSummaryProps {
@@ -23,10 +30,18 @@ interface TickerSummaryProps {
   loading: boolean;
   /** useMarketData's usingMock: `data` is demo data. */
   usingMock: boolean;
-  /** useMarketData's error: the last failure's message, null after a success (and while a demo-mode ticker reloads). */
+  /**
+   * useMarketData's last failure, kept until a load succeeds or the ticker changes (App's useLastFailure): also
+   * through a demo-mode reload, which clears the hook's own error.
+   */
   error: string | null;
-  /** useLiveQuote's error: the last failed quote request's message, null after a success and from refresh() on. */
+  /**
+   * useLiveQuote's last failure, kept until a quote loads or the ticker changes (App's useLastFailure): also through
+   * refresh() and the refetch every minute, which clear the hook's own error while no quote is held.
+   */
   quoteError: string | null;
+  /** useLiveQuote's loading: a fetch runs for a quote not shown yet (the refetch every minute while none ever loaded). */
+  quoteLoading: boolean;
   /** useLiveQuote's quote is shown: after a failed background refresh the last live quote stays on screen. */
   liveQuoteShown: boolean;
   /** App's handleRefresh: reloads the market data and the live quote in the foreground, for a failure shown here. */
@@ -62,7 +77,7 @@ function failureSentences(
 }
 
 interface RetryButtonProps {
-  /** A foreground load is under way: the press is ignored and the button says so, keeping the focus. */
+  /** The market data or the live quote loads: the press is ignored and the button says so, keeping the focus. */
   busy: boolean;
   onRetry: () => void;
   /** Moves the focus elsewhere: called when this button leaves the page while it holds the focus. Stable. */
@@ -88,27 +103,38 @@ function RetryButton({ busy, onRetry, onLeaveFocused }: RetryButtonProps) {
       className="shrink-0 inline-flex items-center gap-1 min-h-6 min-w-6 px-2 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-text-muted)] transition-colors aria-disabled:cursor-progress"
     >
       <RefreshCw size={12} aria-hidden="true" className={busy ? 'animate-spin' : undefined} />
-      Retry
+      Retry{' '}<span className="sr-only">market data</span>
     </button>
   );
 }
 
+/** What the region says after a pressed Retry, in place of the sentences ('none': the sentences). */
+const OUTCOME_TEXT: Record<Exclude<RetryOutcome, 'none'>, string> = {
+  retrying: 'Retrying...',
+  worked: 'Market data loaded.',
+};
+
 export default function TickerSummary({
-  ticker, data, loading, usingMock, error, quoteError, liveQuoteShown, onRetry,
+  ticker, data, loading, usingMock, error, quoteError, quoteLoading, liveQuoteShown, onRetry,
 }: TickerSummaryProps) {
   const rowRef = useRef<HTMLDivElement>(null);
   // Null once the row itself is being removed (React detaches its ref first), when there is nothing to focus.
   const focusRow = useCallback(() => rowRef.current?.focus(), []);
   const sentences = failureSentences(usingMock, error, quoteError, liveQuoteShown);
 
-  // Demo data is a failure too, also while it reloads without its reason. Retry stays through the foreground load that
-  // follows it ("adjust state while rendering"), so a press whose failure clears at once keeps its button and focus.
+  // Demo data is a failure too, also while it reloads without its reason. The failures are App's kept ones, so none
+  // clears at a press: Retry stays through the load that follows it.
   const failed = usingMock || error != null || quoteError != null;
-  const [held, setHeld] = useState(failed);
-  const showRetry = failed || (held && loading);
-  if (held !== showRetry) setHeld(showRetry);
+  const busy = loading || quoteLoading;
+  const { outcome, begin } = useRetryOutcome(busy, failed, ticker);
+  const press = () => {
+    if (busy) return;
+    begin();
+    onRetry();
+  };
 
-  const hasLine = sentences.length > 0 || showRetry;
+  const visible = outcome === 'retrying' || (outcome === 'none' && sentences.length > 0);
+  const hasLine = visible || failed;
 
   return (
     <div ref={rowRef} tabIndex={-1}>
@@ -143,9 +169,11 @@ export default function TickerSummary({
       <div className={hasLine ? 'mt-1.5 flex items-start gap-3' : undefined}>
         <p
           role="status"
-          className={sentences.length > 0 ? 'min-w-0 flex-1 break-words text-xs leading-5' : 'sr-only'}
+          className={visible ? 'min-w-0 flex-1 break-words text-xs leading-5' : 'sr-only'}
         >
-          {sentences.map((sentence, i) => (
+          {outcome === 'retrying' ? (
+            <span className="text-[var(--color-text-muted)]">{OUTCOME_TEXT.retrying}</span>
+          ) : outcome === 'worked' ? OUTCOME_TEXT.worked : sentences.map((sentence, i) => (
             <span key={sentence.key}>
               {i > 0 && ' '}
               <span className="text-[var(--color-bear-text)]">{sentence.failed}</span>
@@ -154,7 +182,7 @@ export default function TickerSummary({
             </span>
           ))}
         </p>
-        {showRetry && <RetryButton busy={loading} onRetry={onRetry} onLeaveFocused={focusRow} />}
+        {failed && <RetryButton busy={busy} onRetry={press} onLeaveFocused={focusRow} />}
       </div>
     </div>
   );

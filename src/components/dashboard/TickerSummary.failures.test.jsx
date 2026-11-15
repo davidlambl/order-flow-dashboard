@@ -1,11 +1,14 @@
 // src/components/dashboard/TickerSummary.failures.test.jsx — what the ticker row says when something failed, rendered
 // bare (the row is a prop leaf). Each failure is a sentence in words under the row, the reason included, inside ONE
 // role="status" region that is in the tree from the first render (empty and sr-only while there is nothing to say) and
-// stays the same node; an identical failure arriving again changes nothing in it, so nothing is announced again. Retry
-// is a real button outside the region, shown only while there is a failure to retry: one onRetry per press; during a
-// foreground load it is aria-disabled (never disabled, which would drop focus), ignores a press and keeps focus; when it
-// leaves with focus, the focus goes to the row, not to the body. No information sits in a title attribute alone.
-// Tailwind's classes do nothing under jsdom: where a test is about sr-only, the class is the evidence.
+// stays the same node; an identical failure arriving again changes nothing in it, so nothing is announced again. The
+// failures are App's kept ones (useLastFailure), so a load under way never clears them here. Retry is a real button
+// outside the region, named "Retry market data", shown only while there is a failure to retry: one onRetry per press;
+// while the market data or the live quote loads it is aria-disabled (never disabled, which would drop focus), ignores
+// a press and keeps focus; a press says "Retrying..." in the region while its load runs; when it leaves with focus, the
+// focus goes to the row, not to the body. No information sits in a title attribute alone. App.surfaces.test.jsx drives
+// the same row through the real hooks. Tailwind's classes do nothing under jsdom: where a test is about sr-only, the
+// class is the evidence.
 import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import TickerSummary from './TickerSummary.js';
@@ -28,7 +31,7 @@ const demo = payload({ provider: 'mock', delay: 'simulated', iv30: null, totalOp
 
 const BASE = {
   ticker: 'AVGO', data: payload(), loading: false, usingMock: false, error: null, quoteError: null,
-  liveQuoteShown: false,
+  quoteLoading: false, liveQuoteShown: false,
 };
 
 /** The row with nothing failed; `props` (and rerender's) override any of it. */
@@ -152,21 +155,80 @@ describe('TickerSummary: failures in words, with Retry', () => {
     expect(button).not.toHaveAttribute('aria-disabled');
   });
 
-  it('keeps Retry, focused, through a live-quote retry that clears the error at the press and fails again', () => {
+  it('keeps Retry, focused and busy, through a live-quote retry that outlasts the market data, and says so', () => {
     const { rerender } = renderRow({ quoteError: 'Yahoo is not answering' });
     const button = retry();
     button.focus();
+    fireEvent.click(button);
 
-    // App's handleRefresh: useLiveQuote's refresh() clears its error at once, the market data reloads in the foreground.
-    rerender({ quoteError: null, loading: true });
+    // App's handleRefresh: both reload; App keeps the quote's failure while its request runs.
+    rerender({ quoteError: 'Yahoo is not answering', loading: true, quoteLoading: true });
     expect(retry()).toBe(button);
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).toHaveFocus();
+    expect(region().textContent).toBe('Retrying...');
+    expect(region()).not.toHaveClass('sr-only');
 
-    rerender({ quoteError: 'Yahoo is not answering', loading: true });
-    rerender({ quoteError: 'Yahoo is not answering', loading: false });
+    rerender({ quoteError: 'Yahoo is not answering', quoteLoading: true }); // the market data landed first
+    expect(retry()).toBe(button);
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveFocus();
+    expect(region().textContent).toBe('Retrying...');
+
+    rerender({ quoteError: 'Yahoo is not answering' }); // the quote failed again
     expect(retry()).toBe(button);
     expect(button).toHaveFocus();
+    expect(button).not.toHaveAttribute('aria-disabled');
+    expect(region().textContent).toBe(QUOTE);
+  });
+
+  it("the live quote's own attempt while none ever loaded keeps Retry busy and the sentence unchanged", () => {
+    const onRetry = vi.fn();
+    const { rerender } = renderRow({ quoteError: 'Yahoo is not answering', onRetry });
+    const button = retry();
+    button.focus();
+    rerender({ quoteError: 'Yahoo is not answering', quoteLoading: true, onRetry });
+    expect(retry()).toBe(button);
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveFocus();
+    expect(region().textContent).toBe(QUOTE); // nobody pressed: nothing new to say
+    fireEvent.click(button);
+    expect(onRetry).not.toHaveBeenCalled();
+  });
+
+  it('a retry that worked says "Market data loaded." in the same region, visually hidden', async () => {
+    const { container, rerender } = renderRow({ error: 'Upstream down' });
+    const node = region();
+    fireEvent.click(retry());
+    rerender({ error: 'Upstream down', loading: true });
+    expect(node.textContent).toBe('Retrying...');
+    await expectNoAxeViolations(container);
+    rerender({});
+    expect(region()).toBe(node);
+    expect(node.textContent).toBe('Market data loaded.');
+    expect(node).toHaveClass('sr-only');
+    expect(retry()).toBeNull();
+    await expectNoAxeViolations(container);
+  });
+
+  it("Retry's accessible name is \"Retry market data\", starting with the word it shows", () => {
+    renderRow({ error: 'Upstream down' });
+    expect(retry()).toHaveAccessibleName('Retry market data');
+    const hidden = retry().querySelector('.sr-only');
+    expect(hidden.textContent).toBe('market data');
+    const shown = retry().textContent.replace(hidden.textContent, '').trim();
+    expect(shown).toBe('Retry');
+    expect(retry()).toHaveAccessibleName(new RegExp(`^${shown}\\b`));
+  });
+
+  it('a switch to another ticker forgets a pressed Retry: the new ticker\'s load says nothing', () => {
+    const { rerender } = renderRow({ error: 'Upstream down' });
+    fireEvent.click(retry());
+    rerender({ error: 'Upstream down', loading: true });
+    expect(region().textContent).toBe('Retrying...');
+    rerender({ ticker: 'NVDA', loading: true }); // App's kept failures are forgotten with the ticker
+    expect(region().textContent).toBe('');
+    expect(retry()).toBeNull();
   });
 
   it('when a retry succeeds Retry leaves, and the focus goes to the row, not to the body', () => {

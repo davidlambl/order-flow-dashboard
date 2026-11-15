@@ -7,7 +7,8 @@
 // One tree, loading or not: during a foreground load (the first, a ticker switch, a manual Refresh) the inputs stay
 // where they are, the same DOM nodes, so focus, the caret and a value being typed survive the load; everything read
 // from the market data gives way to a skeleton block in its place, since the context may still hold the previous
-// ticker's or load's numbers. The blocks are aria-hidden decoration: the section's header says what is loading.
+// ticker's or load's numbers. The blocks are aria-hidden decoration, and nothing announces the load (the section's
+// header has no badge), as before the blocks.
 
 import { usePositionSignals } from '../hooks/usePositionSignals.js';
 import type { Position } from '../lib/store.js';

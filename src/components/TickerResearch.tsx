@@ -60,6 +60,7 @@ export default function TickerResearch() {
       ) : null}
     >
       <ResearchStatus
+        subject={ticker}
         error={error}
         shown={hasResearch}
         errors={context?.errors ?? NO_ERRORS}
