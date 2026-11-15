@@ -292,4 +292,11 @@ describe('TickerResearch states', () => {
     expect(outside).toHaveFocus();
     outside.remove();
   });
+
+  // The header's "Loading..." is 10 px text in the muted colour. A pulse faded it to half strength and back, and
+  // mid-fade it measured 3.93:1 in Chromium, under the 4.5:1 floor. jsdom computes no colour, so the class is asserted.
+  it('the "Loading..." badge keeps its colour: no pulse fades the text under the contrast floor', () => {
+    renderPanel({ market: { contextLoading: true } });
+    expect(within(toggle()).getByText('Loading...')).not.toHaveClass('animate-pulse');
+  });
 });

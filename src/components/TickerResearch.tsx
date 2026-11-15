@@ -54,7 +54,8 @@ export default function TickerResearch() {
       title="Research"
       icon={TrendingUp}
       badge={loading ? (
-        <span className="text-[10px] text-[var(--color-text-muted)] animate-pulse">
+        // No pulse: fading 10 px muted text to half strength takes it under 4.5:1.
+        <span className="text-[10px] text-[var(--color-text-muted)]">
           Loading...
         </span>
       ) : null}
