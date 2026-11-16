@@ -750,10 +750,12 @@ settings, the refresh interval and the staleness cut-offs.
 position inputs that stay:
 - Under the ticker, one status region says in words what failed and why: options data that could not be loaded (demo
   data is shown instead) or refreshed (the last data stays), a live price that could not be loaded (prices then come
-  from the options snapshot, and the header marks its price "snapshot") or refreshed. Retry beside it reloads both.
-  The Research panel tells its states apart (off, a first load, a failed load, an empty answer, a partial one with the
+  from the options snapshot, and the header marks its price "snapshot"; on demo data both say demo data) or refreshed.
+  Retry beside it reloads both.
+  The Research panel tells its states apart (a first load, a failed load, an empty answer, a partial one with the
   missing sources named in words, a failed refresh over shown research, sources the data plan does not include), with
-  Retry where a retry can help.
+  Retry where a retry can help. Its sentence for research switched off cannot show in the app, where the panel sits
+  behind the access gate and an access token always has research on.
 - A failure a surface says is the last one, kept until a load succeeds or the ticker changes (`useLastFailure`).
   TanStack clears a query's error the moment the next fetch starts while the query holds no data, and the quote
   refetches every minute, so a hook's own error would take the sentence, Retry and the keyboard focus off the page for
@@ -781,14 +783,16 @@ and says its outcome. In two real tabs, over 29 rounds of a Retry clicked around
 the other tab, the question was stored once every time and no reply was stored without it. Not seen: a screen
 reader's speech; a real phone's keyboard when the chat's Retry moves the focus to the composer.
 
-A whole-PR adversarial review found no blocker and two families of defects, each fixed on the branch with tests that
-fail without the fix. The first version of the row and of Research had passed tests that fed them an error together
+A whole-PR adversarial review in three dimensions found no blocker and two families of defects, each fixed on the
+branch with tests that fail without the fix. The first version of the row and of Research had passed tests that fed them an error together
 with a first load, a state the data hooks never produce: driven through the real hooks, the sentence emptied and came
 back every minute and Retry lost the focus. And a delete or a Clear made while a reply streamed could change a stored
 message, or make Retry ask a different request. The proof in a browser also found the Research header's "Loading..."
-badge pulsing under 4.5:1 (3.93:1 mid-fade, on `main` too); it no longer pulses. The entry chunk grew from 168.47 to
-177.64 kB (51.79 to 54.81 kB gzip); startup JavaScript is 646.15 of its 700 kB. The suite went from 1575 tests in
-128 files to 1730 in 143.
+badge pulsing under 4.5:1 (3.93:1 mid-fade, on `main` too); it no longer pulses. The review of what the pull request
+says found a demo price described as the options snapshot's (with the options data on demo data and the live quote
+failed; both now say demo data) and the unreachable "research is off" state described as one a user meets. The entry
+chunk grew from 168.47 to 177.87 kB (51.79 to 54.84 kB gzip); startup JavaScript is 646.38 of its 700 kB. The suite
+went from 1575 tests in 128 files to 1731 in 143.
 
 Where this overruled the sketch:
 - "Retry buttons (unused `refresh` returns)" assumed a hook's `error` could be shown as it stands. It cannot: the

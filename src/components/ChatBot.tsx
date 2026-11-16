@@ -16,8 +16,8 @@
 // error bubble, which is never stored, is the only message a Retry removes. The textarea stays enabled while a reply
 // streams, so a draft can be typed ahead; a send then is refused by start(), which keeps the draft. A start from a
 // button that then hides (Retry, Suggest updates, a suggestion of the empty state) puts focus in the composer. One
-// visually hidden status line, in the tree from the first render, says when a reply starts and how it ended; a
-// failure is the error bubble's alert to say.
+// visually hidden status line, in the tree for as long as the chat is open and unlocked, says when a reply starts and
+// how it ended; a failure is the error bubble's alert to say.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMarket } from '../contexts/MarketContext.js';
@@ -291,8 +291,10 @@ export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, sh
         {sending && !messages[messages.length - 1]?.content && <TypingIndicator />}
       </div>}
 
-      {/* The chat's one status line: visually hidden, and in the tree from the first render, since a live region
-          announces a change inside it; it changes at every start, so the same closing sentence is said every time. */}
+      {/* The chat's one status line: visually hidden, and in the tree from the open chat's first render (a closed or
+          locked chat renders none of this, so one reopened mid-reply mounts the line already saying so), since a live
+          region announces a change inside it; it changes at every start, so the same closing sentence is said every
+          time. */}
       <div role="status" className="sr-only">{sending ? REPLYING : replyEnd}</div>
 
       <ChatComposer

@@ -258,8 +258,9 @@ should:
   `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
   the one `useNow` clock the leaves' relative times read; Phase 5 (d)). The shell tells the panel's states apart
-  (research switched off, a first load, a failed load, an empty answer, a partial one, a failed refresh over research
-  already shown, loaded), and `research/ResearchStatus.tsx` holds the panel's one status region and its Retry: the
+  (a first load, a failed load, an empty answer, a partial one, a failed refresh over research already shown, loaded;
+  it also has a sentence for research switched off, which the app cannot show today: App renders the panel inside
+  `PremiumGate`, and an access token always has research on), and `research/ResearchStatus.tsx` holds the panel's one status region and its Retry: the
   failed request's reason, the sources a partial answer lacks, named in words, and apart from them the sources the
   data plan does not include (a 403, which no retry fixes and which alone earns no Retry). `CollapsibleSection.jsx` (the Position,
   Research and Charts sections) is the accordion pattern: an `h2` holding the toggle (`aria-expanded`, and
@@ -285,9 +286,10 @@ should:
   and in the store, and the partials are left out of the request. Every start hands its sinks the request's anchor
   (a send's question, the chat's last message when the suggestions were asked, a retry's base), which `failReply`
   needs. The composer is never `disabled`: a draft can be typed while a reply streams, and `start()` refuses a
-  second request and keeps the draft. One visually hidden `status` line in the shell, in the tree from the first
-  render, says "The assistant is replying." and then how the reply ended (complete, stopped, cut off); a failure is
-  the bubble's alert to say. The shell and its two hooks
+  second request and keeps the draft. One visually hidden `status` line in the shell says "The assistant is replying."
+  and then how the reply ended (complete, stopped, cut off); a failure is the bubble's alert to say. The line is in the
+  tree for as long as the chat is open and unlocked: it sits below the shell's two early returns, so a chat reopened
+  while a reply streams mounts it already saying so. The shell and its two hooks
   load with the entry for that reason, and the leaves because they are small and the composer is the shell's focus
   target; only `ChatMarkdown` (react-markdown and remark-gfm) is loaded on
   demand, by `ChatMessage`, whose fallback while it loads AND if it fails is the reply's raw text. `PositionAnalysis.tsx` is
