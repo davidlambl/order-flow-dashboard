@@ -314,7 +314,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── aiSettings.ts       AI provider table and the AI preference readers
 │   ├── api.ts              Function fetchers, chat SSE reader
 │   ├── auth.ts             Access-token storage and check
-│   ├── chatMessages.ts     The chat's pure message helpers: markers, settle, window, storable, buffered text
+│   ├── chatMessages.ts     The chat's pure message helpers: markers, settle, window, storable, buffered text,
+│   │                       and what a failed request leaves for its Retry
 │   ├── debouncedSaver.js   Debounce with a baseline
 │   ├── deepEqual.js        Key-order-insensitive equality
 │   ├── financialContext.ts The chat's context builder, pure, clock injected (golden snapshots in __snapshots__/ beside its test)

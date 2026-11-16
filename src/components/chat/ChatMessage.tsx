@@ -11,11 +11,11 @@
 // or while one of them has focus: a phone has no hover, and a keyboard user must see what they tab onto. Copy and
 // Delete are 24 px square around their 11 px icon; Retry, first in the row, is the word with its icon, 24 px high,
 // named "Retry this request" (the visible word, then visually hidden text), so a list of the page's buttons tells it
-// from the ticker row's and the research panel's Retry. The avatar is decoration; who is speaking is said in visually hidden text that opens the bubble ("You", "Assistant",
-// "Error"), outside the message's own text, so Copy and the stored history never see it. An error line is an alert,
-// announced as it appears, and Retry sits outside it, so the alert says the error alone. A reply has no live region: a
-// streamed reply would be read out again at every frame. None of this adds state or an effect: the bubble renders on
-// every frame of the reply it shows.
+// from the ticker row's and the research panel's Retry. The avatar is decoration; who is speaking is said in visually
+// hidden text that opens the bubble ("You", "Assistant", "Error"), outside the message's own text, so Copy and the
+// stored history never see it. An error line is an alert, announced as it appears, and Retry sits outside it, so the
+// alert says the error alone. A reply has no live region: a streamed reply would be read out again at every frame.
+// None of this adds state or an effect: the bubble renders on every frame of the reply it shows.
 //
 // The markdown renderer (ChatMarkdown, with react-markdown and remark-gfm) is loaded on demand: by the first reply on
 // screen, or before it in the idle preload. Once it is in, a bubble renders it directly, with nothing suspending in

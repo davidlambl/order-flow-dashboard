@@ -141,8 +141,14 @@ should:
   string-guarded preference readers `getAISettings` / `readAiModelName` that ChatBot and the Settings AI tab share; `financialContext.ts` the chat's context builder, pure with the clock injected
   (`buildFinancialContext(input)` with `now` required; golden snapshots under 'UTC' and 'America/New_York', the committed
   `.snap` in `__snapshots__/` beside its node test); `chatMessages.ts` the chat's pure message helpers — `stopMarker`, `settleReply`,
-  `conversationWindow`, `storableMessages`, `appendReplyText`, `withBufferedText`, the `isTurn` guard and
-  `CONTEXT_UPDATE_PROMPT`; `positionSignals.ts` the position panel's pure derivation (`derivePositionSignals(input)`: dual
+  `conversationWindow`, `storableMessages`, `appendReplyText`, `withBufferedText`, the `isTurn` guard,
+  `CONTEXT_UPDATE_PROMPT` and the Retry's three, `failReply`, `retryBase` and `retryPlaceholder`. Two rules keep the
+  stored history safe from a delete or a Clear made while a reply streams: a request's stream writes only into its
+  own reply, the last message while that is the assistant's and `pending` (a chunk after the streaming bubble was
+  deleted opens a new pending reply; a settle with no pending reply last changes nothing, whatever its marker); and an
+  error bubble carries a `retry` record (`{ kind, partials, at }`) only while the message its request was asked
+  after, its anchor, is still in the chat with replies alone after it, so a Retry never asks a different request;
+  `positionSignals.ts` the position panel's pure derivation (`derivePositionSignals(input)`: dual
   mode, the two recommendations, the price levels, staleness and both P&Ls, `now` injected)). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
@@ -273,7 +279,15 @@ should:
   `StrategicContextDialog.tsx`, loaded on demand, and saves through `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
   ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
   ChatEmptyState and ChatComposer with the textarea `ref` prop) and the two chat hooks; `isOpen` and the lock only hide its
-  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). The shell and its two hooks
+  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). A failed request
+  leaves an error bubble, an alert that is shown and never stored, whose Retry asks the same request again in ONE
+  request that ends on the question (or on the suggestions' prompt): the question and any partial reply stay on screen
+  and in the store, and the partials are left out of the request. Every start hands its sinks the request's anchor
+  (a send's question, the chat's last message when the suggestions were asked, a retry's base), which `failReply`
+  needs. The composer is never `disabled`: a draft can be typed while a reply streams, and `start()` refuses a
+  second request and keeps the draft. One visually hidden `status` line in the shell, in the tree from the first
+  render, says "The assistant is replying." and then how the reply ended (complete, stopped, cut off); a failure is
+  the bubble's alert to say. The shell and its two hooks
   load with the entry for that reason, and the leaves because they are small and the composer is the shell's focus
   target; only `ChatMarkdown` (react-markdown and remark-gfm) is loaded on
   demand, by `ChatMessage`, whose fallback while it loads AND if it fails is the reply's raw text. `PositionAnalysis.tsx` is
@@ -395,7 +409,14 @@ should:
   tab's key test, the Backup tab's import, the access request; the sign-in link's region mounts as the link is
   requested, the idle sign-in screen having no status but its notice): a live region announces a change inside it,
   and one inserted together with its text is not read by every screen reader; an alert may be inserted with its text.
-  A loading line (a skeleton, a stand-in) and the chat's typing indicator still mount with their text. A panel
+  A loading line (a skeleton, a stand-in) still mounts with its text; the chat's typing indicator is no live region
+  (its hidden line is for a reader of the chat), since the shell's one status line says when a reply starts and how
+  it ended. A Retry button is never `disabled`: while its load runs it is `aria-disabled` and ignores a press, so it
+  keeps the focus; its name starts with the visible word and says what it retries ("Retry market data", "Retry
+  research", "Retry this request"); and when it leaves the page with the focus, the focus is handed on (the ticker
+  row, the section's toggle; the chat's goes to the composer at the press). A surface says a KEPT failure
+  (`useLastFailure`), so a refresh nobody pressed for that fails again changes nothing in its status region, while a
+  pressed Retry says "Retrying..." there and then its outcome (`useRetryOutcome`). A panel
   that scrolls under a sticky header carries scroll padding above the header's height (`scroll-pt-32` on the Settings
   panel and its stand-in), so a control scrolled into view for focus is never under it. One pattern per toggle: a
   fixed name with `aria-pressed` (`aria-expanded` for a section), or a name that states the action and no

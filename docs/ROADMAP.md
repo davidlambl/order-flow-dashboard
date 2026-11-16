@@ -742,9 +742,64 @@ Where this overruled the sketch:
   breakpoint, would cut a streaming reply. Below `md` the page behind it is inert while it is open, as behind any
   modal dialog, and whole again once it closes.
 
-Left to the phase's next two pull requests: the error and retry surfaces for every data source, the chat's Retry and
-the position inputs that stay while the panel loads; then the remembered ticker and, as settings, the refresh interval
-and the staleness cut-offs.
+Left then to the phase's next two pull requests: the error and retry surfaces for every data source, the chat's Retry
+and the position inputs that stay while the panel loads (built in #95, below); then the remembered ticker and, as
+settings, the refresh interval and the staleness cut-offs.
+
+**Built in #95 (Phase 6, PR B, 2026-11-14 to 2026-11-16).** The error and retry surfaces, the chat's Retry and the
+position inputs that stay:
+- Under the ticker, one status region says in words what failed and why: options data that could not be loaded (demo
+  data is shown instead) or refreshed (the last data stays), a live price that could not be loaded (prices then come
+  from the options snapshot, and the header marks its price "snapshot") or refreshed. Retry beside it reloads both.
+  The Research panel tells its states apart (off, a first load, a failed load, an empty answer, a partial one with the
+  missing sources named in words, a failed refresh over shown research, sources the data plan does not include), with
+  Retry where a retry can help.
+- A failure a surface says is the last one, kept until a load succeeds or the ticker changes (`useLastFailure`).
+  TanStack clears a query's error the moment the next fetch starts while the query holds no data, and the quote
+  refetches every minute, so a hook's own error would take the sentence, Retry and the keyboard focus off the page for
+  as long as each request ran. A pressed Retry says "Retrying..." in its status region and then its outcome
+  (`useRetryOutcome`); a refresh nobody pressed for says nothing new. A Retry button is `aria-disabled`, never
+  disabled, while its load runs, and hands the focus on when it leaves the page.
+- A failed chat reply's error bubble, shown and never stored, has Retry: it asks the same request again in one request
+  that ends on the question; the question and any partial reply stay on screen and in the store, and the partials are
+  left out of the request. The composer stays enabled while a reply streams, and one visually hidden status line says
+  when a reply starts and how it ended.
+- A request's stream writes only into its own pending reply, and an error bubble can be retried only while the message
+  its request was asked after is still in place (`src/lib/chatMessages.ts`). Before, deleting the streaming bubble
+  mid-reply could glue the rest of the reply, or its stop marker, onto the message before it in the stored history
+  (so it was for "Suggest updates" before this PR).
+- The position panel is one tree: its two inputs stay mounted, the same nodes, while the panel's data loads, so focus
+  and a value being typed survive a ticker switch.
+
+No data hook, no storage or sync path and no file under `netlify/` changed.
+
+Measured in Chromium at 1280 and at 375 px, on the dev server behind a mock of the functions whose answers can be
+switched: every state of the row and of Research clean under axe-core 4.14, with no control under 24 px. Across four
+of the quote's one-minute requests, with no quote ever loaded, the row's status region changed zero times and Retry
+stayed the same focused button in each of 2,493 samples. With real key presses a Retry sends one request per source
+and says its outcome. In two real tabs, over 29 rounds of a Retry clicked around a change of the same chat made in
+the other tab, the question was stored once every time and no reply was stored without it. Not seen: a screen
+reader's speech; a real phone's keyboard when the chat's Retry moves the focus to the composer.
+
+A whole-PR adversarial review found no blocker and two families of defects, each fixed on the branch with tests that
+fail without the fix. The first version of the row and of Research had passed tests that fed them an error together
+with a first load, a state the data hooks never produce: driven through the real hooks, the sentence emptied and came
+back every minute and Retry lost the focus. And a delete or a Clear made while a reply streamed could change a stored
+message, or make Retry ask a different request. The proof in a browser also found the Research header's "Loading..."
+badge pulsing under 4.5:1 (3.93:1 mid-fade, on `main` too); it no longer pulses. The entry chunk grew from 168.47 to
+177.64 kB (51.79 to 54.81 kB gzip); startup JavaScript is 646.15 of its 700 kB. The suite went from 1575 tests in
+128 files to 1730 in 143.
+
+Where this overruled the sketch:
+- "Retry buttons (unused `refresh` returns)" assumed a hook's `error` could be shown as it stands. It cannot: the
+  failure has to be kept across the next request, or it blinks off the page with its button.
+- A Retry in the chat deletes nothing that is stored. The failed attempt's partial reply stays above the full one and
+  is only left out of the request: replacing it would have made Retry one more way to delete stored messages.
+- The live quote's failure is said once, in the ticker row, and marked on the header's price; the position panel's
+  price display says nothing about it.
+
+Left to the phase's last pull request: the remembered ticker and, as settings, the refresh interval and the staleness
+cut-offs.
 
 ### Phase 7 — New-technology track: WebGL, Python quant service, ops console (L)
 Reframed (owner decision, 2026-09-25) to build skills the current stack doesn't exercise: WebGL-based UI,
