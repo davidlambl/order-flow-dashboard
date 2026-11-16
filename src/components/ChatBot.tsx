@@ -92,10 +92,10 @@ function replyEnded(marker: string): string {
 
 /**
  * An error bubble's key: one per bubble object, which the fail sink creates and nothing changes afterwards (settleReply
- * and appendReplyText touch an assistant tail only). The bubble of a Retry that fails again is then a new element even
- * where it takes its predecessor's place, in the same batch when the request fails while it is built, so its alert is
- * announced again; an index key would keep the old node, unchanged and silent. A WeakMap: a bubble that leaves the chat
- * leaves the map.
+ * and appendReplyText touch a pending assistant tail only). The bubble of a Retry that fails again is then a new
+ * element even where it takes its predecessor's place, in the same batch when the request fails while it is built, so
+ * its alert is announced again; an index key would keep the old node, unchanged and silent. A WeakMap: a bubble that
+ * leaves the chat leaves the map.
  */
 const errorKeys = new WeakMap<ChatMsg, string>();
 let errorCount = 0;
@@ -151,15 +151,16 @@ export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, sh
     data, costBasis, shares, tickerContext, strategicContext, marketOpen, optionsMarketOpen, liveQuote, now,
   }), [data, costBasis, shares, tickerContext, strategicContext, marketOpen, optionsMarketOpen, liveQuote]);
 
-  // Where a reply goes: over the history's setters, which are stable. The text streams in unstored; the settle (done,
-  // stopped or failed) is the persist point (D10), once per reply. The fail writes the request's kind into the error
-  // bubble's retry record, so a send and the suggestions each have their sinks; a Retry brings its own, with its
-  // placeholder and `after`, the last message of the chat the request was first asked on (failReply's count of the
-  // partial replies of every attempt).
+  // Where a reply goes: over the history's setters, which are stable. The text streams in unstored and only into the
+  // request's own reply (appendReplyText, settleReply); the settle (done, stopped or failed) is the persist point
+  // (D10), once per reply. Every start builds its own sinks with its kind, its placeholder and `after`, its anchor:
+  // the message the request was asked after (a send's question, the suggestions' last message at the click, a retry's
+  // last message of the chat its first attempt was asked on). failReply counts every attempt's partial replies after
+  // it, and leaves a bubble that cannot be retried once it is gone.
   const makeSinks = useCallback((
     kind: RetryKind,
     placeholder: (prev: ChatMsg[], lead: ChatMsg[]) => ChatMsg[],
-    after?: ChatMsg,
+    after: ChatMsg | undefined,
   ): StreamSinks => ({
     placeholder: (lead) => {
       setReplyEnd('');
@@ -173,8 +174,6 @@ export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, sh
     // Stored: the question and any partial reply. The error bubble is shown, not stored (storableMessages).
     fail: (content) => setMessagesAndPersist((prev) => failReply(prev, content, kind, after)),
   }), [setMessages, setMessagesAndPersist]);
-  const sendSinks = useMemo(() => makeSinks('send', appendPlaceholder), [makeSinks]);
-  const suggestSinks = useMemo(() => makeSinks('suggest', appendPlaceholder), [makeSinks]);
 
   // One reply into this chat; false when start() refused it because a reply is in flight, and then nothing went up.
   // The request is built inside the run, after the placeholder: a context that fails to build becomes the reply's
@@ -205,11 +204,11 @@ export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, sh
     // and keeps the draft. The turns are the chat as far as it has got (the text still waiting for its frame
     // included), then the question.
     const turns = conversationWindow([...withBufferedText(messages, bufferedText()).filter(isTurn), userMsg]);
-    if (!run(turns, 'send', [userMsg], sendSinks)) return false;
+    if (!run(turns, 'send', [userMsg], makeSinks('send', appendPlaceholder, userMsg))) return false;
     setInput('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
     return true;
-  }, [messages, bufferedText, run, sendSinks]);
+  }, [messages, bufferedText, run, makeSinks]);
 
   // A suggestion of the empty state sends as if typed. Once it is accepted the empty state goes, the pressed button
   // with it, and focus would fall to the page: the composer takes it. (Here and below, a refused start leaves it.)
@@ -223,9 +222,9 @@ export default function ChatBot({ isOpen, onClose, onOpenSettings, costBasis, sh
     const accepted = run([
       ...conversationWindow(withBufferedText(messages, bufferedText()).filter(isTurn)),
       { role: 'user', content: CONTEXT_UPDATE_PROMPT },
-    ], 'suggest', [], suggestSinks);
+    ], 'suggest', [], makeSinks('suggest', appendPlaceholder, messages[messages.length - 1]));
     if (accepted) inputRef.current?.focus();
-  }, [messages, bufferedText, run, suggestSinks]);
+  }, [messages, bufferedText, run, makeSinks]);
 
   // What the last message's Retry would ask again, or null when it cannot be asked (lib/chatMessages.ts's retryBase).
   const retryable = useMemo(() => retryBase(messages), [messages]);

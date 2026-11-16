@@ -206,8 +206,8 @@ describe('ChatBot chat history', () => {
     expect(screen.queryByText('Hello')).toBeNull();
   });
 
-  // Deleting the streaming bubble leaves no assistant tail; the text after it re-creates the reply without the
-  // pending flag, so the settle changes nothing on screen and only the always-new array gets its write committed.
+  // Deleting the streaming bubble leaves no assistant tail; the text after it re-creates the reply, pending, and the
+  // settle drops the flag (storableMessages strips it from every write anyway, so what is stored is the same).
   it('Pin: a reply whose bubble was deleted mid-stream is stored as re-created when it settles', async () => {
     render(chatUi());
     await send('Q1');
@@ -427,7 +427,7 @@ describe('ChatBot chat history', () => {
     frames.run();
     fireEvent.click(screen.getAllByLabelText('Delete message')[1]);
     await deliver(streams[0], ' world');
-    frames.run(); // the reply again, now without the pending flag
+    frames.run(); // the reply again, re-created as a new pending reply
     await deliver(streams[0], ' more');
     expect(frames.pending()).toBe(1);
 

@@ -3,8 +3,12 @@
 // through and the buffered text a save mid-reply adds, what a history stores, the turns a request sends, and what a
 // failed request leaves for its Retry. A module of its own so the chat's stream and history hooks share one definition
 // of each rule, tested once without React or a stream (src/lib/chatMessages.node.test.js, and
-// chatMessages.retry.node.test.js for the Retry). Pure and Node-loadable: no window, no storage, no React; the store's
-// and the API's types come in as types only.
+// chatMessages.retry.node.test.js for the Retry). Two rules hold the stored history safe from the user's deletes and
+// Clear while a reply streams: a request's stream writes only into its own reply, the last message while that is a
+// pending assistant message (appendReplyText, settleReply), never into a message a delete left last; and an error
+// bubble can be retried only while the message its request was asked after is still in the chat with replies alone
+// after it (failReply), so a Retry never asks a different request. Pure and Node-loadable: no window, no storage, no
+// React; the store's and the API's types come in as types only.
 
 import { STOP_REASON } from './sse.js';
 import type { StopReason } from './sse.js';
@@ -20,12 +24,14 @@ export function stopMarker(stopReason: StopReason | null): string {
 }
 
 /**
- * Settle the streamed reply (the last message, when it is the assistant's): drop its
- * `pending` flag and append `marker`. A reply with neither text nor marker is removed.
+ * Settle the streamed reply, the last message while it is a pending assistant message: drop its `pending` flag and
+ * append `marker`. A reply with neither text nor marker is removed. Anything else last (a settled reply, a question,
+ * nothing) is not this request's reply, since the user deleted it: the same array, whatever the marker, so a stop or
+ * a cut never marks a message the request did not write.
  */
 export function settleReply(msgs: ChatMessage[], marker: string): ChatMessage[] {
   const last = msgs[msgs.length - 1];
-  if (last?.role !== 'assistant' || (!last.pending && !marker)) return msgs;
+  if (last?.role !== 'assistant' || !last.pending) return msgs;
   const { pending: _pending, ...reply } = last;
   if (!reply.content && !marker) return msgs.slice(0, -1);
   const content = reply.content && marker ? `${reply.content}\n\n${marker}` : reply.content || marker;
@@ -33,18 +39,20 @@ export function settleReply(msgs: ChatMessage[], marker: string): ChatMessage[] 
 }
 
 /**
- * Streamed text added to the reply: appended to the last message when it is the assistant's, pending or not, else a
- * new assistant message. Pending or not because the user can delete the streaming bubble: the next chunk then
- * re-creates the reply without the flag, and the rest of the reply must join it rather than open a second turn.
+ * Streamed text added to the reply: appended to the last message while it is a pending assistant message, the reply
+ * in flight; otherwise a new pending assistant message. Otherwise because the user can delete the streaming bubble:
+ * the next chunk then re-creates the reply, pending, the rest of the reply joins it rather than opening a third turn,
+ * and it never joins the message the delete left last (a stored partial, an earlier reply), which is not this
+ * request's to extend.
  */
 export function appendReplyText(msgs: ChatMessage[], text: string): ChatMessage[] {
   const last = msgs[msgs.length - 1];
-  if (last?.role === 'assistant') {
+  if (last?.role === 'assistant' && last.pending) {
     const updated = [...msgs];
     updated[updated.length - 1] = { ...last, content: last.content + text };
     return updated;
   }
-  return [...msgs, { role: 'assistant', content: text }];
+  return [...msgs, { role: 'assistant', content: text, pending: true }];
 }
 
 /**
@@ -77,23 +85,27 @@ export type RetryKind = NonNullable<ChatMessage['retry']>['kind'];
 
 /**
  * The fail sink's update: the reply settled as far as it got (settleReply with no marker: a partial keeps its text,
- * an empty placeholder goes), then the error bubble with the record its Retry reads. `partials` counts the request's
- * partial replies just before the bubble. The request's own counts only when the last message received is the reply
- * in flight, still pending, with text: neither a reply re-created without the flag after its streaming bubble was
- * deleted, nor an older reply that a delete left last. A retried request also passes `after`, the last message of the
- * chat its first attempt was asked on (the question, for a send): while that same object is in the chat with only
- * assistant messages after it, those are the request's partials, its earlier attempts' included, since nothing else
- * can join the chat while a reply streams. Otherwise (it was deleted, or the chat was reloaded from the store) the
- * request's own partial alone counts, and retryBase's guards decide whether the bubble can be retried.
+ * an empty placeholder goes), then the error bubble. `after` is the request's anchor, the message it was asked after:
+ * a send's question, the suggestions' last message at the click (undefined in an empty chat), a retry's the last
+ * message of the chat its first attempt was asked on. While that same object is in the settled chat with only
+ * assistant messages after it, those are the request's partial replies, its earlier attempts' included, since nothing
+ * else can join the chat while a reply streams: the bubble carries the record its Retry reads, `partials` their
+ * number. Otherwise (no anchor, the anchor deleted, the chat cleared or reloaded from the store, a question after it)
+ * the bubble carries no record: it is shown and announced, and never retryable, since the request it would ask again
+ * can no longer be rebuilt from the chat.
  */
-export function failReply(msgs: ChatMessage[], content: string, kind: RetryKind, after?: ChatMessage): ChatMessage[] {
-  const last = msgs[msgs.length - 1];
+export function failReply(
+  msgs: ChatMessage[],
+  content: string,
+  kind: RetryKind,
+  after: ChatMessage | undefined,
+): ChatMessage[] {
   const settled = settleReply(msgs, '');
-  let partials = last?.role === 'assistant' && last.pending === true && last.content !== '' ? 1 : 0;
-  if (after) {
-    const i = settled.lastIndexOf(after);
-    if (i >= 0 && settled.slice(i + 1).every((m) => m.role === 'assistant')) partials = settled.length - i - 1;
+  const i = after ? settled.lastIndexOf(after) : -1;
+  if (i < 0 || !settled.slice(i + 1).every((m) => m.role === 'assistant')) {
+    return [...settled, { role: 'error', content }];
   }
+  const partials = settled.length - i - 1;
   return [...settled, { role: 'error', content, retry: { kind, partials, at: settled.length } }];
 }
 

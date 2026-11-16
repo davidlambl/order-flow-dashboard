@@ -22,9 +22,9 @@ describe('ChatMessage: Retry', () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
     const { container } = render(<ChatMessage msg={ERROR} index={2} onDelete={vi.fn()} onRetry={onRetry} />);
-    const retry = screen.getByRole('button', { name: 'Retry' });
+    const retry = screen.getByRole('button', { name: 'Retry this request' });
     expect(within(actions()).getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label')))
-      .toEqual(['Retry', 'Copy message', 'Delete message']);
+      .toEqual(['Retry this request', 'Copy message', 'Delete message']);
     const alert = screen.getByRole('alert');
     expect(alert).not.toContainElement(retry);
     expect(alert).toHaveTextContent(`Error${ERROR.content}`);
@@ -37,7 +37,13 @@ describe('ChatMessage: Retry', () => {
 
   it('is named by its word, its icon hidden, and is at least 24 px high around its 11 px icon', () => {
     render(<ChatMessage msg={ERROR} index={0} onDelete={vi.fn()} onRetry={vi.fn()} />);
-    const retry = screen.getByRole('button', { name: 'Retry' });
+    const retry = screen.getByRole('button', { name: 'Retry this request' });
+    // WCAG 2.5.3: the name starts with the word shown; the rest is visually hidden.
+    const hidden = retry.querySelector('.sr-only');
+    expect(hidden).toHaveTextContent(/^this request$/);
+    const visible = [...retry.childNodes].filter((n) => n !== hidden).map((n) => n.textContent).join('').trim();
+    expect(visible).toBe('Retry');
+    expect('Retry this request'.startsWith(visible)).toBe(true);
     expect(retry).toHaveAttribute('type', 'button');
     expect(retry).toHaveClass('min-h-6');
     const icon = retry.querySelector('svg');
@@ -48,7 +54,7 @@ describe('ChatMessage: Retry', () => {
   it('Pin: no Retry on an error bubble without onRetry, nor on a question or a reply given one', () => {
     for (const [msg, onRetry] of [[ERROR, undefined], [QUESTION, vi.fn()], [REPLY, vi.fn()]]) {
       const { unmount } = render(<ChatMessage msg={msg} index={0} onDelete={vi.fn()} onRetry={onRetry} />);
-      expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Retry this request' })).toBeNull();
       expect(within(actions()).getAllByRole('button')).toHaveLength(2);
       unmount();
     }

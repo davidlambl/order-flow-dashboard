@@ -162,7 +162,7 @@ describe('ChatBot: what Retry, the composer and the status line must not move', 
     view.rerender(chat());
     expect(screen.getByText('Q')).toBeInTheDocument();
     expect(screen.queryByText(FAILED)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry this request' })).toBeNull();
 
     await send('Q2');
     await deliver(sse.error, 1);
@@ -171,7 +171,7 @@ describe('ChatBot: what Retry, the composer and the status line must not move', 
     act(() => { emitStoreChanged({ kind: 'chat', id: 'AVGO' }); });
     expect(screen.getByText('Q2')).toBeInTheDocument();
     expect(screen.queryByText(FAILED)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry this request' })).toBeNull();
     expect(stored()).toEqual([user('Q'), user('Q2')]);
   });
 });

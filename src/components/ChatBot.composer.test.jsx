@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 import ChatBot from './ChatBot.jsx';
 import { setChatHistory } from '../lib/store.js';
 import { withContexts } from '../test/contexts.jsx';
+import { expectNoAxeViolations } from '../test/a11y.js';
 import { installFetchRecorder } from '../../test/helpers/fetch.js';
 
 const DATA = { ticker: 'AVGO', kpis: {}, gexByStrike: [], flowHistory: [] };
@@ -71,7 +72,7 @@ async function finish(i, text) {
 describe('ChatBot: the composer while a reply streams', () => {
   it('stays enabled and focused after a send by Enter, and takes what is typed while the reply streams', async () => {
     const user = userEvent.setup();
-    render(chat());
+    const { container } = render(chat());
     await user.click(box());
     await user.type(box(), 'Q{Enter}');
     await waitFor(() => expect(rec.calls).toHaveLength(1));
@@ -81,6 +82,7 @@ describe('ChatBot: the composer while a reply streams', () => {
 
     await user.type(box(), 'Next question');
     expect(box()).toHaveValue('Next question');
+    await expectNoAxeViolations(container); // the composer enabled, with a draft, while the reply streams
     await finish(0, 'A');
   });
 
@@ -119,7 +121,7 @@ describe('ChatBot: focus after a start from a button that goes', () => {
     await act(async () => { streams[0].push(sse.error); await tick(); });
     await composerBack();
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    await user.click(screen.getByRole('button', { name: 'Retry this request' }));
     await waitFor(() => expect(rec.calls).toHaveLength(2));
     expect(document.activeElement).toBe(box());
     await finish(1, 'A');

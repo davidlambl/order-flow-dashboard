@@ -9,8 +9,9 @@
 //
 // For a keyboard, a touch screen and a screen reader. The actions show at rest, dimmed, and at full strength on hover
 // or while one of them has focus: a phone has no hover, and a keyboard user must see what they tab onto. Copy and
-// Delete are 24 px square around their 11 px icon; Retry, first in the row, is the word with its icon, 24 px high. The
-// avatar is decoration; who is speaking is said in visually hidden text that opens the bubble ("You", "Assistant",
+// Delete are 24 px square around their 11 px icon; Retry, first in the row, is the word with its icon, 24 px high,
+// named "Retry this request" (the visible word, then visually hidden text), so a list of the page's buttons tells it
+// from the ticker row's and the research panel's Retry. The avatar is decoration; who is speaking is said in visually hidden text that opens the bubble ("You", "Assistant",
 // "Error"), outside the message's own text, so Copy and the stored history never see it. An error line is an alert,
 // announced as it appears, and Retry sits outside it, so the alert says the error alone. A reply has no live region: a
 // streamed reply would be read out again at every frame. None of this adds state or an effect: the bubble renders on
@@ -138,7 +139,7 @@ function ChatMessage({ msg, index, onDelete, onRetry }: ChatMessageProps) {
               className="inline-flex items-center gap-1 min-h-6 px-1.5 rounded text-[11px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
             >
               <RotateCcw size={11} />
-              Retry
+              Retry{' '}<span className="sr-only">this request</span>
             </button>
           )}
           <button

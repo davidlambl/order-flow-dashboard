@@ -68,7 +68,7 @@ describe('ChatBot: the bubbles stay memoised with Retry on screen', () => {
     await waitFor(() => expect(rec.calls).toHaveLength(1));
     await act(async () => { streams[0].push(SSE_ERROR); await tick(); });
     await screen.findByLabelText('Send message');
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry this request' })).toBeInTheDocument();
     const before = { ...counts };
     expect(before.markdown).toBeGreaterThan(0);
     expect(before.retryIcon).toBeGreaterThan(0);

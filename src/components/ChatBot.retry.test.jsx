@@ -19,6 +19,7 @@ import { LocalStorageBackend, emitStoreChanged, exportAll, setBackend, setChatHi
 import { SupabaseBackend } from '../lib/SupabaseBackend.js';
 import { CONTEXT_UPDATE_PROMPT } from '../lib/chatMessages.js';
 import { withContexts } from '../test/contexts.jsx';
+import { expectNoAxeViolations } from '../test/a11y.js';
 import { installFetchRecorder } from '../../test/helpers/fetch.js';
 import { fakeSupabase } from '../../test/helpers/fakeSupabase.js';
 
@@ -127,7 +128,7 @@ const requestBody = (i) => JSON.parse(rec.calls[i].init.body);
 const bubbles = (text) => screen.queryAllByText(text).filter((el) => el.tagName !== 'TEXTAREA');
 /** The Delete button of the one bubble showing `text`. */
 const deleteOf = (text) => within(bubbles(text)[0].closest('[class*="group/msg"]')).getByRole('button', { name: 'Delete message' });
-const retryButton = () => screen.queryByRole('button', { name: 'Retry' });
+const retryButton = () => screen.queryByRole('button', { name: 'Retry this request' });
 /** The typing indicator's dots. */
 const dots = () => document.querySelectorAll('.pulse-glow').length;
 /** The reply has settled, failed, or wound down after a detach: the composer shows Send again. */
@@ -174,10 +175,12 @@ async function clickRetry(n) {
 describe('ChatBot: Retry asks the failed request again', () => {
   it('a send that failed before any text: one request ending on the question; the question stored once, then the reply', async () => {
     setChatHistory('AVGO', [U0, A0]);
-    render(chat());
+    const { container } = render(chat());
     await send('Q');
     await failWith(0, '');
     expect(stored()).toEqual([U0, A0, QUESTION]);
+    expect(retryButton()).not.toBeNull();
+    await expectNoAxeViolations(container); // an error bubble with Retry in place
 
     await clickRetry(2);
     expect(requestBody(1).messages).toEqual([U0, A0, QUESTION]);
@@ -225,7 +228,7 @@ describe('ChatBot: Retry asks the failed request again', () => {
 
     await failWith(1, secondText);
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Retry this request' })).toHaveLength(1);
     expect(stored()).toEqual([U0, A0, QUESTION, ...partials]);
 
     await clickRetry(3);
@@ -261,7 +264,7 @@ describe('ChatBot: when Retry is offered', () => {
     render(chat());
     await send('Q');
     await failWith(0, '');
-    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Retry this request' })).toHaveLength(1);
 
     await send('Q2');
     expect(retryButton()).toBeNull();
@@ -271,7 +274,7 @@ describe('ChatBot: when Retry is offered', () => {
 
     fireEvent.click(deleteOf('A2'));
     fireEvent.click(deleteOf('Q2'));
-    expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Retry this request' })).toHaveLength(1);
     expect(stored()).toEqual([QUESTION]);
   });
 
@@ -451,5 +454,130 @@ describe('ChatBot: a retry that fails while its request is built', () => {
     expect(retryButton()).not.toBeNull();
     expect(rec.calls).toHaveLength(0);
     expect(stored()).toEqual([QUESTION]);
+  });
+});
+
+// A request's stream writes only into its own reply, the last message while it is a pending assistant message; and an
+// error bubble is retryable only while the message its request was asked after is still in place, followed by replies
+// alone. Each test asserts what is stored afterwards and what the next request carries.
+describe('ChatBot: a deleted or cleared reply, and what a stream and a Retry may touch', () => {
+  /** Send `text` as the next question and return the turns that request carries. */
+  async function nextRequest(text) {
+    const n = rec.calls.length;
+    await send(text);
+    return requestBody(n).messages;
+  }
+
+  it("a retry's streaming bubble deleted after a partial: the rest of the reply is a message of its own; the stored partial is unchanged", async () => {
+    setChatHistory('AVGO', [U0, A0]);
+    render(chat());
+    await send('Q');
+    await failWith(0, 'Part');
+    await clickRetry(2);
+    await deliver(sse.text('Xx'), 1);
+    frames.run();
+    fireEvent.click(deleteOf('Xx'));
+    await deliver(sse.text('Yy'), 1);
+    frames.run();
+    await act(async () => { streams[1].push(sse.stop('end_turn') + sse.end); streams[1].close(); await tick(); });
+    await composerBack();
+    expect(stored()).toEqual([U0, A0, QUESTION, reply('Part'), reply('Yy')]);
+    expect(await nextRequest('Q2')).toEqual([U0, A0, QUESTION, reply('Part'), reply('Yy'), user('Q2')]);
+  });
+
+  it("the suggestions' streaming bubble deleted mid-reply: the reply before it is stored unchanged, the rest a message of its own", async () => {
+    setChatHistory('AVGO', [U0, A0]);
+    render(chat());
+    fireEvent.click(screen.getByLabelText('Suggest updates to Strategic Context'));
+    await waitFor(() => expect(rec.calls).toHaveLength(1));
+    await deliver(sse.text('Sx'), 0);
+    frames.run();
+    fireEvent.click(deleteOf('Sx'));
+    await deliver(sse.text('Sy'), 0);
+    frames.run();
+    await finishReply(0, 'z');
+    expect(stored()).toEqual([U0, A0, reply('Syz')]);
+    expect(await nextRequest('Q2')).toEqual([U0, A0, reply('Syz'), user('Q2')]);
+  });
+
+  it("a retry's streaming bubble deleted, then Stop before another chunk: the stored partial gets no marker", async () => {
+    setChatHistory('AVGO', [U0, A0]);
+    render(chat());
+    await send('Q');
+    await failWith(0, 'Part');
+    await clickRetry(2);
+    await deliver(sse.text('Xx'), 1);
+    frames.run();
+    fireEvent.click(deleteOf('Xx'));
+    fireEvent.click(screen.getByLabelText('Stop generating'));
+    await composerBack();
+    expect(stored()).toEqual([U0, A0, QUESTION, reply('Part')]);
+    expect(screen.getByRole('status')).toHaveTextContent('Reply stopped.');
+    expect(await nextRequest('Q2')).toEqual([U0, A0, QUESTION, reply('Part'), user('Q2')]);
+  });
+
+  it('a suggestions retry whose reply under review is deleted while it streams: its failure offers no Retry, and the partial stays', async () => {
+    setChatHistory('AVGO', [U0, A0]);
+    render(chat());
+    fireEvent.click(screen.getByLabelText('Suggest updates to Strategic Context'));
+    await waitFor(() => expect(rec.calls).toHaveLength(1));
+    await failWith(0, 'Sp', SUGGESTIONS_FAILED);
+    await clickRetry(2);
+    fireEvent.click(deleteOf('a0'));
+    await failWith(1, '', SUGGESTIONS_FAILED);
+    expect(retryButton()).toBeNull();
+    expect(stored()).toEqual([U0, reply('Sp')]);
+    expect(await nextRequest('Q2')).toEqual([U0, reply('Sp'), user('Q2')]);
+  });
+
+  it.each([
+    ['with text', 'Xx', [reply('Xx')]],
+    ['without text', '', []],
+  ])('a question deleted while its first attempt streams, after an older unanswered one, failing %s: no Retry, nothing stored is lost', async (_label, text, partials) => {
+    const OLDER = user('older');
+    setChatHistory('AVGO', [U0, A0, OLDER]);
+    render(chat());
+    await send('Q');
+    if (text) {
+      await deliver(sse.text(text), 0);
+      frames.run();
+    }
+    fireEvent.click(deleteOf('Q'));
+    await failWith(0, '');
+    expect(retryButton()).toBeNull();
+    expect(stored()).toEqual([U0, A0, OLDER, ...partials]);
+    expect(await nextRequest('Q2')).toEqual([U0, A0, OLDER, ...partials, user('Q2')]);
+  });
+
+  it('Clear while the suggestions stream: the rest of the reply is stored alone, and its failure offers no Retry', async () => {
+    setChatHistory('AVGO', [U0, A0]);
+    render(chat());
+    fireEvent.click(screen.getByLabelText('Suggest updates to Strategic Context'));
+    await waitFor(() => expect(rec.calls).toHaveLength(1));
+    await deliver(sse.text('Sx'), 0);
+    frames.run();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByLabelText('Clear chat history'));
+    await failWith(0, 'Sy', SUGGESTIONS_FAILED);
+    expect(retryButton()).toBeNull();
+    expect(stored()).toEqual([reply('Sy')]);
+    expect(await nextRequest('Q2')).toEqual([user('Q2')]);
+  });
+
+  it('a reply re-created after its streaming bubble was deleted, then a failure: Retry is offered, and asks the question without that text', async () => {
+    setChatHistory('AVGO', [U0, A0]);
+    render(chat());
+    await send('Q');
+    await deliver(sse.text('Xx'), 0);
+    frames.run();
+    fireEvent.click(deleteOf('Xx'));
+    await failWith(0, 'Yy');
+    expect(stored()).toEqual([U0, A0, QUESTION, reply('Yy')]);
+    expect(retryButton()).not.toBeNull();
+
+    await clickRetry(2);
+    expect(requestBody(1).messages).toEqual([U0, A0, QUESTION]);
+    await finishReply(1, 'A');
+    expect(stored()).toEqual([U0, A0, QUESTION, reply('Yy'), reply('A')]);
   });
 });

@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import ChatBot from './ChatBot.jsx';
 import { withContexts } from '../test/contexts.jsx';
+import { expectNoAxeViolations } from '../test/a11y.js';
 import { installFetchRecorder } from '../../test/helpers/fetch.js';
 
 const dataFor = (ticker) => ({ ticker, kpis: {}, gexByStrike: [], flowHistory: [] });
@@ -105,6 +106,7 @@ describe('ChatBot: the status line', () => {
     const line = within(container).getByRole('status');
     expect(line).toBeEmptyDOMElement();
     expect(line).toHaveClass('sr-only');
+    await expectNoAxeViolations(container); // idle, the line empty
 
     await send('Q');
     expect(dots()).toBe(3);
@@ -114,6 +116,7 @@ describe('ChatBot: the status line', () => {
     await finish(0, ended('A'));
     expect(within(container).getAllByRole('status')).toEqual([line]);
     expect(line).toHaveTextContent(/^Reply complete\.$/);
+    await expectNoAxeViolations(container); // the line saying a sentence
   });
 
   it("changes at every start, so a second reply's \"Reply complete.\" is a change and is announced", async () => {
