@@ -49,6 +49,9 @@ const REFRESH = 'Options data could not be refreshed: Upstream down. The last da
 const DEMO = 'Options data could not be loaded: Upstream down. Demo data is shown instead.';
 const QUOTE = 'The live price could not be loaded: Yahoo is not answering. Prices come from the options snapshot.';
 const QUOTE_KEPT = 'The live price could not be refreshed: Yahoo is not answering. The last live price is shown.';
+// Demo data's price is made up: with the live quote failed too, "the options snapshot" would name a source that
+// was never loaded.
+const QUOTE_DEMO = 'The live price could not be loaded: Yahoo is not answering. Prices come from the demo data.';
 
 describe('TickerSummary: failures in words, with Retry', () => {
   it.each([
@@ -57,7 +60,7 @@ describe('TickerSummary: failures in words, with Retry', () => {
     ['the live quote failed, the snapshot price shown', { quoteError: 'Yahoo is not answering' }, QUOTE],
     ['the live quote failed, an older live price kept', { quoteError: 'Yahoo is not answering', liveQuoteShown: true }, QUOTE_KEPT],
     ['a refresh and the live quote failed at once', { error: 'Upstream down', quoteError: 'Yahoo is not answering' }, `${REFRESH} ${QUOTE}`],
-    ['demo data and the live quote failed at once', { data: demo, usingMock: true, error: 'Upstream down', quoteError: 'Yahoo is not answering' }, `${DEMO} ${QUOTE}`],
+    ['demo data and the live quote failed at once', { data: demo, usingMock: true, error: 'Upstream down', quoteError: 'Yahoo is not answering' }, `${DEMO} ${QUOTE_DEMO}`],
   ])('%s: the sentence is visible text in the status region, with ONE Retry and no title', async (_label, props, text) => {
     const { container } = renderRow(props);
     expect(region()).toHaveTextContent(text, { normalizeWhitespace: true });

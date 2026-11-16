@@ -1,6 +1,7 @@
 // src/components/Header.snapshot.test.jsx — the header's compact price when the live quote has failed. With no live
 // quote shown, the price printed is the options snapshot's (data.spotPrice): a short visible marker says so, and the
-// price's text for a screen reader says where it comes from. A failed refresh that keeps an older live quote shown,
+// price's text for a screen reader says where it comes from; in demo mode the price is the demo data's, and both say
+// so instead. A failed refresh that keeps an older live quote shown,
 // and a quote that has not landed yet, print no marker. Rendered alone under the two app contexts, as Header.test.jsx
 // renders it. Tailwind's classes do nothing under jsdom: what sr-only hides is read from the class.
 import { describe, expect, it } from 'vitest';
@@ -53,5 +54,18 @@ describe('Header: the compact price after a failed live quote', () => {
     render(header({ liveQuote: null, quoteError: null }));
     expect(seen(priceBlock('$100.00'))).toBe('$100.00');
     expect(screen.queryByText(/snapshot/)).toBeNull();
+  });
+
+  // In demo mode the price printed is the demo payload's, made up: "snapshot" would name a source never loaded.
+  it('in demo mode marks the price as demo data, not as the options snapshot', async () => {
+    const { container } = render(header({
+      usingMock: true, data: { ...CBOE, provider: 'mock', delay: 'simulated' }, liveQuote: null,
+      quoteError: 'Yahoo is not answering',
+    }));
+    const block = priceBlock('$100.00');
+    expect(seen(block)).toBe('$100.00 demo');
+    expect(spoken(block)).toBe('$100.00 from the demo data');
+    expect(screen.queryByText(/snapshot/)).toBeNull();
+    await expectNoAxeViolations(container);
   });
 });

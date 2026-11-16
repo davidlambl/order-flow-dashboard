@@ -71,7 +71,12 @@ function failureSentences(
   if (quoteError) {
     sentences.push(liveQuoteShown
       ? { key: 'quote', failed: `The live price could not be refreshed: ${reasonOf(quoteError)}.`, shown: 'The last live price is shown.' }
-      : { key: 'quote', failed: `The live price could not be loaded: ${reasonOf(quoteError)}.`, shown: 'Prices come from the options snapshot.' });
+      : {
+        key: 'quote',
+        failed: `The live price could not be loaded: ${reasonOf(quoteError)}.`,
+        // Demo data's price is made up: no options snapshot was ever loaded.
+        shown: usingMock ? 'Prices come from the demo data.' : 'Prices come from the options snapshot.',
+      });
   }
   return sentences;
 }

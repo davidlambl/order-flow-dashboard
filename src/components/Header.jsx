@@ -180,7 +180,8 @@ export default function Header({ onOpenSettings }) {
       {/* Search + Price */}
       <div className="ml-auto flex items-center gap-2 sm:gap-4">
         {/* Compact price — visible to all users. When the live quote failed and the price is the options snapshot's,
-            a word says so, and a screen reader hears where it comes from; the ticker row says why, with Retry. */}
+            a word says so, and a screen reader hears where it comes from; the ticker row says why, with Retry. In
+            demo mode the price is the demo data's, made up, and the word is "demo". */}
         {(() => {
           const liveNum = Number(liveQuote?.current);
           const spotNum = Number(spotPrice);
@@ -197,7 +198,9 @@ export default function Header({ onOpenSettings }) {
               </span>
               {!hasLive && quoteError && (
                 <span className="text-[11px] text-[var(--color-text-muted)]">
-                  <span className="sr-only">from the options </span>snapshot
+                  {usingMock
+                    ? <><span className="sr-only">from the </span>demo<span className="sr-only"> data</span></>
+                    : <><span className="sr-only">from the options </span>snapshot</>}
                 </span>
               )}
               {hasChange && (
