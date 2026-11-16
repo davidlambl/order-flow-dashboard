@@ -17,7 +17,10 @@ import { useNow } from './useNow.js';
 export interface PositionSignalsState {
   /** derivePositionSignals over the position and the market context: the same object until one of its inputs moves. */
   signals: PositionSignals;
-  /** A foreground load is under way (the panel shows its skeleton); the signals are still derived meanwhile. */
+  /**
+   * A foreground load is under way (the panel keeps its inputs and shows skeleton blocks for the rest); the signals
+   * are still derived meanwhile.
+   */
   loading: boolean;
   /** data?.spotPrice, as the price display reads it. */
   spotPrice: MarketData['spotPrice'] | undefined;

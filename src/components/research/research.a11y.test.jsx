@@ -159,7 +159,7 @@ describe('the research leaves under axe', () => {
       </div>,
     );
     expect(container.firstChild.textContent).toBe(
-      'No recent news available. Add a Finnhub API key in Settings.No earnings data available.No analyst data available.'
+      'No recent news available.No earnings data available.No analyst data available.'
       + 'RatingsPrice targetsNo price target data for this symbol.No market news available',
     );
     await expectNoAxeViolations(container);

@@ -26,8 +26,11 @@ export function marketValue(overrides = {}) {
     marketOpen: true,
     optionsMarketOpen: true,
     liveQuote: null,
+    quoteError: null,
     tickerContext: null,
     contextLoading: false,
+    contextError: null,
+    refreshContext: vi.fn(),
     dataSource: 'cboe',
     ...overrides,
   };

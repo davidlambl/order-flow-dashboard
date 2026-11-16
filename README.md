@@ -23,7 +23,9 @@ spends a server key for a caller without a valid token.
 
 Demo data (random, badged DEMO) appears only while nothing real has loaded for the ticker (`npm run dev`
 without functions, or a failed first load) and never auto-refreshes. Once real data has loaded, a failed
-refresh keeps it on screen with an ERROR badge and background refreshes back off (up to 5 minutes).
+refresh keeps it on screen with an ERROR badge and background refreshes back off (up to 5 minutes). A line
+under the ticker says what failed and why (options data, the live price), with Retry; the Research panel
+says which of its sources did not answer, with its own.
 
 Stack: React 19, Vite 8 (Rolldown), Tailwind CSS 4, Recharts 3, TanStack Query 5, lucide-react 1, react-markdown; Netlify
 Functions in TypeScript on Node 22 (`@netlify/functions` 6, for its types); Supabase. Upstreams: CBOE, Tradier,
@@ -74,7 +76,8 @@ earnings (server key only).
 - The dashboard context (KPIs, GEX, flow, position and signal, research, strategic context) is sent as a
   separate `financialContext` field that `askLLM` puts in the system prompt; the document icon shows it.
 - Replies stream (SSE, Markdown) and have a stop button; switching ticker stops a reply and keeps it with
-  its ticker. Chat history is per ticker and saved when a reply settles; errors are shown, not saved.
+  its ticker. Chat history is per ticker and saved when a reply settles; an error is shown with Retry, not
+  saved.
 - Strategic context: a free-text document sent with every request, edited from the chat header or
   Settings → Backup; the chat can suggest edits to it.
 
@@ -268,7 +271,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── SyncChoice.jsx      Merge / cloud / local prompt
 │   ├── TickerResearch.tsx  Research panel: the shell on CollapsibleSection
 │   ├── TokenActivationForm.tsx  Access-token form shared by the Account tab, PremiumGate and the chat's lock screen
-│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row), DataSourceNote (the footer),
+│   ├── dashboard/          App's leaves (.tsx): TickerSummary (the ticker row; what failed, with Retry),
+│   │                       DataSourceNote (the footer),
 │   │                       ChartsPanel (both charts, loaded on demand with recharts), ChartsSkeleton (its
 │   │                       fallback), SyncChoiceLayer (the blocking layer while SyncChoice loads)
 │   ├── chat/               The chat's leaves (.tsx): ChatMessage, TypingIndicator, ChatLockScreen, ChatHeader,
@@ -277,7 +281,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── position/           The position panel's leaves (.tsx): PriceDisplay, PositionInputs, PnLStat,
 │   │                       RecommendationBadge, DualRecommendationView, PriceLevelBar, ReasonList
 │   ├── research/           Its panels (.tsx): NewsPanel, EarningsCard, AnalystPanel, RatingBar,
-│   │                       MarketIndicesStrip, MarketHeadlines, LoadingSkeleton
+│   │                       MarketIndicesStrip, MarketHeadlines, LoadingSkeleton, and ResearchStatus (what
+│   │                       failed or is missing, with Retry)
 │   └── settings/           The Settings tabs (.tsx): SettingsDialog, AITab, DataTab, AccountTab, BackupTab,
 │                           SecretInput, DataSourceBanner
 ├── contexts/
@@ -290,6 +295,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── useChatStream.ts    The chat's streaming machine: start/stop/detach with per-call sinks, no effects
 │   ├── useCountdown.ts     Seconds to a deadline (Header's auto-refresh countdown)
 │   ├── useKeyTester.ts     The AI tab's Test: validates an API key, seeds the model list
+│   ├── useLastFailure.ts   A data hook's last failure, kept until a load succeeds (what the row and Research say)
 │   ├── useLiveQuote.ts     Live quote, 1-minute refresh
 │   ├── useMarketClock.ts   ET session flags, re-checked every 30 s
 │   ├── useMarketData.ts    Market data, silent auto-refresh, backoff, demo fallback
@@ -299,6 +305,7 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── usePositionSignals.ts  The position panel's signals from the market context and the draft
 │   ├── usePremiumStatus.ts Access-token status on auth-changed
 │   ├── useResizableSidebar.ts  The chat sidebar's stored width and its resize handle: a pointer's drag, the arrow keys
+│   ├── useRetryOutcome.ts  What a status region says for a pressed Retry: retrying, then how it went
 │   ├── useStoreValue.ts    useSyncExternalStore readers of the store: values, objects, preferences
 │   ├── useSupabaseAuth.ts  Sign-in session, the per-account storage backend, the sync conflict, sign-out
 │   ├── useTickerContext.ts Research context, 15-minute cache
@@ -307,7 +314,8 @@ src/                        Tests sit beside the code: *.node.test.js (node), ot
 │   ├── aiSettings.ts       AI provider table and the AI preference readers
 │   ├── api.ts              Function fetchers, chat SSE reader
 │   ├── auth.ts             Access-token storage and check
-│   ├── chatMessages.ts     The chat's pure message helpers: markers, settle, window, storable, buffered text
+│   ├── chatMessages.ts     The chat's pure message helpers: markers, settle, window, storable, buffered text,
+│   │                       and what a failed request leaves for its Retry
 │   ├── debouncedSaver.js   Debounce with a baseline
 │   ├── deepEqual.js        Key-order-insensitive equality
 │   ├── financialContext.ts The chat's context builder, pure, clock injected (golden snapshots in __snapshots__/ beside its test)

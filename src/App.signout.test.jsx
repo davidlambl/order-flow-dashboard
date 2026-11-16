@@ -125,7 +125,7 @@ const renderApp = () => render(
 /** Every TanStack request has been answered and applied, so no query result lands outside act() after this. */
 const settled = () => waitFor(() => { expect(queryClient.isFetching()).toBe(0); }, { timeout: 5_000 });
 
-/** PositionAnalysis' cost-basis input, which (behind the gate, with a token) replaces the skeletons once the data lands. */
+/** PositionAnalysis' cost-basis input: the dashboard is up and the gate (with a token) open; the data may still load. */
 const costInput = () => screen.findByPlaceholderText('Avg cost', {}, { timeout: 5_000 });
 
 /** Makes `fakeSupabase(options)` the app's client; set before the render, and never changed while App is mounted. */

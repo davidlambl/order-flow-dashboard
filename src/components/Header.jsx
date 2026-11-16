@@ -123,7 +123,7 @@ function TickerSearch({ ticker, setTicker }) {
 export default function Header({ onOpenSettings }) {
   const {
     ticker, setTicker, refresh, loading, usingMock, data, tickerContext, autoRefresh, nextRefreshAt, refreshMs,
-    optionsMarketOpen, toggleAutoRefresh, liveQuote,
+    optionsMarketOpen, toggleAutoRefresh, liveQuote, quoteError,
   } = useMarket();
   const { isPremium, tokenTier, daysLeft, signedIn, signOut } = useAuth();
   // The earnings badge counts days on this clock rather than a Date read during render, so render stays pure and the
@@ -179,11 +179,14 @@ export default function Header({ onOpenSettings }) {
 
       {/* Search + Price */}
       <div className="ml-auto flex items-center gap-2 sm:gap-4">
-        {/* Compact price — visible to all users */}
+        {/* Compact price — visible to all users. When the live quote failed and the price is the options snapshot's,
+            a word says so, and a screen reader hears where it comes from; the ticker row says why, with Retry. In
+            demo mode the price is the demo data's, made up, and the word is "demo". */}
         {(() => {
           const liveNum = Number(liveQuote?.current);
           const spotNum = Number(spotPrice);
-          const price = Number.isFinite(liveNum) && liveNum > 0 ? liveNum : Number.isFinite(spotNum) && spotNum > 0 ? spotNum : null;
+          const hasLive = Number.isFinite(liveNum) && liveNum > 0;
+          const price = hasLive ? liveNum : Number.isFinite(spotNum) && spotNum > 0 ? spotNum : null;
           if (!price) return null;
           const changePct = liveQuote?.changePercent;
           const hasChange = typeof changePct === 'number' && Number.isFinite(changePct);
@@ -193,6 +196,13 @@ export default function Header({ onOpenSettings }) {
               <span className="text-sm font-bold font-mono tabular-nums text-[var(--color-text-primary)]">
                 {formatPrice(price)}
               </span>
+              {!hasLive && quoteError && (
+                <span className="text-[11px] text-[var(--color-text-muted)]">
+                  {usingMock
+                    ? <><span className="sr-only">from the </span>demo<span className="sr-only"> data</span></>
+                    : <><span className="sr-only">from the options </span>snapshot</>}
+                </span>
+              )}
               {hasChange && (
                 <span
                   className="text-xs font-semibold font-mono tabular-nums"

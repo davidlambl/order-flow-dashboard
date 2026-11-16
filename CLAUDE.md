@@ -65,7 +65,10 @@ should:
   clears the shared `queryClient` after every test; hooks take the client as `useQuery`'s second argument, so hook
   tests render them bare, with no provider. A component that reads the contexts renders inside them with
   `src/test/contexts.jsx` (`marketValue(overrides)`, `authValue(overrides)`, `withContexts(ui, { market, auth })`),
-  which replaced the props those tests used to pass. The setup also loads every lazily loaded component
+  which replaced the props those tests used to pass. A surface that says a data hook's failure (the ticker row,
+  Research) is also tested through the REAL hooks, in the whole App with MSW (`src/App.surfaces.test.jsx`): a hook
+  never gives an error together with a first load, so a hand-built `{ error, loading }` pair can pass on a state no
+  user meets. The setup also loads every lazily loaded component
   (`lazyWithPreload`) before a file's first test, so a lazy part renders inside `render()`'s act like an eager one and
   the test files need not know which parts are lazy. A file that tests a lazy part's pending, failed and retried paths
   opts out with a top-level `skipLazyPreload()` and holds the import with `importGate()` (`src/test/lazy.js`, whose
@@ -138,8 +141,14 @@ should:
   string-guarded preference readers `getAISettings` / `readAiModelName` that ChatBot and the Settings AI tab share; `financialContext.ts` the chat's context builder, pure with the clock injected
   (`buildFinancialContext(input)` with `now` required; golden snapshots under 'UTC' and 'America/New_York', the committed
   `.snap` in `__snapshots__/` beside its node test); `chatMessages.ts` the chat's pure message helpers — `stopMarker`, `settleReply`,
-  `conversationWindow`, `storableMessages`, `appendReplyText`, `withBufferedText`, the `isTurn` guard and
-  `CONTEXT_UPDATE_PROMPT`; `positionSignals.ts` the position panel's pure derivation (`derivePositionSignals(input)`: dual
+  `conversationWindow`, `storableMessages`, `appendReplyText`, `withBufferedText`, the `isTurn` guard,
+  `CONTEXT_UPDATE_PROMPT` and the Retry's three, `failReply`, `retryBase` and `retryPlaceholder`. Two rules keep the
+  stored history safe from a delete or a Clear made while a reply streams: a request's stream writes only into its
+  own reply, the last message while that is the assistant's and `pending` (a chunk after the streaming bubble was
+  deleted opens a new pending reply; a settle with no pending reply last changes nothing, whatever its marker); and an
+  error bubble carries a `retry` record (`{ kind, partials, at }`) only while the message its request was asked
+  after, its anchor, is still in the chat with replies alone after it, so a Retry never asks a different request;
+  `positionSignals.ts` the position panel's pure derivation (`derivePositionSignals(input)`: dual
   mode, the two recommendations, the price levels, staleness and both P&Ls, `now` injected)). Modules the
   `node` test project loads use explicit `.js` relative imports (Vite resolves both) and no top-level
   `window`/`localStorage` access. A `.js` or `.jsx` specifier also resolves to a renamed `.ts`/`.tsx` module
@@ -189,17 +198,30 @@ should:
   width where it is (a vertical move, one past a bound) returns the same state, so App does not render per move;
   `isResizing` is a drag alone); `useMediaQuery(query)` → whether a media query
   matches, followed as it changes (`useSyncExternalStore` over `matchMedia`; false where there is none).
+  The failure surfaces' two (Phase 6): `useLastFailure(error, loaded, key)` → a data hook's last failure, kept until a
+  load succeeds (`loaded` with no error) or `key` changes, and returned in the same render (state adjusted during
+  render, no effect). A data hook's own `error` cannot be shown as it stands: TanStack clears a query's error the
+  moment a fetch starts while the query holds no data, the quote refetches every 60 s and its `refresh()` resets the
+  query, so a failure that is still the truth would leave the page, with its Retry button and the focus, for as long
+  as the next request runs. `useRetryOutcome(busy, failing, key)` → `{ outcome: 'none' | 'retrying' | 'worked', begin }`:
+  what a status region says for a PRESSED Retry (`begin()` at the press; 'retrying' while the load it started runs;
+  then 'worked', or 'none' when a failure line is the outcome); a load nobody pressed for stays 'none'.
 - `src/contexts/` `MarketContext.ts` and `AuthContext.ts`: the two values App builds from its hooks and state and
   provides inside the account-keyed div; `useMarket()` / `useAuth()` throw outside a provider. Header, PositionAnalysis,
   ChatBot, TickerResearch, the Settings tabs (AccountTab, BackupTab, DataTab) and PremiumGate read them instead of App's
   props; `KPICards`, `GexChart` and
   `FlowChart` keep their data props (pure leaves, and `App.test.jsx` counts App's renders through KPICards'), and the
-  position draft, `isOpen`/`onClose` and `onOpenSettings` stay props.
+  position draft, `isOpen`/`onClose` and `onOpenSettings` stay props. In the market value, `quoteError` and
+  `contextError` are the KEPT failures (`useLastFailure`: Header's "snapshot" marker and the Research panel read
+  them), `error` is `useMarketData`'s own, as it stands (the ticker row takes the kept one as a prop), and
+  `refreshContext` is `useTickerContext`'s refresh.
 - `src/components/` UI. `src/App.tsx` itself is a shell (Phase 5 (d)): it owns the ticker, the chat and Settings toggles, the
   data hooks and the two contexts, calls `usePositionDraft` before `useSupabaseAuth` (which takes its `flush`), destructures
   every hook result (a hook's return object in a dependency list would give the contexts a new value per render; the
   `App.shell.test.jsx` identity pin guards it) and renders the spinner, `LoginForm` or the dashboard keyed on the account,
-  with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` (pure prop leaves) as `main`'s first and last children.
+  with `components/dashboard/{TickerSummary,DataSourceNote}.tsx` as `main`'s first and last children, both fed by props:
+  `DataSourceNote` is pure; `TickerSummary` also says, in ONE status region under the ticker, what failed and why
+  (options data loaded or refreshed, the live price loaded or refreshed), with Retry beside it, which reloads both.
   The chat is ONE element at every width and never remounts, since a remount would cut a streaming reply: a `div` (an
   `aside` may not take the dialog role) that from `md` up is the complementary landmark "AI Co-Pilot" while open,
   with the resize handle before it (closed, it is an empty 0 px element with neither role nor name, so that no empty
@@ -209,8 +231,8 @@ should:
   left is `main`'s scrollbar). The layout follows
   `useMediaQuery('(min-width: 48rem)')`, Tailwind's `md` (the stylesheet writes `(width >= 48rem)`, a range the test
   stand-in does not parse). Escape closes the chat only while it covers the page, heard on `document` by a listener
-  that lives only then: from inside the chat or from `body`, where focus is after a send (the composer is disabled
-  while a reply streams) or once a pressed button unmounts, and never while a `<dialog>` is open, since Settings hears
+  that lives only then: from inside the chat or from `body`, where focus falls once a pressed button unmounts or while
+  the chat is locked (the composer itself stays enabled while a reply streams), and never while a `<dialog>` is open, since Settings hears
   Escape on `window`, after `document`, and one key would otherwise close both. Closing it with focus inside, or on
   `body` while it covered the page, moves focus to "Open AI Co-Pilot", which mounts in the same commit. The
   account-keyed root is never inert:
@@ -235,7 +257,12 @@ should:
   an effect only when `configured`. The idle preload starts from an effect once `screen === 'app'`.
   `TickerResearch.tsx` is the shell over `components/research/*.tsx` (pure leaves, the data props
   typed from `types/market.ts`, default-exported one per file; the shell renders its header through `CollapsibleSection` and owns
-  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). `CollapsibleSection.jsx` (the Position,
+  the one `useNow` clock the leaves' relative times read; Phase 5 (d)). The shell tells the panel's states apart
+  (a first load, a failed load, an empty answer, a partial one, a failed refresh over research already shown, loaded;
+  it also has a sentence for research switched off, which the app cannot show today: App renders the panel inside
+  `PremiumGate`, and an access token always has research on), and `research/ResearchStatus.tsx` holds the panel's one status region and its Retry: the
+  failed request's reason, the sources a partial answer lacks, named in words, and apart from them the sources the
+  data plan does not include (a 403, which no retry fixes and which alone earns no Retry). `CollapsibleSection.jsx` (the Position,
   Research and Charts sections) is the accordion pattern: an `h2` holding the toggle (`aria-expanded`, and
   `aria-controls` while open), and the open content a `region` labelled by the title's own element, not by the toggle,
   whose name also carries the badge (Research's "Loading..."); collapsed, the content is not rendered, so the toggle
@@ -253,13 +280,25 @@ should:
   `StrategicContextDialog.tsx`, loaded on demand, and saves through `savePreference`. `ChatBot.tsx` is the always-mounted shell over `components/chat/*.tsx` (ChatMarkdown, the memoised
   ChatMessage, TypingIndicator, ChatLockScreen on `TokenActivationForm`, ChatHeader, ContextInspector on `useNow(60_000)`,
   ChatEmptyState and ChatComposer with the textarea `ref` prop) and the two chat hooks; `isOpen` and the lock only hide its
-  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). The shell and its two hooks
+  UI, so a reply keeps streaming and is stored behind a closed or re-locked chat (Phase 5 (d)). A failed request
+  leaves an error bubble, an alert that is shown and never stored, whose Retry asks the same request again in ONE
+  request that ends on the question (or on the suggestions' prompt): the question and any partial reply stay on screen
+  and in the store, and the partials are left out of the request. Every start hands its sinks the request's anchor
+  (a send's question, the chat's last message when the suggestions were asked, a retry's base), which `failReply`
+  needs. The composer is never `disabled`: a draft can be typed while a reply streams, and `start()` refuses a
+  second request and keeps the draft. One visually hidden `status` line in the shell says "The assistant is replying."
+  and then how the reply ended (complete, stopped, cut off); a failure is the bubble's alert to say. The line is in the
+  tree for as long as the chat is open and unlocked: it sits below the shell's two early returns, so a chat reopened
+  while a reply streams mounts it already saying so. The shell and its two hooks
   load with the entry for that reason, and the leaves because they are small and the composer is the shell's focus
   target; only `ChatMarkdown` (react-markdown and remark-gfm) is loaded on
   demand, by `ChatMessage`, whose fallback while it loads AND if it fails is the reply's raw text. `PositionAnalysis.tsx` is
   the shell over `components/position/*.tsx` (PriceDisplay, PositionInputs, PnLStat, RecommendationBadge,
   DualRecommendationView, PriceLevelBar, ReasonList: pure leaves) and `usePositionSignals`; it pairs each field's edit with
-  the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)).
+  the other field for App's `onUpdate`, and a shares edit with no cost basis sends null (Phase 5 (d)). It is ONE tree,
+  loading or not: the two inputs stay mounted, the same nodes, through a load (focus, the caret and a value being
+  typed survive a ticker switch or a refresh), and what is read from the market data gives way to `aria-hidden`
+  placeholder blocks meanwhile.
 - `netlify/functions/` TypeScript, every function in Netlify's v2 form (a default export): six `Request → Response`
   handlers (`askLLM`, `getLiveQuote`, `getTickerContext`, `validateToken`, `getMarketData`, `getModels`), typed from
   `types/market.ts` (every error body is checked against `ApiErrorBody` with `satisfies`), and the scheduled
@@ -372,7 +411,14 @@ should:
   tab's key test, the Backup tab's import, the access request; the sign-in link's region mounts as the link is
   requested, the idle sign-in screen having no status but its notice): a live region announces a change inside it,
   and one inserted together with its text is not read by every screen reader; an alert may be inserted with its text.
-  A loading line (a skeleton, a stand-in) and the chat's typing indicator still mount with their text. A panel
+  A loading line (a skeleton, a stand-in) still mounts with its text; the chat's typing indicator is no live region
+  (its hidden line is for a reader of the chat), since the shell's one status line says when a reply starts and how
+  it ended. A Retry button is never `disabled`: while its load runs it is `aria-disabled` and ignores a press, so it
+  keeps the focus; its name starts with the visible word and says what it retries ("Retry market data", "Retry
+  research", "Retry this request"); and when it leaves the page with the focus, the focus is handed on (the ticker
+  row, the section's toggle; the chat's goes to the composer at the press). A surface says a KEPT failure
+  (`useLastFailure`), so a refresh nobody pressed for that fails again changes nothing in its status region, while a
+  pressed Retry says "Retrying..." there and then its outcome (`useRetryOutcome`). A panel
   that scrolls under a sticky header carries scroll padding above the header's height (`scroll-pt-32` on the Settings
   panel and its stand-in), so a control scrolled into view for focus is never under it. One pattern per toggle: a
   fixed name with `aria-pressed` (`aria-expanded` for a section), or a name that states the action and no

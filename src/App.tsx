@@ -39,6 +39,7 @@ import type { MarketValue } from './contexts/MarketContext.js';
 import { useMarketData } from './hooks/useMarketData.js';
 import { useTickerContext } from './hooks/useTickerContext.js';
 import { useLiveQuote } from './hooks/useLiveQuote.js';
+import { useLastFailure } from './hooks/useLastFailure.js';
 import { usePremiumStatus } from './hooks/usePremiumStatus.js';
 import { useStoreValue } from './hooks/useStoreValue.js';
 import { usePositionDraft } from './hooks/usePositionDraft.js';
@@ -141,9 +142,20 @@ export default function App() {
 
   // Research data needs either an access token or the user's own Finnhub key.
   const hasFinnhubKey = useStoreValue(readHasFinnhubKey);
+  const researchOn = isPremium || hasFinnhubKey;
   const { data, loading, error, usingMock, refresh, autoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, toggleAutoRefresh } = useMarketData(ticker);
-  const { context: tickerContext, loading: contextLoading } = useTickerContext(ticker, { enabled: isPremium || hasFinnhubKey });
-  const { quote: liveQuote, refresh: refreshLiveQuote } = useLiveQuote(ticker);
+  const { context: tickerContext, loading: contextLoading, error: contextLoadError, refresh: refreshContext } =
+    useTickerContext(ticker, { enabled: researchOn });
+  const { quote: liveQuote, loading: quoteLoading, error: quoteLoadError, refresh: refreshLiveQuote } = useLiveQuote(ticker);
+
+  // What the failure surfaces say: each hook's last failure, kept until a load succeeds or the ticker changes. A hook's
+  // own error leaves while the next request runs whenever its query holds no data (TanStack clears it at the fetch's
+  // start; the quote's refresh() resets it), which would empty the sentence and drop Retry, with the focus, at the
+  // press and at every silent attempt. The market context's `error` stays useMarketData's own: the row alone takes
+  // the kept one.
+  const quoteError = useLastFailure(quoteLoadError, liveQuote != null, ticker);
+  const contextError = useLastFailure(contextLoadError, tickerContext != null, `${ticker}|${researchOn}`);
+  const rowError = useLastFailure(error, !usingMock, ticker);
 
   // The chat sidebar's width: the stored one, or the handle's while a drag or the arrow keys move it.
   const { width, isResizing, handleProps } = useResizableSidebar();
@@ -155,8 +167,8 @@ export default function App() {
   const chatId = useId();
   const chatRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
-  // Set when the chat closes with focus inside it, or on the body while it covered the page (a disabled composer, an
-  // unmounted button or a narrowed window leaves focus there): the close takes what held focus off the page, or left
+  // Set when the chat closes with focus inside it, or on the body while it covered the page (an unmounted button, a
+  // locked chat or a narrowed window leaves focus there): the close takes what held focus off the page, or left
   // it nowhere, and the chat toggle that the same commit mounts takes focus instead. Focus anywhere else stays where
   // it is, and from md up focus on the body stays there too.
   const refocusToggleRef = useRef(false);
@@ -220,11 +232,12 @@ export default function App() {
   // exhaustive-deps rule), so a consumer sees a new value only when something in it changed.
   const market = useMemo<MarketValue>(() => ({
     ticker, setTicker: handleTickerChange, data, loading, error, usingMock, refresh: handleRefresh, autoRefresh,
-    toggleAutoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, tickerContext,
-    contextLoading, dataSource,
+    toggleAutoRefresh, nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, quoteError, tickerContext,
+    contextLoading, contextError, refreshContext, dataSource,
   }), [
     ticker, handleTickerChange, data, loading, error, usingMock, handleRefresh, autoRefresh, toggleAutoRefresh,
-    nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, tickerContext, contextLoading, dataSource,
+    nextRefreshAt, refreshMs, marketOpen, optionsMarketOpen, liveQuote, quoteError, tickerContext, contextLoading,
+    contextError, refreshContext, dataSource,
   ]);
   const auth = useMemo<AuthValue>(() => ({
     isPremium, tokenTier, daysLeft, signedIn, userEmail, signOut, signIn: configured ? handleSignIn : undefined,
@@ -263,7 +276,11 @@ export default function App() {
               style={{ overscrollBehavior: 'contain' }}
             >
               {/* Ticker badge */}
-              <TickerSummary ticker={ticker} data={data} loading={loading} usingMock={usingMock} error={error} />
+              <TickerSummary
+                ticker={ticker} data={data} loading={loading} usingMock={usingMock} error={rowError}
+                quoteError={quoteError} quoteLoading={quoteLoading} liveQuoteShown={liveQuote != null}
+                onRetry={handleRefresh}
+              />
 
               {/* KPI Cards */}
               <KPICards kpis={data?.kpis} loading={loading} />

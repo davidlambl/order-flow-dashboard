@@ -38,7 +38,7 @@ export default function NewsPanel({ news, loading, now }: NewsPanelProps) {
   if (!news || news.length === 0) {
     return (
       <p className="text-xs text-[var(--color-text-muted)] italic">
-        No recent news available. Add a Finnhub API key in Settings.
+        No recent news available.
       </p>
     );
   }

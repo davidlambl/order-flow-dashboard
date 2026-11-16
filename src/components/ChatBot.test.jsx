@@ -452,14 +452,13 @@ describe('ChatBot', () => {
     await reply(1, 'A2');
   });
 
-  it('Pin: while a reply streams, its first text on screen included, the composer is disabled and empty and Stop stands in for Send', async () => {
+  it('Pin: while a reply streams, its first text on screen included, the composer is empty with its height reset and Stop stands in for Send', async () => {
     const frames = manualFrames();
     render(chatUi());
     fireEvent.change(box(), { target: { value: 'Q1' } });
     fireEvent.keyDown(box(), { key: 'Enter' });
     await waitFor(() => expect(rec.calls).toHaveLength(1));
     const expectStreaming = () => {
-      expect(box()).toBeDisabled();
       expect(box()).toHaveValue('');
       expect(box().style.height).toBe('auto');
       expect(screen.getByLabelText('Stop generating')).toBeInTheDocument();

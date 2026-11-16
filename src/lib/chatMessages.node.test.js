@@ -38,7 +38,7 @@ describe('chatMessages', () => {
       }
     });
 
-    it('a settled reply and no marker: the same array (how a reply re-created after a delete ends)', () => {
+    it('a settled reply and no marker: the same array (its streaming bubble was deleted, and nothing re-created it)', () => {
       const msgs = [Q, reply(' world')];
       assert.equal(settleReply(msgs, ''), msgs);
     });
@@ -49,11 +49,12 @@ describe('chatMessages', () => {
       assert.deepEqual(msgs, [Q, streaming('')], 'the input is not mutated');
     });
 
-    it('a reply and a marker: joined by a blank line, the pending flag dropped, settled or not', () => {
+    it('a pending reply and a marker: joined by a blank line, the pending flag dropped; a settled reply is never marked', () => {
       const msgs = [Q, streaming('Partial')];
       assert.deepEqual(settleReply(msgs, '*(stopped)*'), [Q, reply('Partial\n\n*(stopped)*')]);
       assert.deepEqual(msgs, [Q, streaming('Partial')], 'the input is not mutated');
-      assert.deepEqual(settleReply([Q, reply(' world')], '*(stopped)*'), [Q, reply(' world\n\n*(stopped)*')]);
+      const settled = [Q, reply(' world')];
+      assert.equal(settleReply(settled, '*(stopped)*'), settled, "not this request's reply: the same array");
     });
 
     it('a pending reply and no marker loses only the flag; an empty pending reply takes the marker alone', () => {
@@ -71,12 +72,16 @@ describe('chatMessages', () => {
       assert.equal(next[0], Q, 'the messages before the reply are the same objects');
     });
 
-    it('a chunk joins a settled reply too: once the streaming bubble is deleted, the rest stays one turn', () => {
-      assert.deepEqual(appendReplyText([Q, reply(' world')], ' more'), [Q, reply(' world more')]);
+    it('a chunk never joins a settled reply: once the streaming bubble is deleted, the rest is a new pending reply', () => {
+      const msgs = [Q, reply(' world')];
+      const next = appendReplyText(msgs, ' more');
+      assert.deepEqual(next, [Q, reply(' world'), streaming(' more')]);
+      assert.equal(next[1], msgs[1], 'the settled reply is the same object');
+      assert.deepEqual(appendReplyText(next, ' still'), [Q, reply(' world'), streaming(' more still')], 'the rest joins it');
     });
 
-    it('after a user turn: a new assistant message, not pending', () => {
-      assert.deepEqual(appendReplyText([Q], ' world'), [Q, reply(' world')]);
+    it('after a user turn: a new assistant message, pending', () => {
+      assert.deepEqual(appendReplyText([Q], ' world'), [Q, streaming(' world')]);
     });
   });
 
@@ -91,8 +96,8 @@ describe('chatMessages', () => {
       assert.equal(save([Q], 'tail'), '[{"role":"user","content":"Q1"},{"role":"assistant","content":"tail"}]');
       assert.equal(
         save([Q, reply(' world')], ' more'),
-        '[{"role":"user","content":"Q1"},{"role":"assistant","content":" world more"}]',
-        'the buffer joins a reply re-created without the pending flag',
+        '[{"role":"user","content":"Q1"},{"role":"assistant","content":" world"},{"role":"assistant","content":" more"}]',
+        'the buffer never joins a settled reply: the rest of a reply whose bubble was deleted is a turn of its own',
       );
       assert.equal(
         save([Q, streaming('x'), failure('e')], ''),

@@ -479,7 +479,7 @@ describe('useChatHistory', () => {
       result.current.clearHistory();
       result.current.setMessages((prev) => appendReplyText(prev, ' world')); // a frame's text
     });
-    expect(result.current.messages).toEqual([reply(' world')]);
+    expect(result.current.messages).toEqual([pending(' world')]); // the reply re-created after the Clear, still in flight
     expect(localStorage.getItem('chat_history_AVGO')).toBeNull();
 
     f.end();
